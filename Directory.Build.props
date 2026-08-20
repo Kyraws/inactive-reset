@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    Shared settings for every project. MSBuild imports this file automatically
+    before each .csproj, so these do not need repeating per project.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- x64 only: every offset in this repository is for the 64-bit game. -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <!--
+    All build output goes to artifacts/ instead of a bin/ and obj/ beside every
+    project. One directory to ignore, one to delete.
+  -->
+  <PropertyGroup>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+  </PropertyGroup>
+
+</Project>

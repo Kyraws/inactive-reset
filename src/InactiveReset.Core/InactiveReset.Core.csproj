@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared settings live in Directory.Build.props at the repository root. -->
+  <PropertyGroup>
+    <RootNamespace>InactiveReset.Core</RootNamespace>
+    <!--
+      Required by [LibraryImport], whose source-generated marshalling stubs are
+      unsafe. Confined to this project: the CLI and UI never need it.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

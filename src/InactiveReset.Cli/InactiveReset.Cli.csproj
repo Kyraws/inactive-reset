@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>InactiveReset.Cli</RootNamespace>
+    <AssemblyName>inactive-reset</AssemblyName>
+
+    <!-- One file, no runtime install needed on the target machine. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
+    <ProjectReference Include="..\InactiveReset.Ui\InactiveReset.Ui.csproj" />
+  </ItemGroup>
+
+</Project>

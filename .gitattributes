@@ -1,0 +1,16 @@
+* text=auto
+
+*.cs        text diff=csharp
+*.md        text
+*.json      text
+*.csproj    text
+*.sln       text eol=crlf
+*.ps1       text eol=crlf
+*.cmd       text eol=crlf
+*.cpp       text
+*.hpp       text
+
+*.exe       binary
+*.dll       binary
+*.bin       binary
+*.png       binary

@@ -1,0 +1,61 @@
+# Build output (all of it lands in artifacts/ via Directory.Build.props)
+artifacts/
+bin/
+obj/
+
+# Release output. Ship as a tagged release, not in history.
+dist/
+
+# Native tool artifacts. tools/dump-sdk-offsets.cpp is source and is tracked.
+*.exe
+*.obj
+*.dll
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# Studio 397 Plugin SDK headers. Their licence forbids redistribution; they
+# ship with the game under Support\SharedMemoryInterface\. See tools/README.md.
+SharedMemoryInterface.hpp
+InternalsPlugin.hpp
+PluginObjects.hpp
+tools/*.hpp
+tools/*.h
+
+# Captured checkpoints and calibration profiles: per-user, per-track.
+data/
+
+# Memory dumps: reanchor inputs, and verbatim copies of the game executable.
+*.bin
+dumps/
+
+# Agent scratch: issues and specs (see AGENTS.md). Working notes, not history.
+.scratch/
+
+# Private handoff notes: machine-local paths and session gotchas. The durable
+# content lives in docs/ARCHITECTURE.md, which IS tracked.
+HANDOFF.md
+
+# IDE
+.vs/
+.idea/
+*.suo
+*.user
+*.csproj.user
+.vscode/
+
+# Test and coverage output
+[Tt]est[Rr]esult*/
+coverage*.*
+*.coverage
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Secrets
+*.env
+.env.*
+secrets.json

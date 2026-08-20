@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The shared front end. Both the console tool and the windowed app reference
+    this, so the browser tab and the app window are literally the same UI and
+    the same command layer. Two front ends implementing the same actions
+    separately is how they drift.
+  -->
+  <PropertyGroup>
+    <RootNamespace>InactiveReset.Ui</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
+  </ItemGroup>
+
+</Project>

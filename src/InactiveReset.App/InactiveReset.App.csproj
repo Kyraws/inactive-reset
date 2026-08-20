@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- WinExe: no console window when double-clicked. -->
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>InactiveReset.App</RootNamespace>
+    <AssemblyName>inactive-reset-ui</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <!--
+      The file name is kebab-case to match the CLI; the display name is not.
+      These drive the Properties dialog and Task Manager, where users read it.
+    -->
+    <Product>Inactive Reset</Product>
+    <AssemblyTitle>Inactive Reset</AssemblyTitle>
+
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      WebView2 renders the UI inside our own window using the Edge runtime that
+      ships with Windows 11. No browser chrome, no Electron, nothing to bundle
+      beyond a thin wrapper.
+    -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
+    <ProjectReference Include="..\InactiveReset.Ui\InactiveReset.Ui.csproj" />
+  </ItemGroup>
+
+</Project>

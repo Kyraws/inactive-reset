@@ -1,0 +1,55 @@
+﻿{
+  "$comment": [
+    "Byte offsets into LMU's shared memory, emitted by the compiler from",
+    "SharedMemoryInterface.hpp. Do not hand-edit: re-run tools/dump-sdk-offsets."
+  ],
+  "sdkHeaderSha256": "194FF1AB39030BC811540931C8B9817258727252C9A4B35FA4734BBAA16D4DDC",
+  "mapName": "LMU_Data",
+  "eventName": "LMU_Data_Event",
+  "layoutSize": 324824,
+  "telemetry": {
+    "base": 128464,
+    "activeVehicles": 128464,
+    "playerVehicleIdx": 128465,
+    "playerHasVehicle": 128466,
+    "telemInfo": 128468,
+    "telemInfoStride": 1888
+  },
+  "telemInfo": {
+    "mID": 0,
+    "mElapsedTime": 12,
+    "mLapNumber": 20,
+    "mPos": 160,
+    "mLocalVel": 184,
+    "mOri": 232,
+    "mGear": 352,
+    "vect3Stride": 24,
+    "vect3ComponentSize": 8
+  },
+  "scoring": {
+    "base": 1632,
+    "scoringInfo": 1632,
+    "vehScoringInfo": 2192,
+    "vehScoringInfoStride": 584
+  },
+  "scoringInfo": {
+    "mTrackName": 0,
+    "mTrackNameSize": 64,
+    "mNumVehicles": 104,
+    "mSession": 64,
+    "mLapDist": 88
+  },
+  "vehScoringInfo": {
+    "mID": 0,
+    "mVehicleName": 36,
+    "mVehicleNameSize": 64,
+    "mIsPlayer": 196,
+    "mLapDist": 104,
+    "mTotalLaps": 100
+  },
+  "generic": {
+    "base": 0,
+    "gameVersion": 64
+  }
+}
+

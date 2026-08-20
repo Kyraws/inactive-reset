@@ -1,0 +1,252 @@
+{
+  "$comment": [
+    "Offset profile for one exact LMU build. Everything address-shaped lives here,",
+    "not in code. Regenerate with `inactive-reset reanchor <old.bin> <new.bin>`.",
+    "",
+    "Addresses are RVAs: add the module base, which is ASLR'd and must be read at",
+    "runtime. Never hardcode a base.",
+    "",
+    "confidence:  E = established, multiple concurring references or direct proof",
+    "             I = inferred from a single reference or by adjacency",
+    "             U = unresolved; the value is STALE and must not be trusted"
+  ],
+
+  "build": {
+    "executableSha256": "1AC2F6059AA1FBC948373DF6883B83E91F82728330F1458D8C9D935C8CFB709D",
+    "fileVersion": "1.4.0.0",
+    "sizeOfImage": "0x3D39000",
+    "derivedFrom": "LMU_runtime_44C3EE9C.bin",
+    "derivedUtc": "2026-08-11T00:00:00Z",
+    "note": "The 2026-08-11 patch did not bump the file version. Identify builds by hash, never by version."
+  },
+
+  "probe": {
+    "$comment": [
+      "Read these bytes at this RVA and compare before trusting anything else.",
+      "Bytes 12..15 are the disp32 of `MOV RAX,[RIP+x]` and change on any rebuild",
+      "that moves data, EVEN IF the function itself is identical. Compare the",
+      "first 12 bytes when deciding whether the FUNCTION changed."
+    ],
+    "rva": "0x00AB80C0",
+    "symbol": "GetSpotTransform",
+    "bytes": "40 55 57 41 56 48 83 EC 60 48 8B 05 38 0E 33 01",
+    "stablePrefixLength": 12
+  },
+
+  "spotTable": {
+    "$comment": "Where the engine keeps pit and garage positions. The teleport write target.",
+    "pitPosTable":  { "rva": "0x01DE8EE0", "confidence": "E" },
+    "garPosTable":  { "rva": "0x01DE8EE8", "confidence": "E" },
+    "mult":         { "rva": "0x01DE8F04", "confidence": "E" },
+    "count":        { "rva": "0x01DE8F08", "confidence": "I",
+                      "note": "No uniquely resolvable reference. Derived by adjacency to the three above, all of which moved +0xDF0. Cross-check against the live spot count." },
+    "entryBytes": 32,
+    "writeBytes": 24,
+    "tailNote": "Only the first 24 bytes are ever written. The 8-byte tail is read and reported so it can be shown untouched."
+  },
+
+  "containers": {
+    "$comment": "Vehicles live in a static array of slot containers.",
+    "arrayBase": { "rva": "0x01E04AB0", "confidence": "E",
+                   "note": "Unanimous vote across 45 independent referencing instructions." },
+    "pointer":   { "rva": "0x01E04AA8", "confidence": "E" },
+    "table":     { "rva": "0x01E04AB8", "confidence": "I" },
+    "stride": "0x472C8",
+    "vehicleDelta": 8,
+    "offsets": {
+      "$comment": "Container-relative unless the name says vehicle. vehicle = container + 8.",
+      "controlOwner":   { "off": "0x006F78", "type": "int32", "note": "-1 none, 0 player, 1 ai, 2 remote" },
+      "slotIndex":      { "off": "0x047194", "type": "int32" },
+      "pitIndex":       { "off": "0x0471A8", "type": "int32" },
+      "garageIndex":    { "off": "0x0471AC", "type": "int32" },
+      "vehicleLength":  { "off": "0x0444B4", "type": "float" },
+      "vehicleWidth":   { "off": "0x0444B8", "type": "float" },
+      "lateralSign":    { "off": "0x046898", "type": "float", "note": "sign of this selects the lateral direction" },
+      "pitState":       { "off": "0x008FC0", "type": "int32", "note": "watched after placement until it clears" },
+      "pitFlag":        { "off": "0x008FD0", "type": "byte",
+                          "note": "mInPits. Published to shared memory by DynMan_FillScoring at 0x00CD987F. Also reachable as controller+0x2050 where controller = container+0x6F80 - the SAME byte the pit-entry/pit-exit handlers set and clear, which is why writing it is a complete operation and not half of one. See lapValidity." },
+      "countLapFlag":   { "off": "0x01CFF0", "type": "int32",
+                          "note": "0 count neither, 1 count lap but NOT time, 2 count lap and time. Recomputed only at the start/finish line. See lapValidity." },
+      "lapCountsNext":  { "off": "0x01CFF4", "type": "byte",
+                          "note": "Latch consumed at the next start/finish crossing to decide countLapFlag. See lapValidity." },
+      "lapStartEt":     { "off": "0x01CFF8", "type": "double",
+                          "note": "Elapsed time the current lap started. Written by the promote block and by nothing else, which makes it the witness for whether a start/finish crossing was accepted as a lap completion at all. See lapValidity." },
+      "lapNumber":      { "off": "0x01CEA0", "type": "int32",
+                          "note": "Lap counter. Incremented in the same handler as the promote block." },
+      "sector":         { "off": "0x01CEA8", "type": "int32",
+                          "note": "Current sector index, zero-based, 0 -> 1 -> 2 -> 0. A start/finish crossing is accepted as a lap completion ONLY on the 2 -> 0 edge. Slot_Reset zeroes it, so a placement past the last sector line leaves the car arriving at the line reading 0 and the crossing is discarded. Writing 2 after placing fixes it. MEASURED against the running game 2026-08-12." },
+      "vehCachedPose":  { "off": "0x0159DC", "type": "float[]", "base": "vehicle" },
+      "vehMotionState": { "off": "0x0159F4", "type": "float[9]", "base": "vehicle",
+                          "note": "[0..2] world vel, [3..5] local vel, [6..8] angular. Read to verify arrival; NEVER written." },
+      "vehGear":        { "off": "0x0169E0", "type": "int32", "base": "vehicle" }
+    }
+  },
+
+  "rules": {
+    "$comment": [
+      "Two different consumption patterns, and the difference is everything.",
+      "",
+      "readLive    : the consumer dereferences this address on every evaluation,",
+      "              so writing it takes effect immediately.",
+      "expandedOnce: read once at session start and exploded into derived flags.",
+      "              Writing it mid-session does NOTHING. Write the derived flags."
+    ],
+    "flagRules": {
+      "rva": "0x01DFF3C0", "type": "int32", "confidence": "E",
+      "consumption": "readLive",
+      "readBy": "0x00D01537",
+      "disableValue": 0,
+      "defaultValue": 2,
+      "domain": "0 none, 1 penalties only, 2 penalties + full-course yellows, 3 all except DQ",
+      "gates": "the stop/go for speeding in the pit lane",
+      "note": "The REST setter clamps this to a floor of 1 and therefore CANNOT disable the penalty. A direct write can. Verified 2026-08-11."
+    },
+    "trackLimits": {
+      "config": { "rva": "0x01DFF440", "type": "byte", "confidence": "E",
+                  "consumption": "expandedOnce",
+                  "expandedAt": "0x00D30E7A",
+                  "domain": "0 disabled, 1 default, 2 strict, 3 relaxed",
+                  "note": "Writing this mid-session has NO effect. Present for display only." },
+      "$derivedNote": [
+        "These are marked readLive because the EVALUATOR dereferences them on every",
+        "evaluation -- they are the expansion OUTPUT, not the config input. That is",
+        "what makes them writable mid-session while the config byte above is not."
+      ],
+      "derivedFlags": [
+        { "rva": "0x03B36274", "type": "byte", "consumption": "readLive",
+          "readBy": "0x00D0B5AF", "confidence": "E", "disableValue": 0, "defaultValue": 1 },
+        { "rva": "0x03B36275", "type": "byte", "consumption": "readLive",
+          "readBy": "0x00D0205C", "confidence": "E", "disableValue": 0, "defaultValue": 1,
+          "note": "Gates 'Track Limits: Off Track - Lap Invalidated'. THIS is the one that matters." },
+        { "rva": "0x03B36276", "type": "byte", "consumption": "readLive",
+          "readBy": "0x00D098F8", "confidence": "E", "disableValue": 0, "defaultValue": 1 }
+      ],
+      "disableValue": 0,
+      "enableValue": 1,
+      "initNote": "Session init does `mov word ptr [0x03B36274], 0x0101`, setting 74 AND 75 together. The engine's own Disabled branch clears only 74, which is why 75 must be written by hand."
+    },
+    "stewardPenalties": {
+      "rva": "0x01E03620", "type": "int32", "confidence": "U",
+      "consumption": "unknown",
+      "note": "No direct readers found, which by the taxonomy above means it is expanded through a pointer. Derived state NOT located. Displayed, never written."
+    }
+  },
+
+  "lapValidity": {
+    "$comment": [
+      "How the engine decides whether a lap counts and whether it is timed.",
+      "Reference only: nothing loads this section. MEASURED against the running",
+      "game on 2026-08-12, not inferred. Full account in docs/LAP_VALIDITY.md.",
+      "",
+      "THE CAUSE of a placed car losing a lap is the SECTOR SEQUENCER, not any",
+      "lap-validity rule:",
+      "",
+      "  sector (+0x1CEA8, int32)  current sector, zero-based, 0 -> 1 -> 2 -> 0",
+      "",
+      "A start/finish crossing is accepted as a lap completion only on the 2 -> 0",
+      "edge. Slot_Reset zeroes the sector, which is right when leaving the pits",
+      "and wrong once the tool has put the car mid-lap. A car placed past the",
+      "last sector line crosses no sector lines, arrives reading 0, and the",
+      "crossing is DISCARDED: lap counter, lapStartEt and countLapFlag all stay",
+      "put. Writing sector = 2 after placing fixes it; only final-sector",
+      "placements are affected. Writing 2 for an earlier placement was measured",
+      "to be harmless - the crossing is still accepted - though the engine does",
+      "not appear to move the sector backwards, so such a lap may carry no",
+      "meaningful sector splits.",
+      "",
+      "SEPARATELY, whether an accepted lap is TIMED comes from:",
+      "",
+      "  countLapFlag  (+0x1CFF0, int32) the current lap: 0 neither, 1 lap but",
+      "                                  not time, 2 lap and time",
+      "  lapCountsNext (+0x1CFF4, byte)  latch for the lap about to start",
+      "  lapStartEt    (+0x1CFF8, double) when the current lap started",
+      "",
+      "At an accepted crossing the engine promotes countLapFlag from the latch,",
+      "then demotes it again if the session is not a race and pitFlag is set --",
+      "the out-lap rule. pitFlag was NOT the cause: it clears itself about 33 s",
+      "after a placement. Clearing it still guards a real but narrow race, since",
+      "a final-sector placement can reach the line in about ten seconds.",
+      "",
+      "lapStartEt has exactly one writer, the promote block. That makes it the",
+      "only field that separates 'the handler ran and demoted' from 'the handler",
+      "never ran' -- which look identical in countLapFlag, and which is how the",
+      "first diagnosis of this went wrong.",
+      "",
+      "Code sites are under functions.lapValidity, NOT here, because that is how",
+      "reanchor decides to re-derive an address by masked signature search rather",
+      "than by voting on referencing instructions, and these are code."
+    ]
+  },
+
+  "engineModel": {
+    "$comment": "Constants describing how the engine places a car. Not settings; measured behaviour.",
+    "yawOffsetMode2": 0.6108652,
+    "yawOffsetNote": "GetPitDestination mode 2: oriOut[1] -= sign * this (35.00 deg). SUSPECTED WRONG for this build - see docs/HEADING_BUG.md. The measured heading error is 11.633 deg.",
+    "searchStartFactor": 0.2,
+    "searchStepFactor": 0.1,
+    "searchMaxFactor": 1.5,
+    "searchNote": "TestPitSpotClearance: d = 0.2*width, step 0.1*width, max 1.5*width"
+  },
+
+  "functions": {
+    "$comment": "Reference points for analysis. NOTHING in this project calls into LMU.",
+    "getSpotTransform":        { "rva": "0x00AB80C0", "confidence": "E" },
+    "getSpotTransformSibling": { "rva": "0x00AB8460", "confidence": "E" },
+    "applyVehicleTransform":   { "rva": "0x00F86AB0", "confidence": "E" },
+    "resetVehicleMotionState": { "rva": "0x00F85160", "confidence": "E" },
+    "slotReset":               { "rva": "0x00D29AA0", "confidence": "E",
+                                 "note": "Refactored in the 2026-08-11 patch: notify block extracted to 0x00EB8CA0. Behaviour unchanged." },
+    "slotRestart":             { "rva": "0x00D2F810", "confidence": "E",
+                                 "note": "Changed in the 2026-08-11 patch: a branch polarity flip plus a new guard/logging block." },
+    "assignSpotIndices":       { "rva": "0x00D28F20", "confidence": "E" },
+    "terrainQuerySurface":     { "rva": "0x0102A5C0", "confidence": "E" },
+    "physicsThreadMain":       { "rva": "0x00FF55A0", "confidence": "E" },
+    "gameFrameDriver":         { "rva": "0x00CEA240", "confidence": "E" },
+
+    "lapValidity": {
+      "$comment": [
+        "Instruction sites, not function entries -- the signature search does not",
+        "care which. Byte-exact unique matches in LMU_runtime_44C3EE9C.bin.",
+        "Nothing calls these; they exist so the next patch can re-locate the rule",
+        "instead of re-deriving it. A 'U' here blocks nothing: the placement fix",
+        "uses container offsets, which are layout and do not live in this section."
+      ],
+      "promoteAtStartFinish":   { "rva": "0x00D0428A", "confidence": "E",
+                                  "note": "cmp[+0x164],r13b / setnz / inc / mov[+0x160],eax / mov[+0x170],0 / mov word[+0x164],1. Displacements are from container+0x1CE90, so +0x160 is countLapFlag and +0x164 is the latch." },
+      "demoteWhenInPits":       { "rva": "0x00D04396", "confidence": "E",
+                                  "note": "cmp[+0x8FD0],0 / jz / cmp[+0x160],2 / jnz / mov[+0x160],1. Reached only when the JBE on (session-10 <= 3) falls through, i.e. races are exempt from the out-lap rule." },
+      "invalidateNextLap":      { "rva": "0x00D026CB", "confidence": "E",
+                                  "note": "mov byte[+0x164],0 in the track-limits chokepoint - the 'This and next lap will not count' path. Separate from the pit-flag rule; listed so the two are not confused." },
+      "slotResetSetsPitFlag":   { "rva": "0x00EB8CAE", "confidence": "E",
+                                  "note": "mov byte[rcx+0x2050],1 with rcx = container+0x6F80; 0x6F80+0x2050 == 0x8FD0. In the helper at 0x00EB8CA0 that the 2026-08-11 patch extracted out of Slot_Reset - it was inline at 0x00D2A59A in the 266D1AF6 dump." },
+      "slotResetClearsPitFlag": { "rva": "0x00D29BC3", "confidence": "E",
+                                  "note": "mov word[rdi+0x8FD0],0 - the other Slot_Reset branch." },
+      "publishCountLapFlag":    { "rva": "0x00CD9B93", "confidence": "E",
+                                  "note": "DynMan_FillScoring: countLapFlag -> scoring[+0x1FA]." },
+      "publishPitFlag":         { "rva": "0x00CD987F", "confidence": "E",
+                                  "note": "DynMan_FillScoring: pitFlag -> scoring[+0xC6]." }
+    }
+  },
+
+  "stale": {
+    "$comment": "Carried from the previous build and NOT re-derived. Wrong for this build. Nothing in teleport or rules uses them.",
+    "physicsTickCounter":  { "rva": "0x03B72E00", "confidence": "U" },
+    "physicsThreadHandle": { "rva": "0x03B72ED8", "confidence": "U" },
+    "playerVehicleValid":  { "rva": "0x03B350F5", "confidence": "U" },
+    "gameState":           { "rva": "0x01A5C578", "confidence": "U", "note": "adjacency inference only" },
+    "sessionType":         { "rva": "0x01A5C580", "confidence": "U", "note": "single weak reference, delta matches nothing else" }
+  },
+
+  "restGates": {
+    "$comment": "Read-only. These prove offline single-player Practice before anything is touched.",
+    "baseUrl": "http://127.0.0.1:6397",
+    "endpoints": [
+      "/rest/multiplayer/join/state",
+      "/rest/watch/sessionInfo",
+      "/rest/replay/isActive",
+      "/rest/sessions/GetGameState"
+    ],
+    "sessionsRead": "/rest/sessions",
+    "note": "No mutating REST is used. POST /rest/sessions/settings is deliberately absent: it clamps values, does not affect a running session, and kills the game on a malformed body."
+  }
+}
