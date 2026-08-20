@@ -39,6 +39,14 @@ public sealed class PlacementPortTests
     /// previews a placement must use the SAME model the placement will use, or
     /// the preview is quietly answering a different question.
     /// </summary>
+    /// <remarks>
+    /// These constants are the 266D1AF6 build's, and are PINNED ON PURPOSE. This
+    /// fixture exists to prove the C# port reproduces the C++ predecessor bit for
+    /// bit, so it must keep using the values the predecessor used. It is NOT a
+    /// check that the profile describes the current game build, and it will pass
+    /// happily while `offsets/<hash>.json` is stale -- which it was: the live
+    /// build uses 45 deg and a 0.55 search start. See docs/HEADING_BUG.md.
+    /// </remarks>
     private static readonly PlacementModel Model = new()
     {
         YawOffsetMode2 = 0.6108652f,

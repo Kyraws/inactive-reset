@@ -179,13 +179,33 @@
   },
 
   "engineModel": {
-    "$comment": "Constants describing how the engine places a car. Not settings; measured behaviour.",
-    "yawOffsetMode2": 0.6108652,
-    "yawOffsetNote": "GetPitDestination mode 2: oriOut[1] -= sign * this (35.00 deg). SUSPECTED WRONG for this build - see docs/HEADING_BUG.md. The measured heading error is 11.633 deg.",
-    "searchStartFactor": 0.2,
+    "$comment": [
+      "Constants describing how the engine places a car. Not settings; measured behaviour.",
+      "",
+      "In THIS build these are no longer .rdata literals. GetPitDestination reads",
+      "them from a mutable .data tunable block, so they are runtime values and the",
+      "RVAs below are recorded to allow reading them live rather than trusting a",
+      "snapshot. Values were taken from LMU_runtime_44C3EE9C.bin, a RUNTIME dump,",
+      "so they are post-config, not file defaults.",
+      "",
+      "GetPitDestination for this build is at 0x00D4C310 (was 0x00D4C700).",
+      "The yaw offset is stored in DEGREES and converted at 0x00D4C531 by",
+      "0.01745329 (pi/180) before `oriOut[1] -= sign * value`."
+    ],
+    "yawOffsetMode2": 0.7853982,
+    "yawOffsetMode2Rva": "0x03B3621C",
+    "yawOffsetMode2Units": "stored as degrees (45.0); this field is the radian equivalent",
+    "yawOffsetConfidence": "I",
+    "yawOffsetNote": "CHANGED IN THIS BUILD: was 0.6108652 rad (35 deg exactly) as an .rdata literal in 266D1AF6, now 45 deg read from .data. The 35 deg literal is ABSENT from this build's .rdata entirely. Read statically; NOT yet confirmed against a live placement - see docs/HEADING_BUG.md.",
+
+    "searchStartFactor": 0.55,
+    "searchStartFactorRva": "0x03B3620C",
     "searchStepFactor": 0.1,
+    "searchStepFactorRva": "0x03B36210",
     "searchMaxFactor": 1.5,
-    "searchNote": "TestPitSpotClearance: d = 0.2*width, step 0.1*width, max 1.5*width"
+    "searchMaxFactorRva": "0x03B36214",
+    "searchConfidence": "I",
+    "searchNote": "TestPitSpotClearance: d = start*width, step*width per candidate, max*width. START CHANGED IN THIS BUILD: 0.2 -> 0.55. Step and max are unchanged. Same comiss/ja loop shape as 266D1AF6, so the role mapping is direct."
   },
 
   "functions": {

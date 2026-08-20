@@ -23,11 +23,29 @@ Placement lands ~0.57 m off. Fully characterised in
 constants and is correct at exactly one range. `H` is already correct to 1.8 mm,
 which is the evidence that the vertical constant is not the problem.
 
-**Open lead:** `kSlotRestart` has a branch polarity flip (`je` → `jne`) plus a
-new guard block. The project constant is named `yawOffsetMode2` — *mode 2*. If
-the flipped branch changes which mode is requested from `GetPitDestination`, that
-produces exactly what is observed: identical transform code, a different offset
-applied, a constant angular error. Untested.
+**Superseded in part, 2026-08-20.** `GetPitDestination` has been located in this
+build (`0x00D4C310`, was `0x00D4C700`) and the yaw arithmetic read directly. Two
+engine constants changed in the 1AC2F605 patch and the profile was still carrying
+the old ones: the yaw offset is now **45 deg** held in `.data` as degrees and
+converted at runtime (was a 35 deg `.rdata` radian literal), and the pit-spot
+search start is now **0.55 × width** (was 0.2). Both are corrected in
+`offsets/1AC2F605.json` at confidence `I`.
+
+**This is not yet a fix for the 11.633 deg error.** The measurements in
+HEADING_BUG.md are dated 2026-08-07, before the patch, so they describe the build
+whose constants the model got *right*. What the finding does explain is that any
+placement on the *current* build has been running with a 10 deg wrong offset and a
+0.35 × width wrong search start.
+
+**Next, and it needs the game running:** place at two checkpoints whose range from
+the pit spot differs materially, with the corrected constants. That separates the
+two candidate faults — a wrong `D` versus a destination point that is not where
+the model puts it. One sample cannot, which is why the old single-range data
+supports both readings.
+
+The old `kSlotRestart` branch-polarity lead is **not** resolved, but it is now
+lower value: the offset it was meant to explain turned out to be a data change,
+not a mode change.
 
 
 ## Track-limits flags re-arm themselves

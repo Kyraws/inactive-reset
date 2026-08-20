@@ -152,6 +152,13 @@ sound and only the aim is wrong. Full analysis in
 **Do not re-calibrate to fix it.** That bakes a rotation into two translation
 constants and is correct at exactly one distance.
 
+Separately, and found later: the 1AC2F605 patch changed two engine constants the
+profile was still carrying from the previous build — the yaw offset (35 deg to
+45 deg, and it moved from an `.rdata` radian literal to a `.data` value in
+degrees) and the pit-spot search start (0.2 to 0.55 of vehicle width). Both are
+corrected in the profile. That is a *different* defect from the 11.633 deg error
+above, which was measured before the patch and is still open.
+
 **2. The cut flags re-arm themselves.** Session init sets derived flags 0 and 1
 together with a single word write, so returning to the garage silently re-enables
 lap invalidation. The UI shows the raw flag values read back from memory every

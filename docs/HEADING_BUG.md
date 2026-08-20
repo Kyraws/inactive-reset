@@ -86,23 +86,93 @@ So the engine behaves as though the offset were ~23.4 deg, not 35.0 deg.
   notify block was merely extracted into `0x00EB8CA0`, which writes the same
   fields with the same values (`0x6F80 + 0x2040 = 0x8FC0`). Instruction count
   is 169 in both builds.
-- **A promising float coincidence was checked and rejected.** `.rdata` contains
-  `0.610865` in the old build and not the new, and `0.406723` in the new and
-  not the old — which looks conclusive. It is not: the only instruction reading
-  the old constant is a `mulss` at `0x00D4C8C6`, which does not match the
-  documented `-=` form. Different constant, coincidental value.
+- **`0.406723` is a coincidence, now settled for good.** `.rdata` contains
+  `0.610865` in the old build and not the new, and `0.406723` in the new and not
+  the old, and `0.406723 rad = 23.3035 deg` sits within 0.064 deg of the offset
+  this document's sample implies. It is still a coincidence, and the evidence is
+  now stronger than the original instruction-form argument:
+  - `0x0181AC00` (old) sits inside an **ascending run of pooled float literals**
+    — `0.5999`, `0.6`, `0.6024`, `0.6108652`, `0.62`, `0.625`, `0.6366197` (2/pi),
+    `0.64`. A compiler constant pool, nothing more.
+  - `0x018E93F4` (new) is **not** a pool. Its neighbours are denormals and
+    `1e+29` garbage, it is not 16-byte aligned, and **nothing in `.text`
+    references it.** A full RIP-relative scan across `.text`, covering all four
+    post-displacement immediate sizes, returns zero readers.
 
-## The open lead
+  Do not re-open this. In ~2.2M float-aligned positions of `.rdata`, a hit within
+  a few parts per million of any chosen target is expected.
 
-`kSlotRestart` grew 0x7AB -> 0x7EB bytes. Most of that is logger line numbers
-(four immediates all shifted by exactly -20, i.e. 20 source lines deleted
-above), but there is one real change: a **branch polarity flip** (`je` -> `jne`)
-plus a new guard/logging block around a per-slot bitmask test.
+## The engine constants changed in the 1AC2F605 build
 
-The project's own constant is named `yawOffsetMode2` — mode **2**. If the
-flipped branch changes which *mode* is requested from `GetPitDestination`, that
-would produce exactly what we see: identical transform code, a different offset
-applied, a constant angular error. That hypothesis is untested.
+**Resolved statically on 2026-08-20, against `LMU_runtime_44C3EE9C.bin`.** This
+is not the same thing as the 11.633 deg error above being explained — see
+"What this does and does not settle".
+
+`GetPitDestination` moved from `0x00D4C700` to **`0x00D4C310`**. It was located
+by call-site correspondence: both builds have exactly 21 callers of
+`AssignSpotIndices`, in the same order, and the old call at `0x00D4C795` is entry
+13 at `func+0x95`; the new entry 13 is `0x00D4C3A5`.
+
+The old build applies the offset as a plain `.rdata` literal:
+
+    0x00D4C8C6  mulss xmm6, [0x0181AC00]   ; xmm6 = sign, *= 0.6108652
+    0x00D4C8D9  subss xmm0, xmm6           ; yaw -= sign * 35 deg
+
+`xmm6` really is `sign`: `0x00D4C7ED..0x00D4C80D` is
+`src == 0 ? 0 : src / |src|`. **The predecessor's model was correct for that
+build.**
+
+The new build does it differently:
+
+    0x00D4C525  movss xmm1, [0x03B3621C]   ; 45.0      <-- DEGREES, in .data
+    0x00D4C531  mulss xmm1, [0x0181A8D4]   ; *= 0.01745329  (pi/180)
+    0x00D4C546  mulss xmm1, xmm7           ; *= sign
+    0x00D4C558  subss xmm0, xmm1           ; yaw -= sign * 45 deg
+
+The offset is **no longer a radian literal**. It is a value in **degrees**, held
+in a mutable `.data` tunable block and converted at runtime — which is why
+`0.6108652` is absent from this build's `.rdata` entirely.
+
+The same block carries the pit-spot search factors, and the search loop has the
+identical `comiss`/`ja` shape in both builds, so the roles map directly:
+
+| | 266D1AF6 | 1AC2F605 | RVA |
+|---|---|---|---|
+| yaw offset | 0.6108652 rad (35 deg) | **45 deg** = 0.7853982 rad | `0x03B3621C` |
+| search start | 0.2 * width | **0.55 * width** | `0x03B3620C` |
+| search step | 0.1 * width | 0.1 * width | `0x03B36210` |
+| search max | 1.5 * width | 1.5 * width | `0x03B36214` |
+
+Both the yaw offset and the search start changed. `offsets/1AC2F605.json` has
+been updated, at confidence **`I`** — read from a dump, not yet confirmed
+against a live placement.
+
+Because the values live in `.data` and were read from a **runtime** dump, they
+are post-config values, not file defaults. That also means a future version
+could read them live instead of snapshotting them, which is why the RVAs are
+recorded in the profile. That change has not been made.
+
+## What this does and does not settle
+
+**Does:** the profile was describing the *previous* build. Any placement made on
+the current build used a 10 deg wrong yaw offset and a search start wrong by
+0.35 * width — together well over a metre, far more than the 0.57 m documented
+here.
+
+**Does not:** the measurements in this document are dated **2026-08-07**, four
+days before the 2026-08-11 patch, so they describe the **266D1AF6** build — the
+one whose constants the model got right. The 11.633 deg error therefore remains
+unexplained, and the "it is a rotation, not a translation" reasoning above still
+stands on its own evidence.
+
+One caution about that reasoning, for whoever picks this up: the sample is not a
+pure rotation. The model predicts 2.5480 m and the engine produced 2.7412 m, so
+the radial distance moved by +0.1932 m as well as the heading by 11.633 deg. A
+pure yaw-offset error cannot change the length of the destination-to-rest vector.
+Either `D` is also wrong, or the destination point itself is not where the model
+puts it — and a changed search start moves exactly that. One sample cannot
+separate the two, which is the strongest argument for the two-range protocol
+below.
 
 ## How to verify a fix
 
