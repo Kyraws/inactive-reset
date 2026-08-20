@@ -49,8 +49,14 @@ Every LMU patch moves every address. When those addresses are compiled-in
 constants, patch day means editing and rebuilding code.
 
 Here, **offsets are data**: a JSON profile keyed by the executable's SHA-256.
-`reanchor` regenerates it by comparing two memory dumps. Patch day becomes
-"run reanchor, ship a JSON file".
+A maintainer tool regenerates it by comparing two memory dumps, and publishing
+is a `git push`. **You never run it.** When LMU updates, the app tells you the
+build is new and offers to fetch the profile for it -- one file, over HTTPS, and
+only if you say yes.
+
+Constants the engine can retune without moving anything -- the pit-spot yaw
+offset and clearance search factors -- are read live out of the running game
+instead of being stored, so most game updates need no new profile at all.
 
 ---
 

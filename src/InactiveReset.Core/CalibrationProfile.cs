@@ -156,6 +156,6 @@ public sealed class CalibrationProfile
     /// The one way to build a placement model. Requires a calibration, so no
     /// caller can accidentally fall back to nominal constants.
     /// </summary>
-    public PlacementModel ToPlacementModel(EngineModelSpec engine) =>
+    public PlacementModel ToPlacementModel(EngineTunables engine) =>
         PlacementModel.Create(engine, ForwardDistance, VerticalOffset);
 }

@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using InactiveReset.Core;
 
-namespace InactiveReset.Cli;
+namespace InactiveReset.Reanchor;
 
 /// <summary>
 /// Patch day, as one command.

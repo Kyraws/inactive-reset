@@ -153,13 +153,7 @@ public sealed class OffsetProfile
             Containers = ContainerSpec.FromJson(containers),
             Rules = RulesSpec.FromJson(rules),
 
-            EngineModel = new EngineModelSpec
-            {
-                YawOffsetMode2 = engine.GetProperty("yawOffsetMode2").GetSingle(),
-                SearchStartFactor = engine.GetProperty("searchStartFactor").GetSingle(),
-                SearchStepFactor = engine.GetProperty("searchStepFactor").GetSingle(),
-                SearchMaxFactor = engine.GetProperty("searchMaxFactor").GetSingle(),
-            },
+            EngineModel = ReadEngineModel(engine),
 
             RestGates = new RestGateSpec
             {
@@ -168,6 +162,31 @@ public sealed class OffsetProfile
                                 .Select(e => e.GetString()!).ToArray(),
                 SessionsRead = rest.GetProperty("sessionsRead").GetString()!,
             },
+        };
+    }
+
+    private static EngineModelSpec ReadEngineModel(JsonElement engine)
+    {
+        var tunables = Require(engine, "tunables");
+        var fallback = Require(engine, "fallback");
+        var ranges = Require(engine, "ranges");
+
+        return new EngineModelSpec
+        {
+            YawOffsetDegrees = ReadRva(tunables, "yawOffsetDegrees"),
+            SearchStartFactorRva = ReadRva(tunables, "searchStartFactor"),
+            SearchStepFactorRva = ReadRva(tunables, "searchStepFactor"),
+            SearchMaxFactorRva = ReadRva(tunables, "searchMaxFactor"),
+
+            FallbackYawOffsetRadians = fallback.GetProperty("yawOffsetMode2").GetSingle(),
+            FallbackSearchStartFactor = fallback.GetProperty("searchStartFactor").GetSingle(),
+            FallbackSearchStepFactor = fallback.GetProperty("searchStepFactor").GetSingle(),
+            FallbackSearchMaxFactor = fallback.GetProperty("searchMaxFactor").GetSingle(),
+
+            YawOffsetDegreesMin = ranges.GetProperty("yawOffsetDegreesMin").GetSingle(),
+            YawOffsetDegreesMax = ranges.GetProperty("yawOffsetDegreesMax").GetSingle(),
+            SearchFactorMin = ranges.GetProperty("searchFactorMin").GetSingle(),
+            SearchFactorMax = ranges.GetProperty("searchFactorMax").GetSingle(),
         };
     }
 
@@ -241,16 +260,36 @@ public sealed class SpotTableSpec
     public required int WriteBytes { get; init; }
 }
 
-public sealed class EngineModelSpec
+/// <summary>
+/// Where the engine's placement tunables live, and what to fall back on.
+///
+/// These are NOT constants of this project. In the 1AC2F605 build
+/// GetPitDestination reads them from a mutable <c>.data</c> block, so Studio 397
+/// can retune placement without moving a single address -- which they did, and
+/// nothing noticed for nine days. Reading them live turns a retune into a
+/// non-event and leaves only a genuine MOVE for `reanchor` to fix.
+///
+/// See <see cref="EngineTunables"/> for the read, the range checks and the
+/// fallback rule.
+/// </summary>
+public sealed record EngineModelSpec
 {
-    /// <summary>
-    /// GetPitDestination mode 2 applies <c>oriOut[1] -= sign * this</c>.
-    /// SUSPECTED WRONG for the current build; see docs/HEADING_BUG.md.
-    /// </summary>
-    public required float YawOffsetMode2 { get; init; }
-    public required float SearchStartFactor { get; init; }
-    public required float SearchStepFactor { get; init; }
-    public required float SearchMaxFactor { get; init; }
+    /// <summary>Address of the yaw offset, stored by the engine in DEGREES.</summary>
+    public required Rva YawOffsetDegrees { get; init; }
+    public required Rva SearchStartFactorRva { get; init; }
+    public required Rva SearchStepFactorRva { get; init; }
+    public required Rva SearchMaxFactorRva { get; init; }
+
+    /// <summary>Radians. Used only when the live read fails its range check.</summary>
+    public required float FallbackYawOffsetRadians { get; init; }
+    public required float FallbackSearchStartFactor { get; init; }
+    public required float FallbackSearchStepFactor { get; init; }
+    public required float FallbackSearchMaxFactor { get; init; }
+
+    public required float YawOffsetDegreesMin { get; init; }
+    public required float YawOffsetDegreesMax { get; init; }
+    public required float SearchFactorMin { get; init; }
+    public required float SearchFactorMax { get; init; }
 }
 
 public sealed class RestGateSpec

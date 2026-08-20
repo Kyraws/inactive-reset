@@ -4,20 +4,22 @@ namespace InactiveReset.Core;
 /// Constants describing what the engine does with a spot-table entry.
 ///
 /// These are engine-derived, not tuned. <see cref="YawOffsetMode2"/> and the
-/// search factors come from the build's offset profile; <see cref="RestForwardDistance"/>
-/// and <see cref="RestVerticalOffset"/> come from a calibration measured for one
+/// search factors are READ LIVE from the running engine (see
+/// <see cref="EngineTunables"/>) because the engine keeps them in mutable data
+/// and retunes them between builds; <see cref="RestForwardDistance"/> and
+/// <see cref="RestVerticalOffset"/> come from a calibration measured for one
 /// track and one vehicle.
 /// </summary>
 public sealed record PlacementModel
 {
     /// <summary>
-    /// GetPitDestination mode 2 applies <c>oriOut[1] -= sign * this</c>.
-    /// 0.6108652 rad = 35.00 deg.
+    /// GetPitDestination mode 2 applies <c>oriOut[1] -= sign * this</c>, in
+    /// radians. Read live from the running engine -- see <see cref="EngineTunables"/>.
     ///
-    /// SUSPECTED WRONG for the current build. The engine behaves as though this
-    /// were ~23.4 deg, producing an 11.633 deg heading error and landing the car
-    /// ~0.57 m off. Carried over unchanged on purpose — see docs/HEADING_BUG.md.
-    /// Do NOT compensate by adjusting D or H.
+    /// A separate, still-open defect applies on top of this: an 11.633 deg
+    /// heading error measured on the 266D1AF6 build, landing the car ~0.57 m
+    /// off. Do NOT compensate for that by adjusting D or H; see
+    /// docs/HEADING_BUG.md.
     /// </summary>
     public required float YawOffsetMode2 { get; init; }
 
@@ -33,9 +35,16 @@ public sealed record PlacementModel
     public required float RestForwardDistance { get; init; }
     public required float RestVerticalOffset { get; init; }
 
-    public static PlacementModel Create(EngineModelSpec engine, float forwardDistance, float verticalOffset) => new()
+    /// <summary>
+    /// Build the model from tunables READ FROM THE RUNNING ENGINE plus a measured
+    /// calibration. There is no overload taking the profile's snapshot directly:
+    /// the snapshot is a fallback that <see cref="EngineTunables.Read"/> applies
+    /// after range-checking it, and letting callers bypass that would reintroduce
+    /// exactly the silent staleness this design removes.
+    /// </summary>
+    public static PlacementModel Create(EngineTunables engine, float forwardDistance, float verticalOffset) => new()
     {
-        YawOffsetMode2 = engine.YawOffsetMode2,
+        YawOffsetMode2 = engine.YawOffsetRadians,
         SearchStartFactor = engine.SearchStartFactor,
         SearchStepFactor = engine.SearchStepFactor,
         SearchMaxFactor = engine.SearchMaxFactor,

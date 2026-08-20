@@ -21,6 +21,41 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private PlacementOutcome? _lastOutcome;
     private Task? _running;
 
+    private FetchConsent Consent => new(dataDirectory);
+
+    /// <summary>
+    /// Fetch a missing profile only if the user has already agreed.
+    ///
+    /// The window cannot block on a console prompt, so consent is a stored
+    /// answer rather than a question asked mid-attach. Until it is given, attach
+    /// fails with the ordinary "no profile for this build" error and the page
+    /// offers the choice explicitly -- which keeps the rule identical to the
+    /// CLI's: this tool does not reach the internet until told it may.
+    /// </summary>
+    private bool FetchIfAllowed(MissingProfile request) => Consent.Granted;
+
+    /// <summary>
+    /// Grant consent, then report whether a profile can now be had. Called by
+    /// the page's "allow and fetch" action.
+    /// </summary>
+    public JsonObject AllowFetch()
+    {
+        var result = new JsonObject();
+        try
+        {
+            Consent.Grant();
+            using var session = GameSession.Attach(offsetDirectory, forWriting: false, FetchIfAllowed);
+            result["ok"] = true;
+            result["message"] = $"profile ready for build {session.ExecutableSha256[..8]}";
+        }
+        catch (Exception ex)
+        {
+            result["ok"] = false;
+            result["message"] = ex.Message;
+        }
+        return result;
+    }
+
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
     private string Profiles => Path.Combine(dataDirectory, "profiles");
 
@@ -32,7 +67,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
         try
         {
-            using var session = GameSession.Attach(offsetDirectory, forWriting: false);
+            using var session = GameSession.Attach(offsetDirectory, forWriting: false, FetchIfAllowed);
             state["connected"] = true;
             state["pid"] = session.Process.Id;
             state["build"] = session.ExecutableSha256[..8];
@@ -109,6 +144,19 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         {
             state["connected"] = false;
             state["error"] = ex.Message;
+
+            // A new LMU build is patch day, not a fault. Tell the page exactly
+            // that, so it can offer the one action that helps instead of showing
+            // the same dead end as "game not running".
+            if (ex is MissingProfileException missing)
+            {
+                state["missingProfile"] = new JsonObject
+                {
+                    ["build"] = missing.Request.Short,
+                    ["url"] = missing.Request.Url,
+                    ["consentGiven"] = Consent.Granted,
+                };
+            }
         }
 
         state["session"] = Session_();
@@ -275,7 +323,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         var pit = body["pitSpeeding"]?.GetValue<bool>() ?? false;
         var limits = body["trackLimits"]?.GetValue<bool>() ?? false;
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: true);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: true, FetchIfAllowed);
         var rules = new RulesController(session);
 
         var changes = new JsonArray();
@@ -362,7 +410,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     {
         try
         {
-            using var session = GameSession.Attach(offsetDirectory, forWriting: true);
+            using var session = GameSession.Attach(offsetDirectory, forWriting: true, FetchIfAllowed);
             var checkpoint = Checkpoint.Require(Checkpoints, name);
             var calibration = CalibrationProfile.Require(
                 Profiles, checkpoint.TrackName, checkpoint.VehicleName);

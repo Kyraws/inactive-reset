@@ -1,6 +1,7 @@
+using InactiveReset.Core;
 using System.Diagnostics;
 
-namespace InactiveReset.Core;
+namespace InactiveReset.Reanchor;
 
 /// <summary>
 /// Captures a flat image of the game's mapped module, so that

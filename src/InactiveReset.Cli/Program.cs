@@ -78,20 +78,89 @@ internal static class Program
 
         return args[0] switch
         {
-            "status" => Status(offsets),
-            "rules" => Rules(offsets, rest),
-            "lap" => Lap(offsets, rest),
+            "status" => Status(offsets, data),
+            "rules" => Rules(offsets, data, rest),
+            "lap" => Lap(offsets, data, rest),
             "list" => List(data),
             "plan" => Plan(offsets, data, rest),
             "place" => Place(offsets, data, rest),
-            "watch" => Watch(offsets),
+            "watch" => Watch(offsets, data),
             "capture" => Capture(offsets, data, rest),
             "serve" => Serve(offsets, data, rest),
-            "dump" => ReanchorCommand.Dump(rest),
-            "reanchor" => ReanchorCommand.Run(offsets, rest),
+            // `dump` and `reanchor` are maintainer tools and deliberately absent.
+            // They live in src\InactiveReset.Reanchor, which is never published:
+            // users consume offset profiles, they do not produce them.
+            "dump" or "reanchor" => MaintainerOnly(args[0]),
             _ => Unknown(args[0]),
         };
     }
+
+    /// <summary>
+    /// `dump` and `reanchor` used to live here. They now live in the
+    /// unpublished maintainer project, so tell anyone who typed them what to do
+    /// instead -- silence, or a bare "unknown verb", would read as a regression.
+    /// </summary>
+    private static int MaintainerOnly(string verb)
+    {
+        Error("MAINTAINER-ONLY",
+            $"""
+            `{verb}` is not part of the shipped tool.
+
+              Offset profiles are published, not derived on your machine. If LMU
+              updated, run the app: it will offer to fetch the profile for the
+              new build. If no profile exists yet, it has not been published yet.
+
+              Producing profiles is src\InactiveReset.Reanchor, which ships to
+              nobody.
+            """);
+        return 2;
+    }
+
+    /// <summary>
+    /// The console consent prompt for the one outbound connection this tool makes.
+    ///
+    /// Asks unless the user previously answered "always". Refuses silently when
+    /// stdin is redirected: a script piping into this must never be taken to have
+    /// agreed to anything on the user's behalf.
+    /// </summary>
+    private static Func<MissingProfile, bool> AskToFetch(string dataDirectory) => request =>
+    {
+        var consent = new FetchConsent(dataDirectory);
+        if (consent.Granted)
+        {
+            Console.WriteLine($"  fetching offset profile for build {request.Short} ...");
+            return true;
+        }
+
+        if (Console.IsInputRedirected)
+        {
+            Console.Error.WriteLine(
+                $"  no offset profile for build {request.Short}, and stdin is not a terminal");
+            Console.Error.WriteLine("  so you cannot be asked. Download it manually:");
+            Console.Error.WriteLine($"    {request.Url}");
+            return false;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"  This Le Mans Ultimate build ({request.Short}) is new to this machine.");
+        Console.WriteLine("  An offset profile describes where things live in it, and without one");
+        Console.WriteLine("  the tool cannot safely read or write anything.");
+        Console.WriteLine();
+        Console.WriteLine($"    download from: {request.Url}");
+        Console.WriteLine($"    save to:       {request.OffsetDirectory}");
+        Console.WriteLine();
+        Console.WriteLine("  This is the ONLY time this tool connects to the internet.");
+        Console.Write("  Fetch it? [y]es / [N]o / [a]lways: ");
+
+        var answer = (Console.ReadLine() ?? string.Empty).Trim().ToLowerInvariant();
+        if (answer is "a" or "always")
+        {
+            consent.Grant();
+            Console.WriteLine($"  remembered in {consent.Path_}");
+            return true;
+        }
+        return answer is "y" or "yes";
+    };
 
     // ---- serve -------------------------------------------------------------
 
@@ -181,7 +250,7 @@ internal static class Program
     }
 
     /// <summary>Live view of what a capture would record. Reads nothing but shared memory.</summary>
-    private static int Watch(string offsetDirectory)
+    private static int Watch(string offsetDirectory, string dataDirectory)
     {
         using var reader = OpenSharedMemory(offsetDirectory);
         Console.WriteLine("watching LMU shared memory - Ctrl+C to stop\n");
@@ -307,7 +376,7 @@ internal static class Program
             return 64;
         }
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: false);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: false, AskToFetch(dataDirectory));
         var plan = BuildPlan(session, dataDirectory, args[0]);
         PrintPlan(plan);
         Console.WriteLine("\nNOTHING WAS WRITTEN.");
@@ -328,7 +397,7 @@ internal static class Program
             return 64;
         }
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: true);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: true, AskToFetch(dataDirectory));
         var plan = BuildPlan(session, dataDirectory, args[0]);
         PrintPlan(plan);
 
@@ -482,9 +551,9 @@ internal static class Program
 
     // ---- status ------------------------------------------------------------
 
-    private static int Status(string offsetDirectory)
+    private static int Status(string offsetDirectory, string dataDirectory)
     {
-        using var session = GameSession.Attach(offsetDirectory, forWriting: false);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: false, AskToFetch(dataDirectory));
 
         Console.WriteLine("== build ==");
         foreach (var gate in session.Gates)
@@ -527,7 +596,7 @@ internal static class Program
     /// an out-lap -- is derived from the disassembly but has not been watched
     /// happening. Reading it costs nothing and settles the question.
     /// </summary>
-    private static int Lap(string offsetDirectory, string[] args)
+    private static int Lap(string offsetDirectory, string dataDirectory, string[] args)
     {
         var sectorIndex = Array.IndexOf(args, "--set-sector");
         int? setSector = sectorIndex >= 0 && sectorIndex + 1 < args.Length
@@ -543,7 +612,7 @@ internal static class Program
             return 64;
         }
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite, AskToFetch(dataDirectory));
         var slot = new LiveStateReader(session).ResolveSlotIndex();
         var lap = new LapValidityController(session);
         var state = lap.Read(slot);
@@ -600,10 +669,10 @@ internal static class Program
 
     // ---- rules -------------------------------------------------------------
 
-    private static int Rules(string offsetDirectory, string[] args)
+    private static int Rules(string offsetDirectory, string dataDirectory, string[] args)
     {
         var wantsWrite = args.Any(a => a is "--off" or "--on");
-        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite, AskToFetch(dataDirectory));
         var rules = new RulesController(session);
 
         if (!wantsWrite)
@@ -777,16 +846,11 @@ internal static class Program
                   Same features in a local web UI, on 127.0.0.1 only.
                   --window opens it as its own app window instead of a tab.
 
-              inactive-reset dump [file.bin]
-                  Capture the game's mapped module (file offset == RVA). Keep
-                  it: it is the "before" image for the next LMU patch.
-
-              inactive-reset reanchor --old-dump <before.bin>
-                                      --base <offsets/OLD.json> [--out <file>]
-                  Patch day. Captures the running game, re-derives every
-                  address against the old image, and writes a new offset
-                  profile. Anything it cannot resolve is marked confidence "U"
-                  so the tool refuses rather than reading the wrong place.
+            Not here on purpose:
+              dump, reanchor    Maintainer tools, in the unpublished
+                                InactiveReset.Reanchor project. When LMU
+                                updates you do not re-derive anything -- the
+                                app offers to fetch the new profile.
 
             Options:
               --offsets <dir>   folder of per-build offset profiles

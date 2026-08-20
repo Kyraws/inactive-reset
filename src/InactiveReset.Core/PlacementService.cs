@@ -145,7 +145,7 @@ public sealed class PlacementService(GameSession session)
                 "D and H are per track AND per vehicle.");
         }
 
-        var model = calibration.ToPlacementModel(_session.Offsets.EngineModel);
+        var model = calibration.ToPlacementModel(_session.ReadEngineTunables());
         var live = new LiveStateReader(_session).Read(model);
         var target = Geometry.BuildTargetFromRecordedPose(checkpoint.Pose);
 

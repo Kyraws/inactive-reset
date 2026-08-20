@@ -180,32 +180,45 @@
 
   "engineModel": {
     "$comment": [
-      "Constants describing how the engine places a car. Not settings; measured behaviour.",
+      "How the engine places a car. NOT settings -- measured behaviour.",
       "",
-      "In THIS build these are no longer .rdata literals. GetPitDestination reads",
-      "them from a mutable .data tunable block, so they are runtime values and the",
-      "RVAs below are recorded to allow reading them live rather than trusting a",
-      "snapshot. Values were taken from LMU_runtime_44C3EE9C.bin, a RUNTIME dump,",
-      "so they are post-config, not file defaults.",
+      "In this build GetPitDestination (0x00D4C310) reads these from a MUTABLE",
+      ".data tunable block rather than from .rdata literals, so they are runtime",
+      "values that Studio 397 can retune without moving a single address.",
       "",
-      "GetPitDestination for this build is at 0x00D4C310 (was 0x00D4C700).",
-      "The yaw offset is stored in DEGREES and converted at 0x00D4C531 by",
-      "0.01745329 (pi/180) before `oriOut[1] -= sign * value`."
+      "`tunables` are therefore READ LIVE from the running process at placement",
+      "time. `fallback` is used only when a live read fails its range check --",
+      "which is what a relocated block looks like. If both fail, `place` refuses.",
+      "That way a retune needs no profile update at all, and a MOVE is an",
+      "ordinary reanchor.",
+      "",
+      "yawOffsetDegrees is stored in DEGREES and converted at 0x00D4C531 by",
+      "0.01745329 (pi/180) before `oriOut[1] -= sign * value`. The fallback below",
+      "is the RADIAN equivalent, because that is the unit the model works in."
     ],
-    "yawOffsetMode2": 0.7853982,
-    "yawOffsetMode2Rva": "0x03B3621C",
-    "yawOffsetMode2Units": "stored as degrees (45.0); this field is the radian equivalent",
-    "yawOffsetConfidence": "I",
-    "yawOffsetNote": "CHANGED IN THIS BUILD: was 0.6108652 rad (35 deg exactly) as an .rdata literal in 266D1AF6, now 45 deg read from .data. The 35 deg literal is ABSENT from this build's .rdata entirely. Read statically; NOT yet confirmed against a live placement - see docs/HEADING_BUG.md.",
 
-    "searchStartFactor": 0.55,
-    "searchStartFactorRva": "0x03B3620C",
-    "searchStepFactor": 0.1,
-    "searchStepFactorRva": "0x03B36210",
-    "searchMaxFactor": 1.5,
-    "searchMaxFactorRva": "0x03B36214",
-    "searchConfidence": "I",
-    "searchNote": "TestPitSpotClearance: d = start*width, step*width per candidate, max*width. START CHANGED IN THIS BUILD: 0.2 -> 0.55. Step and max are unchanged. Same comiss/ja loop shape as 266D1AF6, so the role mapping is direct."
+    "tunables": {
+      "yawOffsetDegrees":  { "rva": "0x03B3621C", "confidence": "E", "note": "45.0 in the 44C3EE9C dump; was a 35 deg .rdata literal in 266D1AF6" },
+      "searchStartFactor": { "rva": "0x03B3620C", "confidence": "E", "note": "0.55; was 0.2 in 266D1AF6" },
+      "searchStepFactor":  { "rva": "0x03B36210", "confidence": "E", "note": "0.10; unchanged" },
+      "searchMaxFactor":   { "rva": "0x03B36214", "confidence": "E", "note": "1.50; unchanged" }
+    },
+
+    "fallback": {
+      "$comment": "Used ONLY when the live read fails its range check. Snapshot from LMU_runtime_44C3EE9C.bin, a runtime dump, so post-config.",
+      "yawOffsetMode2": 0.7853982,
+      "searchStartFactor": 0.55,
+      "searchStepFactor": 0.1,
+      "searchMaxFactor": 1.5
+    },
+
+    "ranges": {
+      "$comment": "A wrong RVA yields plausible floats, not a fault. These bounds turn that into a refusal. Deliberately wide: they reject nonsense, they do not second-guess Studio 397.",
+      "yawOffsetDegreesMin": 0.0,
+      "yawOffsetDegreesMax": 90.0,
+      "searchFactorMin": 0.001,
+      "searchFactorMax": 5.0
+    }
   },
 
   "functions": {

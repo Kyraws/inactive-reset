@@ -101,14 +101,26 @@ by the executable's SHA-256, with a per-address `confidence` (`E` established,
 `I` inferred, `U` unresolved). `Rva.Require()` **throws on `U`**, so a stale
 address refuses rather than reading plausible nonsense.
 
-Patch day is two commands:
+Patch day is the **maintainer's** job, not the user's. `dump` and `reanchor`
+live in `src/InactiveReset.Reanchor`, which `build.ps1 ship` never publishes:
 
-    inactive-reset dump before.bin        # once, while the current build works
-    inactive-reset reanchor --old-dump before.bin --base offsets/<old>.json
+    inactive-reset-reanchor dump before.bin
+    inactive-reset-reanchor reanchor --old-dump before.bin --base offsets/<old>.json
 
 `reanchor` captures the running game, re-derives every address (masked signature
 search for code, majority vote across referencing instructions for data),
 refreshes the probe bytes and build identity, and writes a new profile.
+Publishing it is a `git push` -- see "How a user survives a game patch".
+
+It stays in this repository rather than a separate one because it *writes* the
+profile format the app *reads*. Split across repositories, that schema exists
+twice and drifts, which this codebase has already suffered twice elsewhere.
+
+**What `reanchor` cannot do.** It re-derives *where things are*. It cannot
+re-derive *what the engine does*. The 2026-08-11 patch moved nothing relevant and
+changed two tunable values, and every gate stayed green while placement went a
+metre wrong. That class of change is handled by reading the values live -- next
+section.
 
 Shared-memory offsets come from `tools/dump-sdk-offsets.cpp`, which asks the
 compiler for `offsetof` against LMU's own SDK header. Re-run it if LMU ships a
@@ -116,6 +128,54 @@ new `SharedMemoryInterface.hpp` — the header is not redistributable and is not
 this repo; see [`tools/README.md`](../tools/README.md). Note
 `vect3ComponentSize` is **8** — positions and orientations are `double`; reading
 them as `float` gives plausible nonsense, so the loader asserts it.
+
+---
+
+## Engine tunables are read live, not stored
+
+`GetPitDestination` in this build reads its placement constants -- the yaw offset
+and the pit-spot clearance search factors -- from a **mutable `.data` block**,
+not from `.rdata` literals. Studio 397 can therefore retune placement without
+moving a single address, and did.
+
+So the tool reads them out of the running process at placement time
+(`EngineTunables`). The profile holds the addresses, plus a snapshot used only as
+a fallback. That splits patch day cleanly:
+
+| What changed | What happens |
+|---|---|
+| A tunable was **retuned** | Picked up on the next placement. No profile change, no publish, no download. |
+| The block **moved** | The read fails its range check and it becomes an ordinary `reanchor` job. |
+
+The **range checks are the whole safety argument**. A stale address does not
+fault; it returns four plausible floats, and plausible floats place the car
+somewhere plausible and wrong. Bounds are deliberately wide -- they reject
+nonsense, not tuning -- and include a subnormal check (no human types `1.4e-45`)
+and relational checks (`step < max`, `start <= max`), because four individually
+sane numbers can still be an insane set. If the live read *and* the fallback both
+fail, `place` refuses; it never guesses.
+
+---
+
+## How a user survives a game patch
+
+Users never run `reanchor`. They download the app, not the repository.
+
+1. LMU updates. The build hash changes and no local profile matches.
+2. The app says so specifically -- "new game build", not "something failed" --
+   and offers to fetch the profile for that exact build.
+3. It asks **once**, with an "always" answer stored in `data/fetch-consent.json`.
+   Absent file means not granted.
+4. On agreement it downloads
+   `raw.githubusercontent.com/Kyraws/inactive-reset/main/offsets/<HASH8>.json`.
+   A 404 means "not published yet", unambiguously.
+
+This is the **only outbound connection in the project**; everything else binds to
+127.0.0.1. The host is hard-coded with no configurable base URL, because a tool
+that writes another process's memory should not have a steerable download URL.
+The downloaded profile must parse *and* declare the exact build hash requested,
+or it is discarded before it touches disk. Dropping the JSON into `offsets/` by
+hand always works and needs no network at all.
 
 ---
 
@@ -215,7 +275,9 @@ been made once here.
     dotnet run --project src/InactiveReset.Cli -- status
     dotnet publish src/InactiveReset.App -c Release -o dist
 
-    inactive-reset status list watch capture plan place rules lap serve dump reanchor
+    inactive-reset status list watch capture plan place rules lap serve
+
+    inactive-reset-reanchor dump reanchor      # maintainer only, never shipped
 
 A note for anyone editing on Windows: **Windows PowerShell 5.1 `Get-Content -Raw`
 decodes UTF-8 as ANSI.** Round-tripping a source file through `Get-Content` /

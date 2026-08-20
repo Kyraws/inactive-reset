@@ -1,4 +1,5 @@
-namespace InactiveReset.Core;
+using InactiveReset.Core;
+namespace InactiveReset.Reanchor;
 
 /// <summary>
 /// Re-derives addresses across an LMU build change by comparing two module

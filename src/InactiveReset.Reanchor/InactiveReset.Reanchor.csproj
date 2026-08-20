@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The maintainer tool. NOT SHIPPED.
+
+    `build.ps1 ship` publishes only InactiveReset.App and InactiveReset.Cli, so
+    this never reaches dist\ and never reaches a user. That is deliberate: users
+    consume offset profiles, they do not produce them.
+
+    It lives in this repository rather than a separate one because it WRITES the
+    profile format that the app READS. Split across repositories, the schema
+    exists twice and drifts, a failure this codebase has already had twice, in
+    the two front ends and in the preview-versus-placement constants.
+
+    Deliberately not self-contained: the only machine that runs this is one with
+    the .NET SDK, memory dumps, and the game installed.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>InactiveReset.Reanchor</RootNamespace>
+    <AssemblyName>inactive-reset-reanchor</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
+  </ItemGroup>
+
+</Project>
