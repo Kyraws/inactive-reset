@@ -125,7 +125,8 @@ exactly one distance.
 
 ## Licence
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE). Scope and third-party terms are in
+[`NOTICE`](NOTICE).
 
 The Studio 397 Plugin SDK headers that `tools/dump-sdk-offsets` compiles
 against are **not** included: their own terms forbid redistribution. They ship

@@ -19,21 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-The MIT terms above cover the source code of Inactive Reset only. They do not
-extend to, and this repository does not distribute:
-
-  * Studio 397 Plugin SDK headers (SharedMemoryInterface.hpp,
-    InternalsPlugin.hpp, PluginObjects.hpp). Copyright (c) 2025 Studio 397 BV
-    and Motorsport Games Inc.; redistribution is not permitted by their terms.
-    They ship with Le Mans Ultimate under Support\SharedMemoryInterface\.
-    See tools/README.md.
-
-  * Any part of Le Mans Ultimate itself, including executable images used as
-    inputs to `reanchor`.
-
-Inactive Reset is an unofficial tool. It is not affiliated with, endorsed by,
-or supported by Studio 397, Motorsport Games, or the Automobile Club de
-l'Ouest.
