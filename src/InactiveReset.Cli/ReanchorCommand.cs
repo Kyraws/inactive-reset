@@ -8,10 +8,10 @@ namespace InactiveReset.Cli;
 /// <summary>
 /// Patch day, as one command.
 ///
-/// The predecessor kept every address as a <c>constexpr</c> in C++, so an LMU
-/// update meant hours of manual re-derivation followed by a rebuild — and a
-/// missed constant did not fail loudly, it read plausible bytes from the wrong
-/// place. Here the addresses are data, and this regenerates that data.
+/// Addresses used to be compiled-in constants, so an LMU update meant hours of
+/// manual re-derivation followed by a rebuild — and a missed constant did not
+/// fail loudly, it read plausible bytes from the wrong place. Here the addresses
+/// are data, and this regenerates that data.
 /// </summary>
 internal static class ReanchorCommand
 {

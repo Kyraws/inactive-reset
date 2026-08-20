@@ -8,8 +8,8 @@ namespace InactiveReset.Cli;
 ///
 /// Every verb here is a thin wrapper over a Core operation, so that the UI can
 /// call exactly the same code. When the two front ends implement the same
-/// action twice they drift, and the predecessor project learned that the hard
-/// way -- one of them silently kept an older gate-write-restore sequence.
+/// action twice they drift. That has already happened here once: one front end
+/// silently kept an older gate-write-restore sequence.
 /// </summary>
 internal static class Program
 {

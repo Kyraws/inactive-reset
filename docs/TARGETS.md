@@ -207,11 +207,11 @@ Kept as a record of what was decided, so it is not reopened from scratch.
 
 # Deliberately out of scope, for now
 
-- **Condition restore** (tyres, fuel, damage). Left in the predecessor. The REST
-  channel exists there; `RepairAndRefuel` never worked, and whether the pit-menu
-  path changes condition mid-session is unproven.
+- **Condition restore** (tyres, fuel, damage). Not implemented. It would need
+  the local REST channel; `RepairAndRefuel` has never worked, and whether the
+  pit-menu path changes condition mid-session is unproven.
 
-- **The boundary conversation.** The predecessor enforced capability by binary:
-  separate executables, import auditing, one write-capable component. This
-  rewrite has one executable that can write. That was a deliberate trade, not an
-  oversight, and it has not been revisited.
+- **The boundary conversation.** Capability-by-binary — separate executables,
+  import auditing, a single write-capable component — was considered and
+  dropped. This project is one executable that can write. That was a deliberate
+  trade, not an oversight, and it has not been revisited.

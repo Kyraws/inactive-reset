@@ -46,9 +46,9 @@ public sealed class OffsetProfileException(string message) : Exception(message);
 /// Everything address-shaped for one exact LMU build, loaded from JSON.
 ///
 /// This type exists so that an LMU patch is a DATA change, not a code change.
-/// The predecessor compiled these into C++ constants, and every patch day cost
-/// hours of re-derivation followed by a rebuild. Keep it that way: if you find
-/// yourself about to write a hex literal in C#, it belongs here instead.
+/// These were once compiled-in constants, and every patch day cost hours of
+/// re-derivation followed by a rebuild. Keep it that way: if you find yourself
+/// about to write a hex literal in C#, it belongs here instead.
 /// </summary>
 public sealed class OffsetProfile
 {

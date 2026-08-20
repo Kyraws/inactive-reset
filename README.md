@@ -43,11 +43,10 @@ diagnosis this replaced and why it was wrong.
 
 ---
 
-## Why a rewrite
+## Why offsets are data
 
-The predecessor (`G:\LMU_Checkpoint`) works, but every LMU patch moves every
-address, and those addresses were `constexpr` in C++. Patch day meant editing
-and rebuilding code.
+Every LMU patch moves every address. When those addresses are compiled-in
+constants, patch day means editing and rebuilding code.
 
 Here, **offsets are data**: a JSON profile keyed by the executable's SHA-256.
 `reanchor` regenerates it by comparing two memory dumps. Patch day becomes
@@ -111,9 +110,9 @@ project. `dist/` holds only the two shipping executables.
 
 ## Status
 
-Carried over from the predecessor, including one known defect: placement is
-subject to an **11.633 degree heading error** in the orientation-to-heading
-conversion, which lands the car about 0.57 m from the target. It is
+One known defect: placement is subject to an **11.633 degree heading error** in
+the orientation-to-heading conversion, which lands the car about 0.57 m from the
+target. It is
 characterised but not fixed — see `docs/HEADING_BUG.md`. Run-to-run
 repeatability is ~1.5 mm, so the mechanism is sound; only the aim is off.
 

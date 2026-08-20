@@ -120,8 +120,8 @@ public sealed record PlacementOutcome
 /// The one implementation of plan → arm → write → settle → restore → clear.
 ///
 /// CLI and UI both call this. When two front ends implement the same sequence
-/// separately they drift, and in the predecessor they did — one of them kept an
-/// older gate-write-restore ordering for a while.
+/// separately they drift, and they have done here — one of them kept an older
+/// gate-write-restore ordering for a while.
 /// </summary>
 public sealed class PlacementService(GameSession session)
 {

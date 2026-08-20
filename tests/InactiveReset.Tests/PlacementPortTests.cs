@@ -4,15 +4,14 @@ using Xunit;
 namespace InactiveReset.Tests;
 
 /// <summary>
-/// Golden-value tests proving the C# placement math reproduces the C++
-/// predecessor exactly.
+/// Golden-value tests pinning the placement math to values measured against
+/// the running game.
 ///
-/// The expected values are not invented. They were produced by the original
-/// `LMUStage0DryRun checkpoint` against Le Mans Ultimate build 1AC2F605 on
-/// 2026-08-11, at Circuit de Barcelona in the Richard Mille AF Corse 296 GT3.
-/// If any of these change, the port has drifted from the implementation whose
-/// behaviour was actually measured against the game — which is the only
-/// evidence any of these constants are right.
+/// The expected values are not invented. They were produced against Le Mans
+/// Ultimate build 1AC2F605 on 2026-08-11, at Circuit de Barcelona in the
+/// Richard Mille AF Corse 296 GT3. If any of these change, the math has drifted
+/// from the behaviour that was actually measured — which is the only evidence
+/// any of these constants are right.
 /// </summary>
 public sealed class PlacementPortTests
 {
@@ -30,10 +29,9 @@ public sealed class PlacementPortTests
     /// The model the golden values were produced with.
     ///
     /// IMPORTANT: these are the ENGINE MODEL DEFAULTS (D = 2.548, H = 0.37), not
-    /// the measured calibration (D = 2.54765, H = 0.373062). `LMUStage0DryRun`
-    /// is stage0-only and never loads a calibration profile, while `LMURouteC`
-    /// does — so in the predecessor the dry run predicts a landing point about
-    /// 3 mm below the one a real placement targets.
+    /// the measured calibration (D = 2.54765, H = 0.373062). The tool that
+    /// produced them never loaded a calibration profile, while a real placement
+    /// does — so the preview lands about 3 mm below what a placement targets.
     ///
     /// That is a wart worth knowing about, not a rounding error. Any tool that
     /// previews a placement must use the SAME model the placement will use, or
@@ -41,8 +39,8 @@ public sealed class PlacementPortTests
     /// </summary>
     /// <remarks>
     /// These constants are the 266D1AF6 build's, and are PINNED ON PURPOSE. This
-    /// fixture exists to prove the C# port reproduces the C++ predecessor bit for
-    /// bit, so it must keep using the values the predecessor used. It is NOT a
+    /// fixture exists to pin the math to values measured on that build, so it
+    /// must keep using the constants of that build. It is NOT a
     /// check that the profile describes the current game build, and it will pass
     /// happily while `offsets/<hash>.json` is stale -- which it was: the live
     /// build uses 45 deg and a 0.55 search start. See docs/HEADING_BUG.md.
@@ -145,7 +143,7 @@ public sealed class PlacementPortTests
     [Fact]
     public void ForwardModelReproducesTheProbeReadout()
     {
-        // From `LMUStage0DryRun probe` on the same session:
+        // Read from the game during the same session:
         //   engine would drive to : [117.894363, 0.413000, 199.231979] yaw -0.0328652
         //   and come to rest at   : [117.810638, 0.783000, 201.778610]
         var destination = PlacementMath.PredictDriveDestination(CurrentEntry, Container, Model);
@@ -220,9 +218,10 @@ public sealed class PlacementPortTests
     [Fact]
     public void DefaultAndCalibratedModelsDisagree()
     {
-        // Pins the wart described on `Model` above. The predecessor's dry-run
-        // preview and its real placement use different constants, so the preview
-        // is answering a slightly different question. ~3 mm vertically here.
+        // Pins the wart described on `Model` above: a preview built from the
+        // engine defaults and a real placement built from the calibration use
+        // different constants, so the preview answers a slightly different
+        // question. ~3 mm vertically here.
         var withDefaults = PlacementMath.PredictRestPosition(
             PlacementMath.PredictDriveDestination(CurrentEntry, Container, Model), Model);
         var withCalibration = PlacementMath.PredictRestPosition(

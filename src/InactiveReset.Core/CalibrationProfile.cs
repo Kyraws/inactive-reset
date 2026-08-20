@@ -15,9 +15,8 @@ public sealed class CalibrationException(string message) : Exception(message);
 ///
 /// There is deliberately no default. Every <see cref="PlacementModel"/> must be
 /// built from a real calibration, so that a preview and the placement it
-/// previews cannot silently use different constants — which is exactly what the
-/// predecessor did, leaving its dry run predicting a landing point ~3 mm from
-/// the one a real placement targeted.
+/// previews cannot silently use different constants. When they diverged, a dry
+/// run predicted a landing point ~3 mm from the one a real placement targeted.
 /// </summary>
 public sealed class CalibrationProfile
 {

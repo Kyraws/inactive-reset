@@ -1,7 +1,7 @@
 # The 11.633 degree heading error
 
-Carried over from the predecessor deliberately, not fixed. Placement lands the
-car about **0.57 m** from the target. This document exists so nobody
+Known and deliberately not fixed. Placement lands the car about **0.57 m** from
+the target. This document exists so nobody
 re-diagnoses it from scratch, and — more importantly — so nobody "fixes" it the
 wrong way.
 
@@ -60,13 +60,15 @@ factor, which is why continuous pose writes were abandoned there.
 ## Where the fault is
 
 Between the stored `PitPos` orientation triple and the heading the engine
-actually drives. In the predecessor that conversion is:
+actually drives. The model applies that conversion in
+`PlacementMath.PredictDriveDestination` and inverts it in
+`PlacementMath.InvertToPitPosEntry`:
 
-    route_c.cpp:127   destination.orientation.y = pitPos.orientation.y - sign * yawOffsetMode2
-    route_c.cpp:153   entry.orientation.y       = desiredYaw          + sign * yawOffsetMode2
+    destination.orientation.y = pitPos.orientation.y - sign * yawOffsetMode2
+    entry.orientation.y       = desiredYaw          + sign * yawOffsetMode2
 
-with `yawOffsetMode2 = 0.6108652 rad = 35.00 deg`, documented as
-`GetPitDestination` mode 2.
+with `yawOffsetMode2 = 0.6108652 rad = 35.00 deg` at the time these samples were
+taken, documented as `GetPitDestination` mode 2.
 
 Working the observed sample backwards:
 
@@ -119,8 +121,7 @@ The old build applies the offset as a plain `.rdata` literal:
     0x00D4C8D9  subss xmm0, xmm6           ; yaw -= sign * 35 deg
 
 `xmm6` really is `sign`: `0x00D4C7ED..0x00D4C80D` is
-`src == 0 ? 0 : src / |src|`. **The predecessor's model was correct for that
-build.**
+`src == 0 ? 0 : src / |src|`. **The model was correct for that build.**
 
 The new build does it differently:
 
