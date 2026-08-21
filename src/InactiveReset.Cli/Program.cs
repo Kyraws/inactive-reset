@@ -340,6 +340,7 @@ internal static class Program
         {
             Console.WriteLine($"  {calibration.TrackName} / {calibration.VehicleName}");
             Console.WriteLine($"      D = {calibration.ForwardDistance:F5}  H = {calibration.VerticalOffset:F6}"
+                            + $"  L = {calibration.LateralOffset:F6}"
                             + $"  samples {calibration.SampleCount}");
             if (calibration.Locked)
             {
@@ -494,7 +495,8 @@ internal static class Program
     {
         Console.WriteLine("== plan ==");
         Console.WriteLine($"  checkpoint    {plan.Checkpoint.Name}  ({plan.Checkpoint.TrackName} / {plan.Checkpoint.VehicleName})");
-        Console.WriteLine($"  calibration   D = {plan.Model.RestForwardDistance:F5}  H = {plan.Model.RestVerticalOffset:F6}");
+        Console.WriteLine($"  calibration   D = {plan.Model.RestForwardDistance:F5}  H = {plan.Model.RestVerticalOffset:F6}"
+                        + $"  L = {plan.Model.RestLateralOffset:F6}");
         if (plan.Calibration.Advisory is not null)
         {
             Console.WriteLine("  ADVISORY:");

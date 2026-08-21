@@ -16,13 +16,17 @@ public sealed record PlacementModel
     /// GetPitDestination mode 2 applies <c>oriOut[1] -= sign * this</c>, in
     /// radians. Read live from the running engine -- see <see cref="EngineTunables"/>.
     ///
-    /// A separate, still-open defect applies on top of this: a heading error
-    /// measured at 11.633 deg on the 266D1AF6 build, landing the car ~0.57 m
-    /// off. Its SIZE moves between builds even when nothing here does -- on
-    /// 0F6DCAC1 it is ~0.71 m, with these tunables byte-identical and the same
-    /// calibration, so the engine's own placement geometry changed. Do NOT
-    /// compensate for that by adjusting D or H; see
-    /// docs/HEADING_BUG.md.
+    /// A separate defect used to apply on top of this: placements landed ~0.57 m
+    /// off on 266D1AF6 and ~0.71 m off on 0F6DCAC1, with these tunables
+    /// byte-identical and the same calibration. It was long recorded as an
+    /// 11.633 deg heading error and treated as uncorrectable by calibration.
+    ///
+    /// It was neither. The engine's displacement from a written destination is a
+    /// constant vehicle-frame vector, and the model simply had no term for its
+    /// off-axis component -- see <see cref="RestLateralOffset"/>. Correcting D
+    /// alone was indeed wrong; correcting D and L together is not. The miss is
+    /// per build, so both must be re-measured when the game patches.
+    /// See docs/HEADING_BUG.md.
     /// </summary>
     public required float YawOffsetMode2 { get; init; }
 
@@ -32,11 +36,37 @@ public sealed record PlacementModel
     public required float SearchMaxFactor { get; init; }
 
     /// <summary>
-    /// rest = destination + D*heading + (0, H, 0).
-    /// Per track AND per vehicle. Never reuse across combinations.
+    /// rest = destination + D*heading + L*lateral + (0, H, 0).
+    /// Per track AND per vehicle AND per build. Never reuse across combinations.
     /// </summary>
     public required float RestForwardDistance { get; init; }
     public required float RestVerticalOffset { get; init; }
+
+    /// <summary>
+    /// L: the engine's rest displacement along the LATERAL axis of the
+    /// destination yaw, in metres.
+    ///
+    /// The engine's displacement from a written destination is a constant vector
+    /// in the vehicle frame, and until this term existed the model could only
+    /// represent its forward and vertical components. The off-axis remainder --
+    /// 0.503 m at Barcelona on 0F6DCAC1 -- had nowhere to go, which is why no
+    /// amount of calibrating D and H ever removed it.
+    ///
+    /// This is NOT a rotation being smeared into a translation. Measured on
+    /// 2026-08-22 by placing with D deliberately doubled: the error moved by
+    /// exactly -delta-D along the heading (0.2 mm agreement) and the lateral
+    /// component did not move at all, so the engine's displacement does not
+    /// depend on where the destination was written. Whether the engine arrives
+    /// there by rotating or by translating is UNOBSERVABLE from outside -- a
+    /// heading error with the engine's own fixed range produces a constant
+    /// vehicle-frame vector, identical in every measurable way to a constant
+    /// vehicle-frame translation. The engine's range is not a thing this tool
+    /// can vary, so no experiment separates them.
+    ///
+    /// Unsigned, unlike the search offset: it is measured as-placed, and the
+    /// lateral sign convention has never been confirmed independently.
+    /// </summary>
+    public required float RestLateralOffset { get; init; }
 
     /// <summary>
     /// Build the model from tunables READ FROM THE RUNNING ENGINE plus a measured
@@ -45,7 +75,8 @@ public sealed record PlacementModel
     /// after range-checking it, and letting callers bypass that would reintroduce
     /// exactly the silent staleness this design removes.
     /// </summary>
-    public static PlacementModel Create(EngineTunables engine, float forwardDistance, float verticalOffset) => new()
+    public static PlacementModel Create(
+        EngineTunables engine, float forwardDistance, float verticalOffset, float lateralOffset) => new()
     {
         YawOffsetMode2 = engine.YawOffsetRadians,
         SearchStartFactor = engine.SearchStartFactor,
@@ -53,6 +84,7 @@ public sealed record PlacementModel
         SearchMaxFactor = engine.SearchMaxFactor,
         RestForwardDistance = forwardDistance,
         RestVerticalOffset = verticalOffset,
+        RestLateralOffset = lateralOffset,
     };
 }
 
@@ -123,14 +155,22 @@ public static class PlacementMath
         return new SpotEntry(position, orientation);
     }
 
-    /// <summary>ApplyVehicleTransform + settling: rest = dest + D*heading + (0, H, 0).</summary>
+    /// <summary>
+    /// ApplyVehicleTransform + settling:
+    /// rest = dest + D*heading + L*lateral + (0, H, 0).
+    /// </summary>
     public static Vec3 PredictRestPosition(SpotEntry destination, PlacementModel model)
     {
         var heading = Geometry.HeadingAxis(destination.Orientation.Y);
+        var lateral = Geometry.LateralAxis(destination.Orientation.Y);
         return new Vec3(
-            destination.Position.X + heading.X * model.RestForwardDistance,
+            destination.Position.X
+                + heading.X * model.RestForwardDistance
+                + lateral.X * model.RestLateralOffset,
             destination.Position.Y + model.RestVerticalOffset,
-            destination.Position.Z + heading.Z * model.RestForwardDistance);
+            destination.Position.Z
+                + heading.Z * model.RestForwardDistance
+                + lateral.Z * model.RestLateralOffset);
     }
 
     /// <summary>
@@ -161,12 +201,17 @@ public static class PlacementMath
         // dest.yaw = pitPos.yaw - sign*C   =>   pitPos.yaw = dest.yaw + sign*C
         var entryYaw = desiredYaw + sign * model.YawOffsetMode2;
 
-        // rest = dest + D*heading(dest.yaw) + (0, H, 0)
+        // rest = dest + D*heading(dest.yaw) + L*lateral(dest.yaw) + (0, H, 0)
         var heading = Geometry.HeadingAxis(desiredYaw);
+        var restLateral = Geometry.LateralAxis(desiredYaw);
         var destination = new Vec3(
-            desiredRest.X - heading.X * model.RestForwardDistance,
+            desiredRest.X
+                - heading.X * model.RestForwardDistance
+                - restLateral.X * model.RestLateralOffset,
             desiredRest.Y - model.RestVerticalOffset,
-            desiredRest.Z - heading.Z * model.RestForwardDistance);
+            desiredRest.Z
+                - heading.Z * model.RestForwardDistance
+                - restLateral.Z * model.RestLateralOffset);
 
         // dest.pos = pitPos.pos + sign*d*lateral(pitPos.yaw)
         var lateral = Geometry.LateralAxis(entryYaw);

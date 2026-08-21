@@ -53,6 +53,7 @@ public sealed class PlacementPortTests
         SearchMaxFactor = 1.5f,
         RestForwardDistance = 2.548f,
         RestVerticalOffset = 0.37f,
+        RestLateralOffset = 0f,
     };
 
     /// <summary>The measured calibration, used to prove the two differ.</summary>

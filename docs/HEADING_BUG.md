@@ -1,9 +1,99 @@
-# The 11.633 degree heading error
+# The heading error — resolved 2026-08-22
 
-Known and deliberately not fixed. Placement lands the car about **0.57 m** from
-the target. This document exists so nobody
-re-diagnoses it from scratch, and — more importantly — so nobody "fixes" it the
-wrong way.
+**Status: fixed and verified by driving.** Placement at `cp-023328` on build
+`0F6DCAC1` now lands **0.000500 m** horizontal and **+0.000883 m** vertical, with
+arrival verified — down from 0.710 m.
+
+**Status: understood and corrected.** The miss was never uncorrectable. It is a
+constant displacement vector in the vehicle frame, and the model had a term for
+only two of its three components — so half a metre of lateral error had nowhere
+to go. `PlacementModel.RestLateralOffset` (`L`) is that missing term.
+
+Everything below the resolution section is the original 2026-08-11 diagnosis,
+kept because its measurements and its rule-outs are still correct. Its
+*conclusion* — that this is a rotation and therefore cannot be calibrated away —
+is superseded. Read the resolution first.
+
+## Resolution
+
+The model was:
+
+    rest = destination + D*heading(yaw) + (0, H, 0)
+
+The engine's actual displacement from a written destination has an off-axis
+component. With no lateral term, `D` and `H` could not represent it at any
+value, which is exactly why re-calibrating them never helped and why the
+advisory forbade trying.
+
+The model is now:
+
+    rest = destination + D*heading(yaw) + L*lateral(yaw) + (0, H, 0)
+
+### The measurement
+
+On 2026-08-22, `cp-023328` was placed on build `0F6DCAC1` with `D` deliberately
+**doubled** (5.09529 instead of the calibrated 2.54765), in a scratch copy of
+the calibration.
+
+| | baseline `D` = 2.5476 | probe `D` = 5.0953 |
+|---|---|---|
+| forward | +0.502 m | **-2.0459 m** |
+| lateral | +0.503 m | **+0.5033 m** |
+| horizontal | 0.710 m | 2.107 m |
+
+The forward component moved by exactly `-deltaD` (2.54765, agreeing to 0.2 mm).
+The lateral component did not move at all.
+
+`D` is *this tool's* constant, not the engine's — it only decides where the
+destination is written. So the engine's displacement from a given destination is
+invariant under a 2.5 m change in where that destination sits. The miss is a
+constant vehicle-frame vector, and correcting it in the model is valid across
+positions.
+
+Constants measured for `0F6DCAC1` at Barcelona in the #50:
+
+    D = 3.049423    L = 0.503253    H = 0.373062 (unchanged)
+
+### Rotation versus translation is unobservable, and does not matter
+
+The original diagnosis asked which one this is. That question has no answer from
+outside the engine.
+
+A heading error of `theta` combined with the engine's own fixed range produces a
+displacement that is a **constant vector in the vehicle frame** — identical in
+every measurable way to a constant vehicle-frame translation. Separating them
+requires varying the engine's range, which is not a thing this tool can do. The
+original document's `2.7412 m at +9.749 deg` and an equivalent forward/lateral
+pair are two descriptions of the same displacement; only the second is one the
+model can represent.
+
+So the original warning was half right. Absorbing the miss into `D` and `H`
+**alone** really would have been wrong — not because it smears a rotation, but
+because those two terms cannot express an off-axis displacement, so the fit
+would have been forced and wrong. Adding `L` is not a fudge factor; it is the
+model finally having the same degrees of freedom as the thing it models.
+
+### What did not change
+
+- **`H` is correct** and stays at 0.373062. The probe run showed a 0.046 m
+  vertical residual, but that was terrain under the probe's deliberately
+  displaced destination, not a standing error: with the corrected constants the
+  vertical error is 0.9 mm. Do not absorb terrain into `H`.
+- **`D` and `L` are per track AND per vehicle AND per build.** `D` demonstrably
+  moved between `1AC2F605` and `1.4.1.3` with the engine tunables byte-identical.
+  Re-measure both when the game patches.
+- **Old profiles are unaffected.** `format_version` 1 has no `lateral_offset_L`;
+  it reads as 0 and those profiles keep their old, characterised miss rather than
+  silently acquiring a correction measured for a different build.
+
+Pinned by `tests/InactiveReset.Tests/RestLateralOffsetTests.cs`, which fails on
+the pre-2026-08-22 behaviour.
+
+---
+
+# Original diagnosis, 2026-08-11 (superseded conclusion)
+
+Placement lands the car about **0.57 m** from the target on `1AC2F605`.
 
 ## Symptom
 
@@ -22,7 +112,7 @@ Decomposed in the vehicle's frame the bias is constant:
     cp-023328   forward +0.135 m   lateral -0.550 m
     cp-023419   forward +0.152 m   lateral -0.557 m
 
-## It is a rotation, not a translation
+## It is a rotation, not a translation — SUPERSEDED, see Resolution
 
 The last row of the table is the important one. That sample wrote **nothing** —
 it observed the engine's own garage-to-Drive placement from its own unmodified
@@ -46,7 +136,7 @@ shortening at this range.
 taken at the same ~2.7 m range.** At one distance a small rotation and a fixed
 translation are indistinguishable. They are not the same thing.
 
-## Do not fix it by re-calibrating
+## Do not fix it by re-calibrating — SUPERSEDED, see Resolution
 
 Fitting new forward/vertical constants to this data would absorb a rotation
 into two translation terms. The result would be accurate at 2.7 m and wrong at

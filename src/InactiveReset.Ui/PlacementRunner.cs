@@ -385,6 +385,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["vehicle"] = calibration.VehicleName,
                 ["forwardDistance"] = calibration.ForwardDistance,
                 ["verticalOffset"] = calibration.VerticalOffset,
+                ["lateralOffset"] = calibration.LateralOffset,
                 ["locked"] = calibration.Locked,
                 ["advisory"] = calibration.Advisory,
             });

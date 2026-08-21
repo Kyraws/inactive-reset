@@ -8,7 +8,7 @@ public sealed class CalibrationException(string message) : Exception(message);
 /// <summary>
 /// Measured placement behaviour for ONE track and ONE vehicle.
 ///
-/// D and H do not describe the car. They describe the ENGINE'S placement
+/// D, H and L do not describe the car. They describe the ENGINE'S placement
 /// behaviour, measured through the car. That distinction matters when deciding
 /// whether a game patch invalidates them: a code-only patch cannot move a car
 /// body, but it CAN change how the engine places one.
@@ -31,6 +31,17 @@ public sealed class CalibrationProfile
 
     /// <summary>Vertical offset from the drive-to point to rest, in metres.</summary>
     public required float VerticalOffset { get; init; }
+
+    /// <summary>
+    /// Lateral offset from the drive-to point to rest, in metres — the
+    /// off-axis component of the engine's rest displacement.
+    ///
+    /// Absent from format_version 1 profiles, where it reads as 0 and the model
+    /// behaves exactly as it did before this term existed. That default is
+    /// deliberate: an old profile keeps its old, characterised miss rather than
+    /// silently acquiring a correction that was never measured for it.
+    /// </summary>
+    public float LateralOffset { get; init; }
 
     public required bool Valid { get; init; }
 
@@ -88,6 +99,8 @@ public sealed class CalibrationProfile
             VehicleName = Text(root, "vehicle_name") ?? throw new CalibrationException($"{path}: no vehicle_name"),
             ForwardDistance = calibration.GetProperty("forward_distance_D").GetSingle(),
             VerticalOffset = calibration.GetProperty("vertical_offset_H").GetSingle(),
+            LateralOffset = calibration.TryGetProperty("lateral_offset_L", out var l)
+                ? l.GetSingle() : 0f,
             Valid = !calibration.TryGetProperty("valid", out var v) || v.GetBoolean(),
             ExecutableSha256 = Text(root, "executable_sha256"),
             Locked = root.TryGetProperty("locked", out var locked) && locked.GetBoolean(),
@@ -158,5 +171,5 @@ public sealed class CalibrationProfile
     /// caller can accidentally fall back to nominal constants.
     /// </summary>
     public PlacementModel ToPlacementModel(EngineTunables engine) =>
-        PlacementModel.Create(engine, ForwardDistance, VerticalOffset);
+        PlacementModel.Create(engine, ForwardDistance, VerticalOffset, LateralOffset);
 }
