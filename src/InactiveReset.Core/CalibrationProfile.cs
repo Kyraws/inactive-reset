@@ -115,6 +115,16 @@ public sealed class CalibrationProfile
             element.TryGetProperty(name, out var value) ? value.GetString() : null;
     }
 
+    /// <summary>Calibrations the user measured. A release never writes here.</summary>
+    public const string UserDirectoryName = "profiles";
+
+    /// <summary>
+    /// Calibrations shipped with the tool. A release overwrites this directory
+    /// wholesale, which is precisely why the user's own measurements do not live
+    /// in it: upgrading must never silently replace something they measured.
+    /// </summary>
+    public const string DefaultDirectoryName = "profiles-default";
+
     public static IReadOnlyList<CalibrationProfile> LoadAll(string directory)
     {
         if (!Directory.Exists(directory))
@@ -130,13 +140,38 @@ public sealed class CalibrationProfile
     }
 
     /// <summary>
+    /// Every calibration visible to the tool: the user's own, then the shipped
+    /// ones for any track/vehicle the user has not measured themselves.
+    ///
+    /// The user always wins, silently. Their calibration was measured on their
+    /// machine and they chose to make it; a shipped default is a convenience for
+    /// combinations they have not got to yet, not an authority over them.
+    /// </summary>
+    public static IReadOnlyList<CalibrationProfile> LoadAllForData(string dataDirectory)
+    {
+        var user = LoadAll(Path.Combine(dataDirectory, UserDirectoryName));
+        var shipped = LoadAll(Path.Combine(dataDirectory, DefaultDirectoryName));
+
+        var keys = user.Select(p => p.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return [.. user, .. shipped.Where(p => !keys.Contains(p.Key))];
+    }
+
+    /// <summary>True if this profile came from the shipped directory.</summary>
+    public bool IsShipped =>
+        SourcePath is not null
+        && string.Equals(
+            Path.GetFileName(Path.GetDirectoryName(SourcePath)),
+            DefaultDirectoryName,
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Find the calibration for a track/vehicle pair, and refuse to return one
     /// that is marked invalid or locked. A calibration is per track AND per
     /// vehicle; reusing one across combinations is meaningless.
     /// </summary>
-    public static CalibrationProfile Require(string directory, string track, string vehicle)
+    public static CalibrationProfile Require(string dataDirectory, string track, string vehicle)
     {
-        var all = LoadAll(directory);
+        var all = LoadAllForData(dataDirectory);
         var match = all.FirstOrDefault(p =>
             string.Equals(p.TrackName, track, StringComparison.OrdinalIgnoreCase)
             && string.Equals(p.VehicleName, vehicle, StringComparison.OrdinalIgnoreCase));

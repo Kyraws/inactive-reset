@@ -57,13 +57,103 @@ public sealed record OutcomeLine(
 public static class PlacementReport
 {
     /// <summary>
+    /// Warn when a placement is materially worse than this calibration has ever
+    /// been, and say why it probably is.
+    ///
+    /// <para>This is a MEASUREMENT, not a gate. Nothing here refuses anything: a
+    /// stale calibration lands the car half a metre off, which is visible,
+    /// harmless and still useful for getting back to a corner. Compare that to
+    /// the offset profile, where being wrong means writing bytes to the wrong
+    /// addresses -- that is gated on the executable hash and always will be. The
+    /// severity of the check matches the blast radius of the mistake.</para>
+    ///
+    /// <para>It also beats gating on the calibration's build hash, which was the
+    /// other candidate. The hash is a proxy; this is the thing itself. A patch
+    /// that does not move D and L produces no warning, and a calibration that is
+    /// wrong for some other reason -- a re-surfaced corner, a car that behaves
+    /// differently, a measurement that was never good -- still produces one.</para>
+    ///
+    /// <para>The existing report already told users to "compare against the worst
+    /// error recorded in the calibration, not a remembered number". This does it
+    /// for them; <see cref="CalibrationProfile.WorstHorizontalErrorMetres"/> was
+    /// being parsed and never read.</para>
+    /// </summary>
+    public static OutcomeLine? StalenessLine(
+        PlacementOutcome outcome,
+        CalibrationProfile? calibration,
+        string? runningBuildSha256)
+    {
+        if (calibration is null)
+        {
+            return null;
+        }
+
+        // Anything inside the good threshold is not worth a word, whatever the
+        // calibration claims about itself.
+        if (outcome.HorizontalErrorMetres <= GoodHorizontalErrorMetres)
+        {
+            return null;
+        }
+
+        // A worst-error of zero means "never measured", not "perfect". Without a
+        // baseline there is nothing to compare against, so only the raw size of
+        // the miss is evidence -- and the line above already reported that.
+        var recorded = calibration.WorstHorizontalErrorMetres;
+        var haveBaseline = recorded > 0f;
+        if (haveBaseline && outcome.HorizontalErrorMetres <= recorded + GoodHorizontalErrorMetres)
+        {
+            return null;
+        }
+
+        var mismatched =
+            !string.IsNullOrWhiteSpace(runningBuildSha256)
+            && !string.IsNullOrWhiteSpace(calibration.ExecutableSha256)
+            && !string.Equals(
+                calibration.ExecutableSha256, runningBuildSha256, StringComparison.OrdinalIgnoreCase);
+
+        var comparison = haveBaseline
+            ? $"this placement missed by {outcome.HorizontalErrorMetres:F3} m, but the best this "
+              + $"calibration has ever recorded is {recorded:F3} m. "
+            : $"this placement missed by {outcome.HorizontalErrorMetres:F3} m, and this calibration "
+              + "has no measured error recorded to compare against. ";
+
+        var cause = mismatched
+            ? "It was measured on build "
+              + $"{Short(calibration.ExecutableSha256)} but the game is running "
+              + $"{Short(runningBuildSha256)}. D and L move between builds -- D changed by 0.5 m "
+              + "across one patch -- so the calibration is very likely stale and wants "
+              + "re-measuring."
+            : "It was measured on the build now running, so the cause is something else: a "
+              + "different spot, changed terrain, or a calibration that was never good.";
+
+        return new OutcomeLine(
+            "calibration", "worse than recorded", OutcomeSeverity.Warning, comparison + cause);
+    }
+
+    private static string Short(string? sha256) =>
+        string.IsNullOrWhiteSpace(sha256) ? "(unknown)"
+        : sha256.Length >= 8 ? sha256[..8].ToUpperInvariant()
+        : sha256.ToUpperInvariant();
+
+    /// <summary>
     /// Below this, the placement landed where it was aimed. Above it, the
     /// documented heading error dominates -- see docs/HEADING_BUG.md. The
     /// threshold is not a tolerance on the mechanism, which repeats to ~1.5 mm.
     /// </summary>
     private const float GoodHorizontalErrorMetres = 0.05f;
 
-    public static IReadOnlyList<OutcomeLine> For(PlacementOutcome outcome)
+    /// <summary>
+    /// Build the report lines.
+    ///
+    /// <paramref name="calibration"/> and <paramref name="runningBuildSha256"/>
+    /// are optional so that a caller with nothing to compare against still gets
+    /// a full report. Supplying them adds the staleness check: see
+    /// <see cref="StalenessLine"/>.
+    /// </summary>
+    public static IReadOnlyList<OutcomeLine> For(
+        PlacementOutcome outcome,
+        CalibrationProfile? calibration = null,
+        string? runningBuildSha256 = null)
     {
         var lines = new List<OutcomeLine>();
 
@@ -94,6 +184,12 @@ public static class PlacementReport
                   + "the same calibration and identical engine tunables. Compare "
                   + "against the worst error recorded in the calibration, not a "
                   + "remembered number."));
+
+        var staleness = StalenessLine(outcome, calibration, runningBuildSha256);
+        if (staleness is not null)
+        {
+            lines.Add(staleness);
+        }
 
         lines.Add(new OutcomeLine(
             "vertical error", $"{outcome.VerticalErrorMetres:F3} m", OutcomeSeverity.Normal));

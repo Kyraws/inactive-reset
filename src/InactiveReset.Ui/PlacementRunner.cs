@@ -19,6 +19,11 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private PlacementPhase _phase = PlacementPhase.Idle;
     private string _phaseMessage = "";
     private PlacementOutcome? _lastOutcome;
+
+    // Kept beside the outcome so the report can judge staleness later, when the
+    // session and plan that produced it are long gone.
+    private CalibrationProfile? _lastCalibration;
+    private string? _lastBuildSha256;
     private Task? _running;
 
     private FetchConsent Consent => new(dataDirectory);
@@ -57,7 +62,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     }
 
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
-    private string Profiles => Path.Combine(dataDirectory, "profiles");
+    // Both calibration directories are resolved from the data directory itself;
+    // see CalibrationProfile.LoadAllForData.
 
     // ---- state -------------------------------------------------------------
 
@@ -179,7 +185,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             state["outcome"] = _lastOutcome is null ? null : new JsonObject
             {
                 ["completed"] = _lastOutcome.Completed,
-                ["lines"] = OutcomeLines(_lastOutcome),
+                ["lines"] = OutcomeLines(_lastOutcome, _lastCalibration, _lastBuildSha256),
             };
         }
         return state;
@@ -195,12 +201,13 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     /// of this block silently omitted the sector write -- the one field that
     /// decides whether a placed lap counts -- for as long as it existed.
     /// </summary>
-    private static JsonArray OutcomeLines(PlacementOutcome outcome)
+    private static JsonArray OutcomeLines(
+        PlacementOutcome outcome, CalibrationProfile? calibration, string? buildSha256)
     {
         var penalty = PlacementReport.ForPenalty(outcome);
         var lines = penalty is null
-            ? PlacementReport.For(outcome)
-            : [penalty, .. PlacementReport.For(outcome)];
+            ? PlacementReport.For(outcome, calibration, buildSha256)
+            : [penalty, .. PlacementReport.For(outcome, calibration, buildSha256)];
 
         return new JsonArray(lines.Select(line => (JsonNode)new JsonObject
         {
@@ -377,7 +384,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private JsonArray Calibrations_()
     {
         var array = new JsonArray();
-        foreach (var calibration in CalibrationProfile.LoadAll(Profiles))
+        foreach (var calibration in CalibrationProfile.LoadAllForData(dataDirectory))
         {
             array.Add(new JsonObject
             {
@@ -477,6 +484,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             }
             _log.Clear();
             _lastOutcome = null;
+            _lastCalibration = null;
+            _lastBuildSha256 = null;
             _phase = PlacementPhase.Gating;
             _phaseMessage = "starting";
             _running = Task.Run(() => RunPlacement(name));
@@ -491,7 +500,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             using var session = GameSession.Attach(offsetDirectory, forWriting: true, FetchIfAllowed);
             var checkpoint = Checkpoint.Require(Checkpoints, name);
             var calibration = CalibrationProfile.Require(
-                Profiles, checkpoint.TrackName, checkpoint.VehicleName);
+                dataDirectory, checkpoint.TrackName, checkpoint.VehicleName);
 
             var service = new PlacementService(session);
             var plan = service.Plan(checkpoint, calibration);
@@ -509,6 +518,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             lock (_gate)
             {
                 _lastOutcome = outcome;
+                _lastCalibration = calibration;
+                _lastBuildSha256 = session.ExecutableSha256;
             }
             Log(outcome.Completed
                 ? $"placed, error {outcome.HorizontalErrorMetres:F4} m"

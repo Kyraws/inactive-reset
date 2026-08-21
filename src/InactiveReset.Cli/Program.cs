@@ -312,7 +312,7 @@ internal static class Program
         var path = CaptureService.Save(checkpoint, Path.Combine(dataDirectory, "checkpoints"));
         Console.WriteLine($"\n  saved         {path}");
 
-        var calibrations = CalibrationProfile.LoadAll(Path.Combine(dataDirectory, "profiles"));
+        var calibrations = CalibrationProfile.LoadAllForData(dataDirectory);
         var hasCalibration = calibrations.Any(c =>
             string.Equals(c.TrackName, checkpoint.TrackName, StringComparison.OrdinalIgnoreCase)
             && string.Equals(c.VehicleName, checkpoint.VehicleName, StringComparison.OrdinalIgnoreCase));
@@ -328,7 +328,7 @@ internal static class Program
 
     private static int List(string dataDirectory)
     {
-        var calibrations = CalibrationProfile.LoadAll(Path.Combine(dataDirectory, "profiles"));
+        var calibrations = CalibrationProfile.LoadAllForData(dataDirectory);
         var checkpoints = Checkpoint.LoadAll(Path.Combine(dataDirectory, "checkpoints"));
 
         Console.WriteLine("== calibrations ==");
@@ -338,7 +338,8 @@ internal static class Program
         }
         foreach (var calibration in calibrations)
         {
-            Console.WriteLine($"  {calibration.TrackName} / {calibration.VehicleName}");
+            var origin = calibration.IsShipped ? "  (shipped default)" : string.Empty;
+            Console.WriteLine($"  {calibration.TrackName} / {calibration.VehicleName}{origin}");
             Console.WriteLine($"      D = {calibration.ForwardDistance:F5}  H = {calibration.VerticalOffset:F6}"
                             + $"  L = {calibration.LateralOffset:F6}"
                             + $"  samples {calibration.SampleCount}");
@@ -439,7 +440,7 @@ internal static class Program
 
         Console.WriteLine();
         Console.WriteLine($"  achieved      [{outcome.Achieved}]");
-        PrintOutcome(outcome);
+        PrintOutcome(outcome, plan.Calibration, session.ExecutableSha256);
         return 0;
     }
 
@@ -457,12 +458,13 @@ internal static class Program
     /// failed" are now carried by the outcome itself, which is where that fact
     /// always belonged.
     /// </summary>
-    private static void PrintOutcome(PlacementOutcome outcome)
+    private static void PrintOutcome(
+        PlacementOutcome outcome, CalibrationProfile? calibration, string? buildSha256)
     {
         var penalty = PlacementReport.ForPenalty(outcome);
         var lines = penalty is null
-            ? PlacementReport.For(outcome)
-            : [penalty, .. PlacementReport.For(outcome)];
+            ? PlacementReport.For(outcome, calibration, buildSha256)
+            : [penalty, .. PlacementReport.For(outcome, calibration, buildSha256)];
 
         foreach (var line in lines)
         {
@@ -487,7 +489,7 @@ internal static class Program
     {
         var checkpoint = Checkpoint.Require(Path.Combine(dataDirectory, "checkpoints"), name);
         var calibration = CalibrationProfile.Require(
-            Path.Combine(dataDirectory, "profiles"), checkpoint.TrackName, checkpoint.VehicleName);
+            dataDirectory, checkpoint.TrackName, checkpoint.VehicleName);
         return new PlacementService(session).Plan(checkpoint, calibration);
     }
 

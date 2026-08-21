@@ -82,6 +82,7 @@ instead of being stored, so most game updates need no new profile at all.
     src/InactiveReset.App    windowed app: WebView2 around that same page
     tests/                   the test suite
     offsets/                 build profiles, one JSON per LMU build
+    data/profiles-default/   calibrations shipped with a release
     docs/                    how the machinery actually works
 
 The windowed app is the front end in normal use; the CLI is for diagnosis and
@@ -130,15 +131,71 @@ project. `dist/` holds only the two shipping executables.
 
 ## Status
 
-One known defect: placement is subject to an **11.633 degree heading error** in
-the orientation-to-heading conversion, which lands the car about 0.57 m from the
-target. It is
-characterised but not fixed — see `docs/HEADING_BUG.md`. Run-to-run
-repeatability is ~1.5 mm, so the mechanism is sound; only the aim is off.
+**Placement is accurate to sub-millimetre** on a calibrated combination. The
+long-standing "11.633 degree heading error" is fixed: it was never a heading
+error that calibration could not reach. The engine's displacement from a written
+destination is a constant vector in the vehicle frame, and the model had terms
+for only two of its three components, so half a metre of lateral miss had
+nowhere to go. `docs/HEADING_BUG.md` has the measurement and why rotation and
+translation are indistinguishable from outside the engine.
 
-**Do not attempt to fix it by re-calibrating** the forward/vertical constants.
-That would absorb a rotation into two translation terms and be correct at
-exactly one distance.
+Verified by driving on LMU 1.4.1.3 (build `0F6DCAC1`): 0.000500 m horizontal,
+0.000883 m vertical, down from 0.710 m.
+
+### The limit you will actually hit
+
+**Placement needs a calibration for your exact track and vehicle, and only one
+ships.** Circuit de Barcelona in the Richard Mille AF Corse 296 GT3. In anything
+else, `place` refuses with a clear message; everything else in the tool works.
+
+The constants are per track, per vehicle **and per build** -- `D` moved 0.5 m
+across a single LMU patch. There is no `calibrate` command yet, so you cannot
+currently measure your own. Three cars were measured to see whether the
+constants could be derived from the vehicle dimensions the tool already reads
+live; no simple relationship holds. The intended fix is to find the value inside
+the running engine, the way the yaw offset and search factors already are.
+
+A calibration used on a build it was not measured on still places the car, and
+warns when the miss is materially worse than that calibration has ever recorded.
+It is a warning, not a refusal: being wrong about offsets means writing bytes to
+wrong addresses, being wrong about a calibration means stopping half a metre
+away.
+
+---
+
+## Install
+
+Download the zip from [Releases](https://github.com/Kyraws/inactive-reset/releases)
+and unzip it anywhere. Nothing to install: both executables are self-contained
+and need no .NET runtime.
+
+    inactive-reset-ui.exe    double-click; the windowed app
+    inactive-reset.exe       console; run --help
+    offsets\                 build profiles - keep this folder beside the exes
+    data\profiles-default\   calibrations shipped with the release
+
+Keep the folder together. Both executables find `offsets\` and `data\` by
+searching upwards from their own location, and `offsets\shared-memory.json` is
+required and is never downloaded.
+
+Three things to expect on a first run:
+
+- **Windows SmartScreen** will say "Windows protected your PC", because the
+  executables are not code-signed. More info -> Run anyway. For a tool that
+  writes into another process's memory that warning is not unreasonable, and
+  you should be more suspicious of one that does not appear. The source is here
+  and `.\build package` reproduces the zip.
+- **The windowed app needs the WebView2 runtime.** Present on Windows 11 and
+  most Windows 10 installs; if the window comes up blank, install the Evergreen
+  runtime from Microsoft. The CLI does not need it.
+- **A new LMU build** means the tool asks permission to fetch one JSON profile
+  over HTTPS. Say no and it refuses to touch the game rather than guessing.
+
+### Your calibrations versus the shipped ones
+
+`data\profiles\` is yours and a release never writes to it.
+`data\profiles-default\` is overwritten wholesale on upgrade. When both describe
+the same track and vehicle, yours wins.
 
 ---
 

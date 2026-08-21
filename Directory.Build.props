@@ -14,6 +14,17 @@
     <!-- x64 only: every offset in this repository is for the 64-bit game. -->
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
+
+    <!--
+      The tool's own version. It deliberately does NOT track the Le Mans Ultimate
+      build: the binary is build-agnostic by design, because ProfileFetch
+      downloads the offset profile for whatever build is running. Naming a
+      release after one LMU build would claim a compatibility limit that does not
+      exist, and force a re-release every patch to ship identical binaries.
+      Which LMU builds a release was verified against belongs in the release
+      notes, and `status` prints the running build anyway.
+    -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <!--

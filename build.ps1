@@ -6,11 +6,12 @@
     .\build.ps1              # build (Debug)
     .\build.ps1 test         # build + run tests
     .\build.ps1 ship         # Release single-file app + CLI into dist\
+    .\build.ps1 package      # ship, then zip a self-contained release
     .\build.ps1 clean        # delete artifacts\ and dist\
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('build', 'test', 'ship', 'clean')]
+    [ValidateSet('build', 'test', 'ship', 'package', 'clean')]
     [string] $Task = 'build',
 
     [ValidateSet('Debug', 'Release')]
@@ -128,6 +129,62 @@ switch ($Task) {
         Write-Host '  Self-contained: no .NET runtime needed on the target machine.' -ForegroundColor DarkGray
         Write-Host '  Both read offsets\ and data\ by searching upwards from the exe,' -ForegroundColor DarkGray
         Write-Host '  so keep dist\ inside the repository or pass --offsets / --data.' -ForegroundColor DarkGray
+    }
+
+    'package' {
+        # A zip of dist\ alone would be BROKEN. Both exes find offsets\ and
+        # data\ by walking up from their own directory, so a user who unzips to
+        # the desktop has neither. ProfileFetch can download the build profile,
+        # but it only ever fetches <HASH>.json -- shared-memory.json is required
+        # by watch, plan and place and is never fetched, so it must ship.
+        & $PSCommandPath -Task ship -Configuration Release
+        if ($LASTEXITCODE -ne 0) { throw 'ship failed' }
+
+        $version = ([xml](Get-Content (Join-Path $root 'Directory.Build.props'))
+                   ).Project.PropertyGroup.Version | Where-Object { $_ }
+        $stage = Join-Path $artifacts "package\inactive-reset-$version-win-x64"
+
+        if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+        New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+        Invoke-Step 'stage binaries' {
+            Copy-Item (Join-Path $dist '*') $stage -Recurse -Force
+            $global:LASTEXITCODE = 0
+        }
+
+        Invoke-Step 'stage offsets and calibrations' {
+            # offsets\: shared-memory.json plus every published build profile.
+            # data\profiles-default\: calibrations shipped with the release. The
+            # user's own live in data\profiles\, which a release NEVER writes,
+            # so upgrading cannot replace something they measured themselves.
+            Copy-Item (Join-Path $root 'offsets') $stage -Recurse -Force
+            $profiles = Join-Path $stage 'data\profiles-default'
+            New-Item -ItemType Directory -Path $profiles -Force | Out-Null
+            Copy-Item (Join-Path $root 'data\profiles-default\*.json') $profiles -Force
+            $global:LASTEXITCODE = 0
+        }
+
+        Invoke-Step 'stage documents' {
+            foreach ($file in 'README.md', 'LICENSE', 'NOTICE') {
+                Copy-Item (Join-Path $root $file) $stage -Force
+            }
+            $global:LASTEXITCODE = 0
+        }
+
+        $zip = Join-Path $dist "inactive-reset-$version-win-x64.zip"
+        if (Test-Path $zip) { Remove-Item $zip -Force }
+        Invoke-Step 'compress' {
+            Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+            $global:LASTEXITCODE = 0
+        }
+
+        Write-Host ''
+        Write-Host "Packaged $zip" -ForegroundColor Green
+        Write-Host ('  {0:N1} MB' -f ((Get-Item $zip).Length / 1MB))
+        Write-Host ''
+        Write-Host '  Upload to a GitHub release. The tool version is NOT the LMU' -ForegroundColor DarkGray
+        Write-Host '  version: say which LMU builds it was verified against in the' -ForegroundColor DarkGray
+        Write-Host '  release notes, not in the tag.' -ForegroundColor DarkGray
     }
 
     'clean' {

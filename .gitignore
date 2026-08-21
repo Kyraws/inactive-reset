@@ -24,7 +24,15 @@ tools/*.hpp
 tools/*.h
 
 # Captured checkpoints and calibration profiles: per-user, per-track.
-data/
+# data/* rather than data/ on purpose: git will not descend into an excluded
+# directory, so an exception beneath data/ would never be reachable.
+data/*
+
+# ...except the calibrations SHIPPED with a release. These are a project
+# artifact, not user data: they go in the zip, so they must be reviewable and
+# versioned. A release overwrites this directory; data/profiles/ is the user's
+# own and is never written by an upgrade.
+!data/profiles-default/
 
 # Memory dumps: reanchor inputs, and verbatim copies of the game executable.
 *.bin
