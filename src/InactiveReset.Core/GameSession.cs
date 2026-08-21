@@ -187,19 +187,25 @@ public sealed class GameSession : IDisposable
     private static void VerifyProbe(ProcessMemory memory, ulong moduleBase,
                                     ProbeSpec probe, List<GateCheck> checks)
     {
-        var live = memory.ReadBytes(moduleBase + probe.Rva, probe.Bytes.Length);
+        // Refuse before reading anything. A probe that was not re-derived for
+        // this build points into the previous one, and the bytes it finds there
+        // say nothing about whether this profile fits -- so comparing them is
+        // not a weaker check, it is a meaningless one.
+        var probeRva = probe.Rva.Require("the build probe");
+
+        var live = memory.ReadBytes(moduleBase + probeRva, probe.Bytes.Length);
         if (live.AsSpan().SequenceEqual(probe.Bytes))
         {
-            checks.Add(new GateCheck("probe", true, $"RVA 0x{probe.Rva:X} matches"));
+            checks.Add(new GateCheck("probe", true, $"RVA 0x{probeRva:X} matches"));
             return;
         }
 
         var prefixMatches = live.AsSpan(0, probe.StablePrefixLength)
                                 .SequenceEqual(probe.Bytes.AsSpan(0, probe.StablePrefixLength));
         var detail = prefixMatches
-            ? $"the function at RVA 0x{probe.Rva:X} is unchanged, but its operands differ - " +
+            ? $"the function at RVA 0x{probeRva:X} is unchanged, but its operands differ - " +
               "data has moved, so this profile is for a different build"
-            : $"the bytes at RVA 0x{probe.Rva:X} are not this function at all - " +
+            : $"the bytes at RVA 0x{probeRva:X} are not this function at all - " +
               "the addresses do not describe this build";
 
         throw new GateException(

@@ -464,7 +464,9 @@ function renderFlags(s) {
     r.name.indexOf('Track limits flag') === 0 || r.name.indexOf('Pit-speeding') === 0);
 
   let html = rules.map(r => {
-    const set = r.value !== 0;
+    // An unresolved address is neither set nor clear: it was never read.
+    const set = r.resolved !== false && r.value !== 0;
+    const unknown = r.resolved === false;
     const invalidation = r.name.indexOf('lap invalidation') > 0;
     const name = r.name
       .replace('Pit-speeding gate (Flag Rules)', 'pit speeding gate')
@@ -473,7 +475,8 @@ function renderFlags(s) {
       '<span class="fname">' + esc(name) + '</span>' +
       (invalidation ? '<span class="fnote">gates lap invalidation</span>' : '') +
       '<span class="frva">' + esc(r.rva) + '</span>' +
-      '<span class="fval ' + (set ? 'set' : 'clear') + '">' + r.value + '</span>' +
+      '<span class="fval ' + (unknown ? 'warn' : set ? 'set' : 'clear') + '">' +
+        esc(r.display !== undefined ? r.display : String(r.value)) + '</span>' +
       '</div>';
   }).join('');
 

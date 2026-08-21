@@ -797,7 +797,7 @@ internal static class Program
         var width = states.Count == 0 ? 0 : states.Max(s => s.Name.Length);
         foreach (var state in states)
         {
-            Console.WriteLine($"  {state.Name.PadRight(width)} = {state.Value,-4} {state.Effect}");
+            Console.WriteLine($"  {state.Name.PadRight(width)} = {state.Display,-4} {(state.Resolved ? state.Effect : "NOT re-derived for this build - not read")}");
             if (state.Domain is not null)
             {
                 Console.WriteLine($"  {new string(' ', width)}        {state.Domain}");

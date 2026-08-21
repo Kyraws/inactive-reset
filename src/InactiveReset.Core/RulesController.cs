@@ -9,8 +9,22 @@ public sealed record RuleState(
     string? Domain,
     string? Note,
     ulong Rva = 0,
-    ulong Address = 0)
+    ulong Address = 0,
+    bool Resolved = true)
 {
+    /// <summary>
+    /// What to show instead of a number when the address behind this rule was
+    /// not re-derived for the running build.
+    ///
+    /// <para>This exists because the alternative is worse than useless. The
+    /// read used to go through <c>Rva.Value</c>, skipping
+    /// <see cref="Rva.Require"/>, so a stale address was read anyway and
+    /// whatever happened to live there was printed as the rule's value. On
+    /// build 0F6DCAC1 that displayed four track-limits flags as a confident
+    /// "0" -- read from the previous build's addresses.</para>
+    /// </summary>
+    public string Display => Resolved ? Value.ToString() : "?";
+
     /// <summary>
     /// Why a write here would or would not do anything. This is the sentence
     /// that saves people the confusion of changing a setting and watching
@@ -72,6 +86,18 @@ public sealed class RulesController(GameSession session)
 
     private RuleState Read(string name, RuleField field)
     {
+        // An address that was not re-derived for this build points into the
+        // previous one. Reading it does not fail -- it lands on plausible
+        // unrelated bytes -- so the only safe move is not to read it at all and
+        // to say so, rather than to report a number that means nothing.
+        if (field.Rva.Confidence == Confidence.Unresolved)
+        {
+            return new RuleState(name, -1, field.Consumption,
+                                 field.IsWritableLive, field.Domain,
+                                 field.Note ?? "address not re-derived for this build",
+                                 field.Rva.Value, 0, Resolved: false);
+        }
+
         var address = _session.ModuleBase + field.Rva.Value;
         int value;
         try

@@ -95,7 +95,11 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 {
                     ["name"] = rule.Name,
                     ["value"] = rule.Value,
-                    ["effect"] = rule.Effect,
+                    ["display"] = rule.Display,
+                    ["resolved"] = rule.Resolved,
+                    ["effect"] = rule.Resolved
+                        ? rule.Effect
+                        : "address not re-derived for this build - not read",
                     ["writableLive"] = rule.WritableLive,
                     ["domain"] = rule.Domain,
                     ["rva"] = $"0x{rule.Rva:X7}",
@@ -116,8 +120,10 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 {
                     ["label"] = "Track Limits",
                     ["detail"] = "penalties and lap invalidation for going off track",
-                    ["on"] = limits is not null && limits.Value != 0,
-                    ["known"] = limits is not null,
+                    ["on"] = limits is not null && limits.Resolved && limits.Value != 0,
+                    // An unresolved address is not a known "off": the control must
+                    // be unusable, not confidently wrong.
+                    ["known"] = limits is not null && limits.Resolved,
                 },
             };
 
@@ -134,8 +140,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             {
                 ["label"] = "Pit-speeding penalty",
                 ["detail"] = "stop/go for speeding in the pit lane; disabled at every placement",
-                ["on"] = pit is not null && pit.Value != 0,
-                ["known"] = pit is not null,
+                ["on"] = pit is not null && pit.Resolved && pit.Value != 0,
+                ["known"] = pit is not null && pit.Resolved,
             };
 
             state["lapValidity"] = LapValidity_(session);

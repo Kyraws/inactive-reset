@@ -135,7 +135,14 @@ public sealed class OffsetProfile
 
             Probe = new ProbeSpec
             {
-                Rva = ParseHex(probe.GetProperty("rva").GetString()!),
+                // The confidence sits on the probe object itself, beside "rva",
+                // which is the shape reanchor writes. Read it from there rather
+                // than defaulting to Established -- a probe reanchor could not
+                // re-derive must not present as a verified one.
+                Rva = new Rva(
+                    ParseHex(probe.GetProperty("rva").GetString()!),
+                    ParseConfidence(probe),
+                    probe.TryGetProperty("note", out var probeNote) ? probeNote.GetString() : null),
                 Bytes = ParseByteString(probe.GetProperty("bytes").GetString()!),
                 StablePrefixLength = probe.GetProperty("stablePrefixLength").GetInt32(),
             },
@@ -238,7 +245,19 @@ public sealed class OffsetProfile
 
 public sealed class ProbeSpec
 {
-    public required ulong Rva { get; init; }
+    /// <summary>
+    /// Deliberately an <see cref="Rva"/> and not a bare <c>ulong</c>.
+    ///
+    /// <para>It was a <c>ulong</c>, which meant the confidence written into the
+    /// profile for the probe was parsed by nothing and enforced by nothing.
+    /// A reanchor that failed to re-derive the probe still produced a profile
+    /// whose build gate passed, because the probe bytes were re-read from the
+    /// new image AT THE STALE ADDRESS -- so the gate compared the new image
+    /// against itself and could never fail. The one check that exists to catch
+    /// "this profile describes a different build" was disarmed exactly when
+    /// re-derivation had failed. Observed on build 0F6DCAC1, 2026-08-20.</para>
+    /// </summary>
+    public required Rva Rva { get; init; }
     public required byte[] Bytes { get; init; }
 
     /// <summary>
