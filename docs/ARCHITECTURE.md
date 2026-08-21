@@ -377,6 +377,49 @@ never vouch for itself" exists to prevent, arriving through a new door.
 Refusing also produces the better answer, because a later round has more seeds
 than an earlier one. Deferred, `probe` resolved correctly in round 3.
 
+### String anchoring — works, not yet a tier
+
+LMU is a **logging build**: functions reference their own names and build-server
+source paths, e.g. `'Entered Slot::Restart(%d)'` beside
+`'D:\bamboo-agent-home\...\rFactorSource\Source\slot.cpp'`. Strings survive
+recompilation completely, so this finds exactly what masked signature search
+cannot.
+
+Find the unique string, find the `lea r64,[rip+disp]` referencing it, walk back
+to the nearest `INT3`-padded prologue. It self-validates: run it against the old
+image, where the answer is known, before trusting it on the new one.
+
+It resolved `slotRestart` and `assignSpotIndices` on `0F6DCAC1`, and
+`assignSpotIndices` was later reproduced independently by the data-fingerprint
+tier — same address, `0x00CF3880`, from unrelated evidence.
+
+`slotRestart = 0x00CFA230` remains a string-anchoring result that no implemented
+tier reproduces; the fixpoint run still reports it unresolved. It must NOT be
+hand-written into a profile. Port the technique and let the tool derive it, or
+the profile carries an address nothing can re-check next patch.
+
+The script is `tools/reanchor-research/stranchor.py`.
+
+### The capture state is part of the dump
+
+A dump taken in the menus and a dump taken in a session are not
+interchangeable, and confusing them wastes a cycle. Code is byte-identical
+between them, so code techniques are unaffected — but the spot table and the
+container array are **zeroed in menus**, which makes every content-based data
+technique useless and makes a stale address look resolved.
+
+Record the state in the filename. The captures in
+`G:\LMU_Plugin\analysis\dumps\` follow
+`LMU_runtime_<build>_<state>.bin`; the README there is stale and still describes
+only the older `266D1AF6` set.
+
+For validating container work specifically, capture with a **large, multi-class
+grid**. A single-car session exercises slot 0 and nothing else, so a wrong
+stride is invisible; a 38-car field makes `slotIndex == i` hold across 40 slots
+and an 11 MB span, which is what confirmed the stride `0x472C8` survived
+`1.4.1.3` unchanged. `garageIndex` is not a useful discriminator — it reads `0`
+for every slot even in the garage.
+
 ### What is still out of reach
 
 `derivedFlags.0` is refused by the reference profile: it is written by
