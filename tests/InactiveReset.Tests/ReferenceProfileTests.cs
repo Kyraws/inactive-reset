@@ -85,10 +85,11 @@ public sealed class ReferenceProfileTests
         }
 
         var oldIndex = ReanchorTool.BuildReferenceIndex(older);
-        var newIndex = ReanchorTool.BuildReferenceIndex(newer);
+        var newProfiles = ReanchorTool.ReferenceProfileIndex.Build(
+            newer, ReanchorTool.BuildReferenceIndex(newer));
 
         var match = ReanchorTool.RemapDataByReferenceProfile(
-            older, newer, oldTarget, oldIndex, newIndex);
+            older, oldTarget, oldIndex, newProfiles);
 
         Assert.NotNull(match);
         Assert.Equal((ulong)newTarget, match!.NewRva);
@@ -132,9 +133,10 @@ public sealed class ReferenceProfileTests
         }
 
         var match = ReanchorTool.RemapDataByReferenceProfile(
-            older, newer, oldTarget,
+            older, oldTarget,
             ReanchorTool.BuildReferenceIndex(older),
-            ReanchorTool.BuildReferenceIndex(newer));
+            ReanchorTool.ReferenceProfileIndex.Build(
+                newer, ReanchorTool.BuildReferenceIndex(newer)));
 
         Assert.NotNull(match);
         Assert.Equal((ulong)newTarget, match!.NewRva);
@@ -155,9 +157,10 @@ public sealed class ReferenceProfileTests
         WriteRead(newer, 0x2200, 0x5AB0, [0x3B, 0xC2, 0x0F, 0x4C, 0xD0]);
 
         var match = ReanchorTool.RemapDataByReferenceProfile(
-            older, newer, 0x6000,
+            older, 0x6000,
             ReanchorTool.BuildReferenceIndex(older),
-            ReanchorTool.BuildReferenceIndex(newer));
+            ReanchorTool.ReferenceProfileIndex.Build(
+                newer, ReanchorTool.BuildReferenceIndex(newer)));
 
         Assert.Null(match);
     }
@@ -169,9 +172,10 @@ public sealed class ReferenceProfileTests
         var newer = Filler(0x8000, seed: 42);
 
         var match = ReanchorTool.RemapDataByReferenceProfile(
-            older, newer, 0x6000,
+            older, 0x6000,
             ReanchorTool.BuildReferenceIndex(older),
-            ReanchorTool.BuildReferenceIndex(newer));
+            ReanchorTool.ReferenceProfileIndex.Build(
+                newer, ReanchorTool.BuildReferenceIndex(newer)));
 
         Assert.Null(match);
     }

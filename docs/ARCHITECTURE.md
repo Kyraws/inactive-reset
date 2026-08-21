@@ -275,6 +275,48 @@ IS the evidence — undeduplicated, one reference looks like two and clears any
 minimum a caller sets. `RemapDataByReferenceProfile` collapses sites within four
 bytes of each other before counting.
 
+### Sample the references, do not count them all
+
+Every reference site costs a masked search of the whole new image, so reference
+voting costs sites x 64 MB. `containers.pointer` has 860 sites and only 121 of
+them produced a unique match on `0F6DCAC1` — 739 searches of 64 MB, for nothing.
+A single address took minutes and a full run never finished.
+
+The vote exists to catch a **dissenter**, and a sample catches one as well as an
+exhaustive count does: eight agreeing votes and eight hundred say the same
+thing. So sites are ordered by how distinctive their surroundings are — a window
+of varied bytes pins a location down, a window of repeated bytes does not — then
+capped, and the search stops as soon as enough agree with no dissent.
+
+Whole-profile run time went from hours to **four minutes**, which is what makes
+it usable inside a hypothesis loop rather than once per patch.
+
+`DataMatch.Sites` therefore counts references EXAMINED, not references
+available. A small number there is the search being efficient, not the evidence
+being thin.
+
+### A length swing is a wrong answer, not a weak one
+
+The fingerprint tier refuses when the function it lands on differs sharply in
+length from the old one, rather than resolving with lower confidence. The
+distinction is not pedantic.
+
+Measured on `0F6DCAC1`: early in round 2, only two of `probe`'s four globals had
+been translated, and fingerprinting on those two landed `0x1BC0` away from the
+truth, in a function of length `0x1BA` against the old `0x279`. Later in the
+same round `getSpotTransform` — **the same address** — had all four globals and
+landed correctly.
+
+Had the swung match been accepted as `I`, the damage would not have stopped at
+one wrong address. The probe-byte refresh fires on anything not marked `U`, so
+the tool would have read the new image at an address it had got wrong and stored
+those bytes as what the build gate expects. The gate would then compare the new
+image against itself and could never fail — the exact defect "the probe must
+never vouch for itself" exists to prevent, arriving through a new door.
+
+Refusing also produces the better answer, because a later round has more seeds
+than an earlier one. Deferred, `probe` resolved correctly in round 3.
+
 ### What is still out of reach
 
 `derivedFlags.0` is refused by the reference profile: it is written by

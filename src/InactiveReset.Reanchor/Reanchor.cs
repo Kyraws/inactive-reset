@@ -40,6 +40,11 @@ public static class Reanchor
         public long Delta => (long)NewRva - (long)OldRva;
     }
 
+    /// <param name="Sites">
+    /// References actually EXAMINED, not the total available. Sampling stops
+    /// early once enough agree, so a small number here is the search being
+    /// efficient, not the evidence being thin.
+    /// </param>
     public sealed record DataMatch(
         ulong OldRva, ulong NewRva, int Votes, int Sites, int CandidateCount)
     {
@@ -94,16 +99,45 @@ public static class Reanchor
     public static DataMatch? RemapData(
         ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, ulong target,
         Dictionary<ulong, List<(int Site, int DisplacementOffset)>> oldIndex,
-        int context = 24)
+        int context = 24, int maxSites = 32, int enough = 8)
     {
-        if (!oldIndex.TryGetValue(target, out var sites) || sites.Count == 0)
+        if (!oldIndex.TryGetValue(target, out var indexed) || indexed.Count == 0)
         {
             return null;
         }
 
-        var votes = new Dictionary<ulong, int>();
-        foreach (var (site, displacementOffset) in sites)
+        // Sample the references; do not walk all of them.
+        //
+        // Each site costs a masked search of the whole new image, so the cost is
+        // sites x image size. `containers.pointer` has 860 sites, and measured on
+        // 0F6DCAC1 only 121 of them produced a unique match -- the other 739
+        // searches were 64 MB of pure waste. A single address took minutes.
+        //
+        // The vote exists to catch a DISSENTER, and a sample catches one just as
+        // well as an exhaustive count: 8 agreeing votes and 800 agreeing votes
+        // say the same thing. What matters is trying the sites most likely to
+        // match uniquely first, so order by how distinctive each one's
+        // surroundings are -- a window of varied bytes pins down a location, a
+        // window of repeated ones does not.
+        var ranked = new List<(int Site, int DisplacementOffset, int Distinct)>(indexed.Count);
+        foreach (var (site, displacementOffset) in indexed)
         {
+            var from = Math.Max(0, site - context);
+            var to = Math.Min(older.Length, site + 16 + context);
+            ranked.Add((site, displacementOffset, DistinctByteCount(older[from..to])));
+        }
+        ranked.Sort((a, b) => b.Distinct.CompareTo(a.Distinct));
+
+        var votes = new Dictionary<ulong, int>();
+        var examined = 0;
+        foreach (var (site, displacementOffset, _) in ranked)
+        {
+            if (examined >= maxSites)
+            {
+                break;
+            }
+            examined++;
+
             var start = Math.Max(0, site - context);
             var end = Math.Min(older.Length, site + 16 + context);
             var pattern = older[start..end];
@@ -124,13 +158,20 @@ public static class Reanchor
             }
 
             var newSite = hits[0] + (site - start);
-            if (Reanchor.DecodeRipRef(newer, newSite) is not { } reference)
+            if (DecodeRipRef(newer, newSite) is not { } reference)
             {
                 continue;
             }
             var displacement = BitConverter.ToInt32(newer.Slice(newSite + reference.DisplacementOffset, 4));
             var resolved = (ulong)(newSite + reference.Length + displacement);
             votes[resolved] = votes.GetValueOrDefault(resolved) + 1;
+
+            // Enough agreement, no dissent: more searching cannot change the
+            // answer, only the size of the number printed beside it.
+            if (votes.Count == 1 && votes[resolved] >= enough)
+            {
+                break;
+            }
         }
 
         if (votes.Count == 0)
@@ -139,7 +180,7 @@ public static class Reanchor
         }
 
         var best = votes.OrderByDescending(v => v.Value).First();
-        return new DataMatch(target, best.Key, best.Value, sites.Count, votes.Count);
+        return new DataMatch(target, best.Key, best.Value, examined, votes.Count);
     }
 
     /// <summary>
@@ -508,9 +549,9 @@ public static class Reanchor
     /// agreement with another tier, never by this score alone.</para>
     /// </summary>
     public static ReferenceProfileMatch? RemapDataByReferenceProfile(
-        ReadOnlySpan<byte> older, ReadOnlySpan<byte> newer, ulong target,
+        ReadOnlySpan<byte> older, ulong target,
         Dictionary<ulong, List<(int Site, int DisplacementOffset)>> oldIndex,
-        Dictionary<ulong, List<(int Site, int DisplacementOffset)>> newIndex,
+        ReferenceProfileIndex newProfiles,
         int prefix = 5, int minimumSites = 2)
     {
         if (!oldIndex.TryGetValue(target, out var indexed))
@@ -535,24 +576,12 @@ public static class Reanchor
         var runnerUp = 0;
         var bestSites = 0;
 
-        foreach (var (candidate, indexedSites) in newIndex)
+        foreach (var (candidate, entry) in newProfiles.Profiles)
         {
-            if (indexedSites.Count < minimumSites)
-            {
-                continue;
-            }
-
-            var sites = Distinct(indexedSites);
-            if (sites.Count < minimumSites)
-            {
-                continue;
-            }
-
-            var have = ContextCounts(newer, sites, prefix);
             var score = 0;
             foreach (var (context, count) in want)
             {
-                if (have.TryGetValue(context, out var mine))
+                if (entry.Contexts.TryGetValue(context, out var mine))
                 {
                     score += Math.Min(count, mine);
                 }
@@ -563,7 +592,7 @@ public static class Reanchor
                 runnerUp = best;
                 best = score;
                 bestTarget = candidate;
-                bestSites = sites.Count;
+                bestSites = entry.Sites;
             }
             else if (score > runnerUp)
             {
@@ -575,6 +604,53 @@ public static class Reanchor
             ? null
             : new ReferenceProfileMatch(
                 target, bestTarget, best, runnerUp, oldSites.Count, bestSites);
+    }
+
+    /// <summary>
+    /// Every candidate address in an image, with the multiset of instruction
+    /// contexts that read it, computed once.
+    ///
+    /// Built once and reused for every address being re-derived. Profiling
+    /// per-address instead re-walks all hundred thousand candidates each time;
+    /// for a profile of thirty addresses that is millions of redundant passes,
+    /// slow enough that the tool looks hung — which is exactly how it behaved
+    /// before this existed.
+    /// </summary>
+    public sealed class ReferenceProfileIndex
+    {
+        internal readonly record struct Entry(Dictionary<string, int> Contexts, int Sites);
+
+        private readonly Dictionary<ulong, Entry> _profiles;
+
+        private ReferenceProfileIndex(Dictionary<ulong, Entry> profiles) => _profiles = profiles;
+
+        public int Count => _profiles.Count;
+
+        internal IEnumerable<KeyValuePair<ulong, Entry>> Profiles => _profiles;
+
+        public static ReferenceProfileIndex Build(
+            ReadOnlySpan<byte> image,
+            Dictionary<ulong, List<(int Site, int DisplacementOffset)>> index,
+            int prefix = 5, int minimumSites = 2)
+        {
+            var profiles = new Dictionary<ulong, Entry>();
+            foreach (var (target, indexed) in index)
+            {
+                // Cheap rejection first: the deduplicated count can only shrink,
+                // so anything already below the floor cannot clear it.
+                if (indexed.Count < minimumSites)
+                {
+                    continue;
+                }
+                var sites = Distinct(indexed);
+                if (sites.Count < minimumSites)
+                {
+                    continue;
+                }
+                profiles[target] = new Entry(ContextCounts(image, sites, prefix), sites.Count);
+            }
+            return new ReferenceProfileIndex(profiles);
+        }
     }
 
     /// <summary>
@@ -600,7 +676,6 @@ public static class Reanchor
         }
         return counts;
     }
-
 
     /// <summary>
     /// Collapse index entries that describe the SAME instruction.
@@ -736,6 +811,44 @@ public static class Reanchor
                 oldFunction, (ulong)best, bestCount, newTargets.Count,
                 FunctionEnd(older, (int)oldFunction) - (int)oldFunction,
                 FunctionEnd(newer, best) - best);
+    }
+
+
+    /// <summary>
+    /// Every distinct data address referenced from inside one function.
+    ///
+    /// This is the seed for <see cref="LocateFunctionByDataFingerprint"/>: take
+    /// what the OLD function read, translate each address through what the data
+    /// tiers have already resolved, and the new function is the one that reads
+    /// the translated set.
+    ///
+    /// Returns empty for a function that references no globals, which is a
+    /// refusal — those cannot be fingerprinted at all.
+    /// </summary>
+    public static List<ulong> ReferencedTargets(ReadOnlySpan<byte> image, ulong function)
+    {
+        var start = (int)function;
+        if (start < 0 || start >= image.Length)
+        {
+            return [];
+        }
+
+        var end = FunctionEnd(image, start);
+        var targets = new HashSet<ulong>();
+        for (var i = start; i < end; i++)
+        {
+            if (DecodeRipRef(image, i) is not { } reference)
+            {
+                continue;
+            }
+            var displacement = BitConverter.ToInt32(image.Slice(i + reference.DisplacementOffset, 4));
+            var target = i + reference.Length + (long)displacement;
+            if (target >= 0 && target < image.Length)
+            {
+                targets.Add((ulong)target);
+            }
+        }
+        return [.. targets];
     }
 
     /// <summary>

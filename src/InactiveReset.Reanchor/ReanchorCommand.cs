@@ -74,64 +74,226 @@ internal static class ReanchorCommand
         Console.WriteLine("indexing references in the old image...");
         var stopwatch = Stopwatch.StartNew();
         var index = Reanchor.BuildReferenceIndex(older);
-        Console.WriteLine($"  {index.Count:N0} referenced addresses in {stopwatch.Elapsed.TotalSeconds:F1} s\n");
+        Console.WriteLine($"  {index.Count:N0} referenced addresses in {stopwatch.Elapsed.TotalSeconds:F1} s");
+
+        // The new image needs one too. The reference-profile tier compares an
+        // old address's usage against EVERY candidate in the new image, so it
+        // needs the new index whole, not a lookup at a time.
+        stopwatch.Restart();
+        var newIndex = Reanchor.BuildReferenceIndex(newer);
+        Console.WriteLine($"  {newIndex.Count:N0} in the new image in {stopwatch.Elapsed.TotalSeconds:F1} s\n");
+
+        // Profiling every candidate once, not once per address being
+        // re-derived. The difference is millions of redundant passes.
+        stopwatch.Restart();
+        var newProfiles = Reanchor.ReferenceProfileIndex.Build(newer, newIndex);
+        Console.WriteLine($"  {newProfiles.Count:N0} candidate profiles in {stopwatch.Elapsed.TotalSeconds:F1} s\n");
 
         Console.WriteLine($"{"name",-34} {"old",-12} {"new",-12} delta      evidence");
         Console.WriteLine(new string('-', 92));
 
+        // ---- the fixpoint --------------------------------------------------
+        //
+        // The first three tiers find code by its bytes and read data off it.
+        // The last two invert that: a recompiled function is unfindable by its
+        // bytes, but it still reads the same globals, so re-derive the globals
+        // and the function becomes the place that reads them.
+        //
+        // That inversion is why this is a loop and not a pass. Every address
+        // resolved is a seed for the next round, and the run ends when a round
+        // resolves nothing new. What is left over is the refusal list, and it is
+        // a refusal list rather than a guess list on purpose.
         var unresolved = new List<string>();
         var resolvedData = new List<(ulong Old, ulong New)>();
         var deferred = new List<(string[] Path, string Name, ulong OldRva)>();
-        foreach (var (path, name, oldRva, isCode) in addresses)
+
+        // old RVA -> new RVA, for every DATA address resolved so far. This is
+        // what translates a function's reference set from one build to the next.
+        var translation = new Dictionary<ulong, ulong>();
+
+        var pending = new List<(string[] Path, string Name, ulong Rva, bool IsCode)>(addresses);
+        var round = 0;
+
+        while (pending.Count > 0)
         {
-            if (isCode)
+            round++;
+            var stillPending = new List<(string[] Path, string Name, ulong Rva, bool IsCode)>();
+            var resolvedThisRound = 0;
+
+            if (round > 1)
             {
-                var match = Reanchor.RemapCode(older, newer, oldRva);
-                if (match is null)
-                {
-                    Report(name, oldRva, null, "NO UNIQUE MATCH");
-                    unresolved.Add(name);
-                    MarkUnresolved(profile, path);
-                    continue;
-                }
-                Report(name, oldRva, match.NewRva, $"{match.BytesUsed}B signature", match.Delta);
-                Apply(profile, path, match.NewRva, unanimous: true);
+                Console.WriteLine();
+                Console.WriteLine($"round {round} - retrying {pending.Count} address(es) with what round {round - 1} resolved");
             }
-            else
+
+            foreach (var (path, name, oldRva, isCode) in pending)
             {
-                var match = Reanchor.RemapData(older, newer, oldRva, index);
-                if (match is not null)
+                if (isCode)
                 {
-                    var evidence = match.Unanimous
-                        ? $"{match.Votes}/{match.Sites} refs agree"
-                        : $"{match.Votes}/{match.Sites}, {match.CandidateCount} CANDIDATES";
-                    Report(name, oldRva, match.NewRva, evidence, match.Delta);
-                    Apply(profile, path, match.NewRva, match.Unanimous);
-                    resolvedData.Add((oldRva, match.NewRva));
+                    // Round 1 only: signature search does not get better with
+                    // more resolved data, so retrying it is wasted work.
+                    if (round == 1)
+                    {
+                        var match = Reanchor.RemapCode(older, newer, oldRva);
+                        if (match is not null)
+                        {
+                            Report(name, oldRva, match.NewRva, $"{match.BytesUsed}B signature", match.Delta);
+                            Apply(profile, path, match.NewRva, unanimous: true);
+                            resolvedThisRound++;
+                            continue;
+                        }
+                        stillPending.Add((path, name, oldRva, isCode));
+                        continue;
+                    }
+
+                    // The function was recompiled. Fingerprint it by the globals
+                    // it reads, translated through what the data tiers found.
+                    var sought = Reanchor.ReferencedTargets(older, oldRva);
+                    var mapped = new List<ulong>();
+                    foreach (var target in sought)
+                    {
+                        if (translation.TryGetValue(target, out var moved))
+                        {
+                            mapped.Add(moved);
+                        }
+                    }
+
+                    // One global is not a fingerprint: plenty of functions read
+                    // any given address. Two is the floor, and even that only
+                    // earns an I.
+                    if (mapped.Count < 2)
+                    {
+                        stillPending.Add((path, name, oldRva, isCode));
+                        continue;
+                    }
+
+                    var print = Reanchor.LocateFunctionByDataFingerprint(
+                        older, newer, oldRva, mapped, newIndex);
+
+                    // A length swing is not low confidence, it is a WRONG
+                    // ANSWER: the fingerprint landed in some other function.
+                    // Refusing here rather than downgrading to I matters more
+                    // than it looks -- `probe` is applied like any other entry,
+                    // and the probe-byte refresh fires on anything not marked U.
+                    // Accepting a swung match would read the new image at an
+                    // address we got wrong and store those bytes as what the
+                    // build gate expects, so the gate would compare the new
+                    // image against itself and could never fail. That is the
+                    // exact defect "the probe must never vouch for itself"
+                    // exists to prevent, arriving through a new door.
+                    //
+                    // Staying pending is also the useful answer: measured on
+                    // 0F6DCAC1, probe fingerprinted on 2 globals early in a
+                    // round and landed 0x1BC0 wrong, while getSpotTransform --
+                    // the SAME address -- ran later in that round with 4 globals
+                    // and landed right. A later round is a better round.
+                    if (print is null || !print.LengthPlausible)
+                    {
+                        stillPending.Add((path, name, oldRva, isCode));
+                        continue;
+                    }
+
+                    // Every sought global found AND a length that held is two
+                    // independent things agreeing: the reference set, and the
+                    // function's shape. A partial reference set is an I.
+                    var solid = print.TargetsFound == print.TargetsSought;
+                    Report(name, oldRva, print.NewRva,
+                           $"fingerprint {print.TargetsFound}/{print.TargetsSought} globals, " +
+                           $"len 0x{print.OldLength:X}->0x{print.NewLength:X}",
+                           print.Delta);
+                    Apply(profile, path, print.NewRva, solid);
+                    resolvedThisRound++;
                     continue;
                 }
 
-                // Reference voting failed. That happens when the functions doing
-                // the referencing were themselves recompiled, which is a
-                // property of the patch and says nothing about whether the datum
-                // is still findable. Constants still are -- try the content.
-                var byValue = Reanchor.RemapDataByValue(older, newer, oldRva);
-                if (byValue is not null)
+                // ---- data ----
+                if (round == 1)
                 {
-                    Report(name, oldRva, byValue.NewRva,
-                           $"value anchor, {byValue.Windows} window(s) to {byValue.WidestBytes}B",
-                           byValue.Delta);
-                    Apply(profile, path, byValue.NewRva, byValue.Corroborated);
-                    resolvedData.Add((oldRva, byValue.NewRva));
+                    var match = Reanchor.RemapData(older, newer, oldRva, index);
+                    if (match is not null)
+                    {
+                        var evidence = match.Unanimous
+                            ? $"{match.Votes}/{match.Sites} refs agree"
+                            : $"{match.Votes}/{match.Sites}, {match.CandidateCount} CANDIDATES";
+                        Report(name, oldRva, match.NewRva, evidence, match.Delta);
+                        Apply(profile, path, match.NewRva, match.Unanimous);
+                        resolvedData.Add((oldRva, match.NewRva));
+                        translation[oldRva] = match.NewRva;
+                        resolvedThisRound++;
+                        continue;
+                    }
+
+                    // Reference voting failed. That happens when the functions
+                    // doing the referencing were themselves recompiled, which is
+                    // a property of the patch and says nothing about whether the
+                    // datum is still findable. Constants still are -- try the
+                    // content.
+                    var byValue = Reanchor.RemapDataByValue(older, newer, oldRva);
+                    if (byValue is not null)
+                    {
+                        Report(name, oldRva, byValue.NewRva,
+                               $"value anchor, {byValue.Windows} window(s) to {byValue.WidestBytes}B",
+                               byValue.Delta);
+                        Apply(profile, path, byValue.NewRva, byValue.Corroborated);
+                        resolvedData.Add((oldRva, byValue.NewRva));
+                        translation[oldRva] = byValue.NewRva;
+                        resolvedThisRound++;
+                        continue;
+                    }
+
+                    stillPending.Add((path, name, oldRva, isCode));
                     continue;
                 }
 
-                Report(name, oldRva, null, "NO RESOLVED REFERENCES");
-                unresolved.Add(name);
-                MarkUnresolved(profile, path);
+                // Both content tiers failed. The address is read by recompiled
+                // code and holds something volatile -- a heap pointer, usually.
+                // What survives either is the SHAPE of the code that reads it.
+                var profiled = Reanchor.RemapDataByReferenceProfile(
+                    older, oldRva, index, newProfiles);
+                if (profiled is null || !profiled.Unrivalled)
+                {
+                    stillPending.Add((path, name, oldRva, isCode));
+                    continue;
+                }
+
+                // Deliberately never unanimous. A reference profile SCORES
+                // candidates, it does not prove one: measured on 0F6DCAC1 the
+                // correct answers beat their runner-up by only 1.5x to 3x, and
+                // garPosTable's runner-up was pitPosTable, eight bytes away.
+                // This tier can reach I on its own and no further; E needs a
+                // second, independent technique to agree, and if one had, the
+                // address would not have reached this round.
+                Report(name, oldRva, profiled.NewRva,
+                       $"ref profile {profiled.Score} vs {profiled.RunnerUpScore}, " +
+                       $"{profiled.OldSites}->{profiled.NewSites} sites",
+                       profiled.Delta);
+                Apply(profile, path, profiled.NewRva, unanimous: false);
+                resolvedData.Add((oldRva, profiled.NewRva));
+                translation[oldRva] = profiled.NewRva;
+                resolvedThisRound++;
+            }
+
+            pending = stillPending;
+            if (resolvedThisRound == 0)
+            {
+                break;
+            }
+        }
+
+        // Whatever survived every round is unresolved, and says so in the file.
+        foreach (var (path, name, oldRva, isCode) in pending)
+        {
+            Report(name, oldRva, null, isCode ? "NO UNIQUE MATCH" : "NO RESOLVED REFERENCES");
+            unresolved.Add(name);
+            MarkUnresolved(profile, path);
+            if (!isCode)
+            {
                 deferred.Add((path, name, oldRva));
             }
         }
+
+        Console.WriteLine();
+        Console.WriteLine($"fixpoint reached after {round} round(s)");
 
         if (deferred.Count > 0 && args.Contains("--infer-adjacent"))
         {
