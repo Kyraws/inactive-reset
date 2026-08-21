@@ -206,6 +206,66 @@ every launch gate has been exercised, but neither `launch direct` nor
 
 ---
 
+## Driving verification of build 0F6DCAC1, 2026-08-21
+
+The reanchor was verified by driving, because it re-derives ADDRESSES and can
+never speak for BEHAVIOUR. Three placements at Circuit de Barcelona in the
+Richard Mille AF Corse #50, against the candidate profile, not a published one.
+
+| run | error | fwd | lat | bearing |
+|---|---|---|---|---|
+| `cp-023328` run 1 | 0.7107 m | +0.502 | +0.503 | 45.1 deg |
+| `cp-023328` run 2 | 0.7104 m | +0.502 | +0.503 | 45.1 deg |
+| `End of Lap` | 0.7047 m | +0.495 | +0.502 | 45.4 deg |
+
+**The addresses are correct.** Every build gate passed against the live process,
+including the probe at the re-derived `0x00A7E2D0`. The 24-byte write applied and
+restored, the pit flag and sector writes read back, arrival verified. The two
+identical runs repeat to **0.28 mm** — better than the 1.5 mm recorded on the
+previous build, and not something a wrong address can produce.
+
+**The behaviour changed anyway.** The placement error is constant in the VEHICLE
+frame — two points 4 km apart on track, headings +29.6 deg and -23.4 deg, same
+offset to within 7 mm — but its magnitude moved from **0.567 m on `1AC2F605` to
+0.710 m on `0F6DCAC1`**, and the lateral component appears to have flipped sign.
+
+This is not the 2026-08-11 failure repeating. That patch retuned engine
+constants; this one did not. `yawOffsetDegrees` (45.0), `searchStartFactor`
+(0.55), `searchStepFactor` (0.1) and `searchMaxFactor` (1.5) are **byte-identical
+across both builds**. The calibration is the same file. Everything the tool reads
+held still and the car still landed 25% further out, so what moved is the
+engine's own placement geometry.
+
+It is also the exact hazard the reanchor documentation claims: every gate green,
+every address right, placement quietly worse.
+
+### Why the two-checkpoint test does not discriminate
+
+The plan was to place at two checkpoints "whose range from the pit spot differs",
+so that a rotation error (which scales with range) could be told from a
+translation error (which does not). **Checkpoints cannot do that.** Range is set
+by the calibration constant `D` in `rest = destination + D*heading + (0,H,0)`, so
+every checkpoint places at the same distance; measured, both are 1.9269 m. Nor
+does varying the heading help: a rotation of the drift vector and a fixed
+vehicle-frame translation are both constant in the vehicle frame.
+
+The only knob that changes the range is `D` itself. Placing with `D` deliberately
+altered would separate them — a rotation error scales with it, a translation
+error does not. That is a diagnostic probe and NOT the re-calibration the
+advisory forbids, which is about absorbing the miss into shipped constants.
+
+### It is not ride height
+
+Ride height moves the car vertically. The vertical error is 0.013 - 0.052 m, so
+`H` is right; the miss is entirely horizontal.
+
+### The pi/4 in the written orientation is correct
+
+`ori[1]` differs from the target yaw by exactly 0.785398 rad in every plan. That
+is the tool compensating for the engine's `yawOffsetDegrees = 45.0`, by design,
+and it is unchanged across both builds. It is not the defect, despite the
+measured error bearing also sitting near 45 deg.
+
 ## Reanchor: what it can re-derive, and what it cannot
 
 Five techniques. Each refuses rather than guesses, and what each one cannot do

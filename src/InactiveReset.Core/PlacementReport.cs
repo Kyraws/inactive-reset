@@ -87,8 +87,13 @@ public static class PlacementReport
                 : OutcomeSeverity.Normal,
             outcome.HorizontalErrorMetres < GoodHorizontalErrorMetres
                 ? null
-                : "the known heading error puts every placement about 0.57 m out; "
-                  + "this is expected, not a failed placement"));
+                : "a known, unfixed heading error puts every placement out by a "
+                  + "constant amount in the vehicle frame; this is expected, not a "
+                  + "failed placement. The size is NOT constant across builds -- it "
+                  + "was ~0.57 m on 1AC2F605 and ~0.71 m on 0F6DCAC1, measured with "
+                  + "the same calibration and identical engine tunables. Compare "
+                  + "against the worst error recorded in the calibration, not a "
+                  + "remembered number."));
 
         lines.Add(new OutcomeLine(
             "vertical error", $"{outcome.VerticalErrorMetres:F3} m", OutcomeSeverity.Normal));

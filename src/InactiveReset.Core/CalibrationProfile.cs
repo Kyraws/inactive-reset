@@ -48,7 +48,8 @@ public sealed class CalibrationProfile
     ///
     /// This is deliberately NOT a refusal. A calibration can be usable and
     /// imprecise at the same time: the current Barcelona profile places with a
-    /// known ~0.57 m heading error but ~1.5 mm repeatability, which is wrong for
+    /// known heading error (~0.57 m on 1AC2F605, ~0.71 m on 0F6DCAC1) but
+    /// sub-millimetre repeatability, which is wrong for
     /// hot-lap work and perfectly fine for getting back to a corner. Treating
     /// the note as a lock conflates "here is what is wrong with this" with
     /// "you may not use this", and would have made a working tool refuse.

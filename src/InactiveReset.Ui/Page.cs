@@ -522,7 +522,7 @@ function renderCheckpoints(s) {
 
   const advisory = (s.calibrations || []).find(c => c.advisory);
   document.getElementById('advisory').textContent = advisory
-    ? 'Calibration note: placement is currently about 0.57 m off because of a known heading error.'
+    ? 'Calibration note: a known heading error puts placement out by a constant amount. It was about 0.57 m on the previous build and about 0.71 m on this one, so treat the recorded worst error as the guide, not a fixed figure.'
     : '';
 }
 

@@ -16,9 +16,12 @@ public sealed record PlacementModel
     /// GetPitDestination mode 2 applies <c>oriOut[1] -= sign * this</c>, in
     /// radians. Read live from the running engine -- see <see cref="EngineTunables"/>.
     ///
-    /// A separate, still-open defect applies on top of this: an 11.633 deg
-    /// heading error measured on the 266D1AF6 build, landing the car ~0.57 m
-    /// off. Do NOT compensate for that by adjusting D or H; see
+    /// A separate, still-open defect applies on top of this: a heading error
+    /// measured at 11.633 deg on the 266D1AF6 build, landing the car ~0.57 m
+    /// off. Its SIZE moves between builds even when nothing here does -- on
+    /// 0F6DCAC1 it is ~0.71 m, with these tunables byte-identical and the same
+    /// calibration, so the engine's own placement geometry changed. Do NOT
+    /// compensate for that by adjusting D or H; see
     /// docs/HEADING_BUG.md.
     /// </summary>
     public required float YawOffsetMode2 { get; init; }
