@@ -12,6 +12,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\InactiveReset.Core\InactiveReset.Core.csproj" />
+    <!--
+      The maintainer tool is referenced for tests only. Its re-derivation
+      techniques decide whether a published profile is right, which makes them
+      worth pinning even though the tool itself never ships.
+    -->
+    <ProjectReference Include="..\..\src\InactiveReset.Reanchor\InactiveReset.Reanchor.csproj" />
   </ItemGroup>
 
 </Project>

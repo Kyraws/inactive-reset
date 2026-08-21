@@ -206,6 +206,112 @@ every launch gate has been exercised, but neither `launch direct` nor
 
 ---
 
+## Reanchor: what it can re-derive, and what it cannot
+
+Five techniques. Each refuses rather than guesses, and what each one cannot do
+is a property of the patch, not a bug.
+
+| technique | finds | fails when |
+|---|---|---|
+| masked signature | a function that MOVED | the function was RECOMPILED |
+| reference vote | a datum, via the instructions referencing it | those instructions were recompiled |
+| value anchor | a datum, via the CONTENT around it | the content is volatile runtime state |
+| reference profile | a datum, via how MANY instructions read it and what they look like | it has only a reference or two, or a neighbour is read by the same code |
+| data fingerprint | a RECOMPILED function, via the globals it reads | it reads no globals, or its globals are still unresolved |
+
+Measured on build `0F6DCAC1` (2026-08-20, `1.4.0.0` → `1.4.1.3`, module shrank
+by `0x3B000`): signature and reference matching alone left **20 of 40**
+addresses unresolved. Value anchoring recovered all four engine tunables — a
+run of floats (`0.55, 0.1, 1.5, 25, 45`) still present verbatim and unique in
+the new image — taking it to 16. `--infer-adjacent`, which is opt-in and writes
+confidence `I`, takes it to 8.
+
+The deltas are **not uniform**: one region moved `-0x2B550`, another `-0x2C010`.
+A single global shift would have been wrong for half the profile, which is why
+adjacency inference demands several agreeing neighbours and is never the
+default.
+
+### Data before code, and why the order is not arbitrary
+
+The first three tiers all find code first and read data off it. The last two
+invert that, and the inversion is the point.
+
+A recompiled function cannot be found by its bytes — that is arithmetic, not a
+missing feature. But it still does the same job, so it still reads the same
+globals. Re-derive the globals first, and the function becomes findable as the
+one place in the new image that reads all of them together.
+
+So `reanchor` runs its tiers to a **fixpoint** rather than in one pass: every
+address that resolves is a seed for the next round, and the run ends when a
+round resolves nothing new. What is left over is the refusal list.
+
+On `0F6DCAC1` this order is what unblocked the build. Four data addresses
+resolved by reference profile — `spotTable.garPosTable`, `containers.table`,
+`rules.trackLimits.config` and, by delta corroboration,
+`rules.trackLimits.derivedFlags.0`. Feeding the four spotTable addresses back in
+as a fingerprint then located `getSpotTransform`, which is also `probe`, at
+`0x00A7E2D0`: 4 of 4 targets, length `0x279` → `0x278`.
+
+### These tiers are statistical, so agreement is the only evidence
+
+A reference profile scores candidates; it does not prove one. Measured on this
+patch, correct answers beat their runner-up by ratios from 1.5x to 3x — and the
+runner-up for `garPosTable` was `pitPosTable`, eight bytes away and read by the
+same functions. **No threshold separates right from lucky.** An address earns
+`E` by two INDEPENDENT techniques agreeing, never by one technique's own
+confidence in itself.
+
+Delta arithmetic is not one of those independent techniques. `--infer-adjacent`
+applies a neighbour's delta, so "the inferred address matches the regional
+delta" is a restatement, not a corroboration.
+
+### Counting references means deduplicating them
+
+`BuildReferenceIndex` reports a REX-prefixed reference **twice**: `48 8B 05 disp`
+decodes at its own address with length 7, and `8B 05 disp` decodes one byte
+later with length 6, and both resolve to the same target. Harmless for a
+majority vote, where it scales every tally alike. Not harmless where the count
+IS the evidence — undeduplicated, one reference looks like two and clears any
+minimum a caller sets. `RemapDataByReferenceProfile` collapses sites within four
+bytes of each other before counting.
+
+### What is still out of reach
+
+`derivedFlags.0` is refused by the reference profile: it is written by
+`mov word ptr [rip+x], 0x0101`, and the `0x66` operand-size prefix is not one of
+the forms `DecodeRipRef` handles. The decoder is deliberately partial — an
+unhandled form yields no reference rather than a wrong one — so this is a
+refusal, not a miss. Handling `0x66` would resolve it, at the cost of touching a
+primitive the older tiers also depend on.
+
+Heap-resident data cannot be validated from a module dump at all. `pitPosTable`
+and `garPosTable` are pointers; a dump confirms the pointer variable is where
+the profile says, and can say nothing about what it points at.
+
+### The probe must never vouch for itself
+
+`reanchor` used to refresh the probe bytes by reading the NEW image at the probe
+RVA — **even when that RVA had not been re-derived**. The gate then compared the
+new image against bytes taken from the new image at the same address, so it
+could never fail. A reanchor that failed on half the profile produced one whose
+every gate passed, and `status` printed stale track-limits flags as a confident
+`0`.
+
+Three fixes, all tested:
+
+- `ProbeSpec.Rva` is an `Rva`, not a bare `ulong`, so its confidence is parsed
+  and enforced. `VerifyProbe` calls `Require` before reading anything.
+- `reanchor` refreshes the probe bytes only when the probe was re-derived, and
+  says loudly when it was not.
+- `RulesController.Read` no longer reaches through `Rva.Value`. An unresolved
+  rule reports as unread (`?`), never as a number.
+
+The general lesson is the one this codebase keeps relearning: `.Rva.Value`
+bypasses `Require()`, and every such bypass turns a refusal into plausible
+nonsense.
+
+---
+
 ## Known defects — read before trusting a placement
 
 **1. Placement is ~0.57 m off.** An **11.633 degree heading error** in the

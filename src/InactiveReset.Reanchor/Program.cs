@@ -63,11 +63,31 @@ internal static class Program
 
           inactive-reset-reanchor reanchor --old-dump <before.bin>
                                            --base <offsets/OLD.json>
-                                           [--out <file>]
+                                           [--out <file>] [--infer-adjacent]
               Captures the running game, re-derives every address against the
               old image, and writes a new profile. Anything it cannot resolve
               is marked confidence "U", so the tool refuses rather than reading
               the wrong place.
+
+              Three techniques, cheapest first:
+                signature     masked byte search. Finds a function that moved.
+                              Cannot find one that was RECOMPILED.
+                references    majority vote across the instructions that
+                              reference a datum. Fails when those instructions
+                              were themselves recompiled.
+                value anchor  finds a datum by the CONTENT around it. Works for
+                              constants, which survive a recompilation; never
+                              for live state, whose content differs between two
+                              captures anyway.
+
+              --infer-adjacent
+                  Last resort, OPT-IN. For a datum still unresolved, propose
+                  old+delta where several nearby addresses that WERE re-derived
+                  all moved by the same delta. Written as confidence "I", never
+                  "E". This is a guess and the rest of this tool is not: on
+                  0F6DCAC1 one region moved -0x2B550 and another -0x2C010, so a
+                  single global shift would have been wrong for half the
+                  profile. VERIFY before publishing.
 
         Patch day:
 
