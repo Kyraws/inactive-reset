@@ -197,7 +197,12 @@ never by version.
 Build gates (process, anticheat, hash, probe) · rules read and write, both
 mechanisms · capture from shared memory · calibration and checkpoint handling ·
 placement plan with zero residual · guarded 24-byte write and restore · arrival
-verification · CLI · web UI · windowed app · `reanchor`.
+verification · CLI · web UI · windowed app · `reanchor` · install discovery
+through Steam's library configuration.
+
+**Not yet verified:** starting the game. Both entry points are located and
+every launch gate has been exercised, but neither `launch direct` nor
+`launch eac` has been watched actually starting Le Mans Ultimate.
 
 ---
 

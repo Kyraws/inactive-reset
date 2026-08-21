@@ -123,6 +123,9 @@ internal static class Page
   button.act:hover:not(:disabled) { border-color:var(--accent); }
   button.act.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   button.act:disabled { opacity:.5; cursor:not-allowed; }
+  .actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  span.ok { color:var(--good); }
+  span.warn { color:var(--warn); }
   .divider { height:1px; background:var(--line); margin:15px 0; }
   .label { font-size:12px; font-weight:650; color:var(--muted); margin-bottom:7px;
            text-transform:uppercase; letter-spacing:.05em; }
@@ -195,6 +198,21 @@ internal static class Page
 </div>
 
 <main>
+  <section class="card">
+    <h2>Game</h2>
+    <div id="game"><div class="empty">looking for the install</div></div>
+    <div class="actions">
+      <button class="act primary" id="launchDirect" onclick="launch('direct')">Launch direct</button>
+      <button class="act" id="launchEac" onclick="launch('eac')">Launch with EAC</button>
+    </div>
+    <div class="hint" id="launchHint">
+      A direct launch has no anticheat in the process tree, and is the only kind
+      of session this tool can attach to. Launch with EAC for online racing -
+      this tool refuses to touch that session on purpose. Steam must already be
+      running either way.
+    </div>
+  </section>
+
   <section class="card">
     <h2>Session</h2>
     <div id="session"><div class="empty">waiting for the game</div></div>
@@ -334,6 +352,48 @@ async function allowFetch() {
   if (btn) { btn.disabled = true; btn.textContent = 'fetching...'; }
   const res = await api('/api/allow-fetch', {});
   if (!res.ok) alert(res.message || 'fetch failed');
+  refresh();
+}
+
+// The game card answers two questions that must not be allowed to look alike:
+// is the game up, and if it is, can this tool touch it? A protected session is
+// running perfectly well and is still unusable here.
+function renderGame(s) {
+  const el = document.getElementById('game');
+  const g = s.game || {};
+  const rows = [];
+
+  if (g.running) {
+    rows.push(['running', 'pid ' + g.pid + (g.protected
+      ? ' <span class="warn">started with EasyAntiCheat - this tool will not attach</span>'
+      : ' <span class="ok">started direct - attachable</span>')]);
+  } else {
+    rows.push(['running', 'no']);
+  }
+
+  if (g.install) {
+    rows.push(['install', esc(g.install)]);
+    rows.push(['found by', esc(g.foundBy)]);
+  } else if (g.installError) {
+    rows.push(['install', '<span class="warn">' + esc(g.installError) + '</span>']);
+  }
+
+  el.innerHTML = kv(rows);
+}
+
+async function launch(mode) {
+  const direct = document.getElementById('launchDirect');
+  const eac = document.getElementById('launchEac');
+  direct.disabled = true;
+  eac.disabled = true;
+  try {
+    const res = await api('/api/launch', {mode: mode});
+    // The server reports a refused gate as an error with its reason. Showing it
+    // verbatim matters: every one of them says what to do about it.
+    if (res.error) alert(res.error);
+  } catch (e) {
+    alert('could not reach the server');
+  }
   refresh();
 }
 
@@ -532,6 +592,7 @@ async function refresh() {
     return;
   }
   renderStatus(s);
+  renderGame(s);
   renderSession(s);
   renderPenalties(s);
   renderCheckpoints(s);
@@ -539,6 +600,12 @@ async function refresh() {
 
   document.getElementById('placeBtn').disabled = !!s.busy || !s.connected;
   document.getElementById('capBtn').disabled = !s.session;
+
+  // Both launches are refused while the game is up, so say so with the control
+  // rather than only in the error after it is pressed.
+  const g = s.game || {};
+  document.getElementById('launchDirect').disabled = !g.canLaunchDirect || !!g.running;
+  document.getElementById('launchEac').disabled = !g.canLaunchProtected || !!g.running;
 
   schedule(s.busy ? 250 : 700);
 }

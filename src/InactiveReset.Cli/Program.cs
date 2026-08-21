@@ -54,6 +54,11 @@ internal static class Program
             Error("CALIBRATION", ex.Message);
             return 8;
         }
+        catch (GameInstallException ex)
+        {
+            Error("GAME NOT FOUND", ex.Message);
+            return 9;
+        }
         catch (Exception ex)
         {
             Error("ERROR", ex.Message);
@@ -87,6 +92,7 @@ internal static class Program
             "watch" => Watch(offsets, data),
             "capture" => Capture(offsets, data, rest),
             "serve" => Serve(offsets, data, rest),
+            "launch" => Launch(data, rest),
             // `dump` and `reanchor` are maintainer tools and deliberately absent.
             // They live in src\InactiveReset.Reanchor, which is never published:
             // users consume offset profiles, they do not produce them.
@@ -549,6 +555,72 @@ internal static class Program
         }
     }
 
+    // ---- launch ------------------------------------------------------------
+
+    /// <summary>
+    /// Start the game, either way.
+    ///
+    /// The mode is a required, spelled-out argument rather than a flag with a
+    /// default. Both launches are legitimate and they are not interchangeable:
+    /// one produces a session this tool can use and one deliberately does not,
+    /// so defaulting would silently pick a side of that.
+    /// </summary>
+    private static int Launch(string dataDirectory, string[] args)
+    {
+        var gameDirectory = Flag(args, "--game-dir");
+
+        var set = Flag(args, "--set-game-dir");
+        if (set is not null)
+        {
+            var saved = GameLauncher.SetInstallDirectory(dataDirectory, set);
+            Console.WriteLine($"install directory saved: {saved.Root}");
+            return 0;
+        }
+
+        var verb = args.FirstOrDefault(a => !a.StartsWith('-'));
+
+        // `launch where` answers "which install would you use?" without starting
+        // anything -- the question you ask when a machine has two of them.
+        if (verb is "where")
+        {
+            var install = GameLauncher.Locate(dataDirectory, gameDirectory);
+            Console.WriteLine($"  install   {install.Root}");
+            Console.WriteLine($"  found by  {install.Source}");
+            Console.WriteLine($"  direct    {(File.Exists(install.DirectExe) ? "ok" : "MISSING")}  {install.DirectExe}");
+            Console.WriteLine($"  eac       {(File.Exists(install.ProtectedExe) ? "ok" : "MISSING")}  {install.ProtectedExe}");
+
+            var state = GameLauncher.Running();
+            Console.WriteLine($"  running   {(state.Running ? $"pid {state.ProcessId}, {(state.Protected ? "with EasyAntiCheat - NOT attachable" : "direct - attachable")}" : "no")}");
+            return 0;
+        }
+
+        var mode = verb switch
+        {
+            "direct" => LaunchMode.Direct,
+            "eac" => LaunchMode.Protected,
+            null => (LaunchMode?)null,
+            _ => null,
+        };
+
+        if (mode is null)
+        {
+            Error("LAUNCH",
+                $"""
+                say which launch you want.
+
+                  inactive-reset launch direct   no anticheat; this tool can attach
+                  inactive-reset launch eac      the normal protected launch
+                  inactive-reset launch where    which install would be used
+                """);
+            return 64;
+        }
+
+        var result = GameLauncher.Launch(mode.Value, dataDirectory, gameDirectory);
+        Console.WriteLine($"started pid {result.ProcessId}: {Path.GetFileName(result.ExecutablePath)}");
+        Console.WriteLine($"  {result.Message}");
+        return 0;
+    }
+
     // ---- status ------------------------------------------------------------
 
     private static int Status(string offsetDirectory, string dataDirectory)
@@ -762,6 +834,13 @@ internal static class Program
         return FindUpwards("data");
     }
 
+    /// <summary>The value after <paramref name="name"/>, or null if it is absent.</summary>
+    private static string? Flag(string[] args, string name)
+    {
+        var index = Array.IndexOf(args, name);
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+    }
+
     private static string FindUpwards(string folder)
     {
         var here = AppContext.BaseDirectory;
@@ -841,6 +920,20 @@ internal static class Program
                   lap is timed instead of being treated as an out-lap. The
                   before/after values are printed, so a run that reports 0 -> 0
                   says the flag was not the problem. --keep-pit-flag skips it.
+
+              inactive-reset launch direct
+                  Start the game with no anticheat in the process tree. This is
+                  the only kind of session this tool can attach to. Steam must
+                  already be running.
+
+              inactive-reset launch eac
+                  Start the game the normal, protected way, for online racing.
+                  This tool will refuse to attach to that session, on purpose.
+
+              inactive-reset launch where
+                  Which install would be used, and whether the game is up.
+                  Steam's own library config is read to find it; override with
+                  --game-dir, or save one with --set-game-dir <dir>.
 
               inactive-reset serve [--window] [--port N] [--no-open]
                   Same features in a local web UI, on 127.0.0.1 only.

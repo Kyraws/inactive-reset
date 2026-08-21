@@ -77,6 +77,9 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 case "/api/place":
                     SendJson(context, _runner.StartPlace(ReadBody(context)));
                     break;
+                case "/api/launch":
+                    SendJson(context, _runner.Launch(ReadBody(context)));
+                    break;
                 case "/api/allow-fetch":
                     SendJson(context, _runner.AllowFetch());
                     break;

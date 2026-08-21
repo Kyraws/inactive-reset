@@ -159,6 +159,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             }
         }
 
+        state["game"] = Game_();
         state["session"] = Session_();
         state["checkpoints"] = Checkpoints_();
         state["calibrations"] = Calibrations_();
@@ -244,6 +245,76 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     /// Null while the game is in menus, which is the normal state between
     /// sessions rather than an error worth showing.
     /// </summary>
+    /// <summary>
+    /// Whether the game is up, how it was started, and whether we could start
+    /// it. Reported even when <c>connected</c> is false -- especially then,
+    /// since "not running" and "running, but protected" are the two cases the
+    /// launch buttons exist for and they must not look alike.
+    /// </summary>
+    private JsonNode? Game_()
+    {
+        var running = GameLauncher.Running();
+        var game = new JsonObject
+        {
+            ["running"] = running.Running,
+            ["protected"] = running.Protected,
+            ["attachable"] = running.Attachable,
+            ["pid"] = running.ProcessId,
+        };
+
+        try
+        {
+            var install = GameLauncher.Locate(dataDirectory);
+            game["install"] = install.Root;
+            game["foundBy"] = install.Source;
+            game["canLaunchDirect"] = File.Exists(install.DirectExe);
+            game["canLaunchProtected"] = File.Exists(install.ProtectedExe);
+        }
+        catch (GameInstallException ex)
+        {
+            // Not being able to find the install disables the launch buttons.
+            // It says nothing about a session that is already running, so it
+            // must not be reported as a connection failure.
+            game["installError"] = ex.Message;
+            game["canLaunchDirect"] = false;
+            game["canLaunchProtected"] = false;
+        }
+
+        return game;
+    }
+
+    /// <summary>
+    /// Start the game one way or the other.
+    ///
+    /// The mode is required in the body and not defaulted, for the same reason
+    /// the CLI verb requires it: the two launches are not interchangeable, and
+    /// only one of them produces a session this tool can use.
+    /// </summary>
+    public JsonObject Launch(JsonObject body)
+    {
+        var mode = body["mode"]?.GetValue<string>() switch
+        {
+            "direct" => LaunchMode.Direct,
+            "eac" => LaunchMode.Protected,
+            _ => throw new InvalidOperationException("mode must be 'direct' or 'eac'"),
+        };
+
+        var result = GameLauncher.Launch(mode, dataDirectory);
+
+        lock (_gate)
+        {
+            _log.Add($"launched {Path.GetFileName(result.ExecutablePath)} (pid {result.ProcessId})");
+        }
+
+        return new JsonObject
+        {
+            ["ok"] = true,
+            ["mode"] = mode == LaunchMode.Direct ? "direct" : "eac",
+            ["pid"] = result.ProcessId,
+            ["message"] = result.Message,
+        };
+    }
+
     private JsonNode? Session_()
     {
         try

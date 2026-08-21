@@ -41,6 +41,20 @@ completely: no lap, no time. Placement restores the sector index, which costs a
 whole lap otherwise. See `docs/LAP_VALIDITY.md`, which also records the
 diagnosis this replaced and why it was wrong.
 
+**Launching.** The game has two entry points and they are not interchangeable.
+`Le Mans Ultimate.exe` starts it with no anticheat in the process tree, which is
+the only kind of session this tool can attach to; `start_protected_game.exe` is
+what Steam launches, and starts EasyAntiCheat first. The tool can start either
+one — `launch direct` and `launch eac`, or the two buttons on the page — so
+switching between practising and racing does not mean going back to Steam. The
+install is found through Steam's own library configuration, so a second library
+or a renamed folder is handled; `--game-dir` overrides it for one run and
+`--set-game-dir` saves it.
+
+Note that *direct* does not mean *offline*. Launching directly does not stop the
+game reaching the network; what the word distinguishes is the anticheat, and
+nothing else.
+
 ---
 
 ## Why offsets are data

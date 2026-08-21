@@ -99,6 +99,23 @@ profile cannot vouch for refuses to be used rather than reading plausible
 nonsense.
 _Avoid_: address map, offsets file, symbols
 
+**Direct launch**:
+Starting `Le Mans Ultimate.exe` itself, with no anticheat in the process tree.
+The only kind of session this tool can attach to. Steamstub still decrypts the
+image in memory, so the running process is an ordinary readable one.
+_Avoid_: offline launch, unprotected mode, cracked
+
+**Protected launch**:
+Starting `start_protected_game.exe`, which is what Steam launches. It starts the
+EasyAntiCheat bootstrapper, which starts the game. The tool refuses to attach to
+a session started this way, on purpose.
+_Avoid_: online launch, normal launch, EAC mode
+
+> "Offline" is **not** the word for a direct launch. Nothing about launching
+> directly stops the game reaching the network, and the tool is separately
+> restricted to offline single-player Practice. The distinction these two names
+> carry is whether the **anticheat** is present, and nothing else.
+
 **Gate**:
 A check that must pass before the tool touches the game. A failed gate stops the
 operation; it never downgrades it to a guess.
