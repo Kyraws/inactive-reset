@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace InactiveReset.Core;
 
@@ -120,6 +120,43 @@ public sealed record PlacementOutcome
 }
 
 /// <summary>
+/// What the session actually has loaded, as the game reports it.
+///
+/// <para>Checkpoints, calibrations and learned constants are all keyed on a
+/// track and vehicle name recorded at CAPTURE time. Nothing used to check that
+/// against the car actually in the garage, so placing a checkpoint while a
+/// different car was loaded silently applied one car's constants to another and
+/// reported the checkpoint's name for the car -- which made the resulting miss
+/// look like a property of the track. That cost a diagnosis on 2026-08-22.</para>
+/// </summary>
+public readonly record struct SessionIdentity(string TrackName, string VehicleName)
+{
+    public static SessionIdentity? From(SharedMemoryReader reader)
+    {
+        var snapshot = reader.Read();
+        return snapshot is null
+            || string.IsNullOrWhiteSpace(snapshot.TrackName)
+            || string.IsNullOrWhiteSpace(snapshot.VehicleName)
+                ? null
+                : new SessionIdentity(snapshot.TrackName, snapshot.VehicleName);
+    }
+
+    /// <summary>Refuse rather than place one car's constants onto another.</summary>
+    public void RequireMatches(Checkpoint checkpoint)
+    {
+        if (!string.Equals(TrackName, checkpoint.TrackName, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(VehicleName, checkpoint.VehicleName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new CheckpointException(
+                $"the session has '{TrackName}' / '{VehicleName}' loaded, but checkpoint "
+                + $"'{checkpoint.Name}' was captured on '{checkpoint.TrackName}' / "
+                + $"'{checkpoint.VehicleName}'. D, L and H are per track AND per vehicle; "
+                + "placing this would apply the wrong car's constants.");
+        }
+    }
+}
+
+/// <summary>
 /// The one implementation of plan → arm → write → settle → restore → clear.
 ///
 /// CLI and UI both call this. When two front ends implement the same sequence
@@ -138,8 +175,11 @@ public sealed class PlacementService(GameSession session)
     /// placement will.
     /// </summary>
     public PlacementPlan Plan(
-        Checkpoint checkpoint, CalibrationProfile calibration, LearnedRest? learned = null)
+        Checkpoint checkpoint, CalibrationProfile calibration, LearnedRest? learned = null,
+        SessionIdentity? sessionIdentity = null)
     {
+        sessionIdentity?.RequireMatches(checkpoint);
+
         if (!string.Equals(checkpoint.TrackName, calibration.TrackName, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(checkpoint.VehicleName, calibration.VehicleName, StringComparison.OrdinalIgnoreCase))
         {
@@ -191,7 +231,7 @@ public sealed class PlacementService(GameSession session)
             Target = target,
             ComputedEntry = entry,
             Payload = PlacementMath.EncodeSpotEntry(entry),
-            ForwardRecheck = PlacementMath.PredictRestPosition(destination, model),
+            ForwardRecheck = PlacementMath.PredictRestPosition(destination, live.Container, model),
             RestSource = rest.Source,
         };
     }

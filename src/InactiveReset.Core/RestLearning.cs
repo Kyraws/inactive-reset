@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace InactiveReset.Core;
 
@@ -43,8 +43,13 @@ public static class RestLearning
         var forwardError = dx * heading.X + dz * heading.Z;
         var lateralError = dx * lateral.X + dz * lateral.Z;
 
+        // L is a magnitude and the model applies sign*L, so the world-frame miss
+        // has to come back through the sign before it corrects the stored value.
+        // Without this, learning in a sign -1 car would drive L the wrong way.
+        var sign = Geometry.LateralSign(plan.Live.Container.LateralSignSource);
+
         var impliedForward = plan.Model.RestForwardDistance + forwardError;
-        var impliedLateral = plan.Model.RestLateralOffset + lateralError;
+        var impliedLateral = plan.Model.RestLateralOffset + sign * lateralError;
 
         var candidate = ImpliedSearchCandidate(plan, outcome);
 
@@ -56,6 +61,19 @@ public static class RestLearning
             reject ?? $"learned D = {impliedForward:F6}, L = {impliedLateral:F6} "
                     + $"from a {MathF.Sqrt(forwardError * forwardError + lateralError * lateralError):F4} m miss",
             impliedForward, impliedLateral, candidate);
+    }
+
+    /// <summary>
+    /// The miss along <c>lateral(targetYaw)</c>, in the world frame.
+    ///
+    /// This is the raw MEASUREMENT, not the correction to L: the correction goes
+    /// through the lateral sign, and the corpus wants what was observed.
+    /// </summary>
+    public static float LateralMiss(PlacementPlan plan, PlacementOutcome outcome)
+    {
+        var lateral = Geometry.LateralAxis(plan.Target.Yaw);
+        return (outcome.Achieved.X - plan.Target.RestPosition.X) * lateral.X
+             + (outcome.Achieved.Z - plan.Target.RestPosition.Z) * lateral.Z;
     }
 
     /// <summary>
@@ -113,11 +131,12 @@ public static class RestLearning
             VehicleLength = container.VehicleLength,
             VehicleWidth = container.VehicleWidth,
             EnginePlacementDistance = container.EnginePlacementDistance,
+            LateralSign = Geometry.LateralSign(container.LateralSignSource),
             UsedForward = plan.Model.RestForwardDistance,
             UsedLateral = plan.Model.RestLateralOffset,
             UsedSource = plan.RestSource.ToString(),
             ErrorForward = result.ImpliedForward - plan.Model.RestForwardDistance,
-            ErrorLateral = result.ImpliedLateral - plan.Model.RestLateralOffset,
+            ErrorLateral = LateralMiss(plan, outcome),
             ErrorVertical = outcome.VerticalErrorMetres,
             TargetYaw = plan.Target.Yaw,
             TargetX = plan.Target.RestPosition.X,

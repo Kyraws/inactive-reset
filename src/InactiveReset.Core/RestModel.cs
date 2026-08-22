@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace InactiveReset.Core;
 
@@ -114,6 +114,14 @@ public sealed record PlacementObservation
     /// <summary>The engine's own placement distance, before settling.</summary>
     public required float EnginePlacementDistance { get; init; }
 
+    /// <summary>
+    /// The engine's lateral sign (-1 or +1) for this spot. The model applies L
+    /// UNSIGNED, so if the settle actually follows this sign, a track whose sign
+    /// differs from the one L was fitted on misses by roughly 2L. Recorded so
+    /// that question is answerable from the corpus rather than from a rerun.
+    /// </summary>
+    public required float LateralSign { get; init; }
+
     /// <summary>The constants this placement was made with, and their origin.</summary>
     public required float UsedForward { get; init; }
     public required float UsedLateral { get; init; }
@@ -155,6 +163,7 @@ public sealed record PlacementObservation
             ["vehicle_length"] = o.VehicleLength,
             ["vehicle_width"] = o.VehicleWidth,
             ["engine_placement_distance"] = o.EnginePlacementDistance,
+            ["lateral_sign"] = o.LateralSign,
             ["used_forward_D"] = o.UsedForward,
             ["used_lateral_L"] = o.UsedLateral,
             ["used_source"] = o.UsedSource,

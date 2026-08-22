@@ -1,4 +1,4 @@
-using InactiveReset.Core;
+﻿using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -134,7 +134,7 @@ public sealed class PlacementPortTests
             DesiredRest, DesiredYaw, Container, Model, CurrentEntry);
 
         var destination = PlacementMath.PredictDriveDestination(entry, Container, Model);
-        var rest = PlacementMath.PredictRestPosition(destination, Model);
+        var rest = PlacementMath.PredictRestPosition(destination, Container, Model);
 
         Assert.Equal(DesiredRest.X, rest.X, 3);
         Assert.Equal(DesiredRest.Y, rest.Y, 3);
@@ -154,7 +154,7 @@ public sealed class PlacementPortTests
         Assert.Equal(199.231979f, destination.Position.Z, 3);
         Assert.Equal(-0.0328652f, destination.Orientation.Y, 5);
 
-        var rest = PlacementMath.PredictRestPosition(destination, Model);
+        var rest = PlacementMath.PredictRestPosition(destination, Container, Model);
         Assert.Equal(117.810638f, rest.X, 3);
         Assert.Equal(0.783000f, rest.Y, 3);
         Assert.Equal(201.778610f, rest.Z, 3);
@@ -223,10 +223,8 @@ public sealed class PlacementPortTests
         // engine defaults and a real placement built from the calibration use
         // different constants, so the preview answers a slightly different
         // question. ~3 mm vertically here.
-        var withDefaults = PlacementMath.PredictRestPosition(
-            PlacementMath.PredictDriveDestination(CurrentEntry, Container, Model), Model);
-        var withCalibration = PlacementMath.PredictRestPosition(
-            PlacementMath.PredictDriveDestination(CurrentEntry, Container, Calibrated), Calibrated);
+        var withDefaults = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(CurrentEntry, Container, Model), Container, Model);
+        var withCalibration = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(CurrentEntry, Container, Calibrated), Container, Calibrated);
 
         Assert.NotEqual(withDefaults.Y, withCalibration.Y, 4);
         Assert.Equal(0.003062f, withCalibration.Y - withDefaults.Y, 5);

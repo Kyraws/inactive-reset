@@ -1,4 +1,4 @@
-using InactiveReset.Core;
+﻿using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -76,8 +76,7 @@ public sealed class RestLateralOffsetTests
         // behaviour the lateral term exists to remove.
         var entry = PlacementMath.InvertToPitPosEntry(
             TargetRest, TargetYaw, Container, Probe, CurrentEntry);
-        var predicted = PlacementMath.PredictRestPosition(
-            PlacementMath.PredictDriveDestination(entry, Container, Probe), Probe);
+        var predicted = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(entry, Container, Probe), Container, Probe);
 
         var lateral = Geometry.LateralAxis(TargetYaw);
         var miss = new Vec3(
@@ -98,8 +97,7 @@ public sealed class RestLateralOffsetTests
         // goes in, the position the car reached comes out. Nothing here is
         // derived from the model, so the lateral term cannot cancel itself out
         // the way it does in an invert-then-predict round trip.
-        var predicted = PlacementMath.PredictRestPosition(
-            PlacementMath.PredictDriveDestination(WrittenEntry, Container, Corrected), Corrected);
+        var predicted = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(WrittenEntry, Container, Corrected), Container, Corrected);
 
         Assert.Equal(AchievedRest.X, predicted.X, 3);
         Assert.Equal(AchievedRest.Z, predicted.Z, 3);
@@ -149,8 +147,7 @@ public sealed class RestLateralOffsetTests
             new Vec3(-0.008000f, 1.302099f, -0.015000f));
         var achieved = new Vec3(-87.676292f, -1.529455f, -146.856400f);
 
-        var predicted = PlacementMath.PredictRestPosition(
-            PlacementMath.PredictDriveDestination(written, Container, Corrected), Corrected);
+        var predicted = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(written, Container, Corrected), Container, Corrected);
 
         // Asserted as a residual, not to N decimal places: 0.5 mm is the real
         // agreement between model and engine on this run, so a tighter
@@ -174,7 +171,7 @@ public sealed class RestLateralOffsetTests
         Assert.Equal(0f, Probe.RestLateralOffset);
 
         var withoutTerm = PlacementMath.PredictRestPosition(
-            new SpotEntry(TargetRest, new Vec3(0f, TargetYaw, 0f)), Probe);
+            new SpotEntry(TargetRest, new Vec3(0f, TargetYaw, 0f)), Container, Probe);
         var heading = Geometry.HeadingAxis(TargetYaw);
 
         Assert.Equal(TargetRest.X + heading.X * Probe.RestForwardDistance, withoutTerm.X, 4);

@@ -1,4 +1,4 @@
-namespace InactiveReset.Core;
+﻿namespace InactiveReset.Core;
 
 /// <summary>
 /// Constants describing what the engine does with a spot-table entry.
@@ -36,7 +36,7 @@ public sealed record PlacementModel
     public required float SearchMaxFactor { get; init; }
 
     /// <summary>
-    /// rest = destination + D*heading + L*lateral + (0, H, 0).
+    /// rest = destination + D*heading + sign*L*lateral + (0, H, 0).
     /// Per track AND per vehicle AND per build. Never reuse across combinations.
     /// </summary>
     public required float RestForwardDistance { get; init; }
@@ -63,8 +63,16 @@ public sealed record PlacementModel
     /// vehicle-frame translation. The engine's range is not a thing this tool
     /// can vary, so no experiment separates them.
     ///
-    /// Unsigned, unlike the search offset: it is measured as-placed, and the
-    /// lateral sign convention has never been confirmed independently.
+    /// SIGNED, like the search offset: the model applies
+    /// <c>sign * RestLateralOffset</c>, so this value is a MAGNITUDE and the
+    /// direction comes from the engine's own lateral sign.
+    ///
+    /// Confirmed 2026-08-22 across two cars. Every placement in a BMW at
+    /// Barcelona (lateral sign +1) landed within 3 mm; every placement in a
+    /// Genesis (lateral sign -1) missed by 1.07-1.08 m of pure lateral, and the
+    /// implied L was -(the L used) to within 1.5 cm in all four. The miss
+    /// appeared at BOTH tracks in the Genesis, so it is not a track property --
+    /// it was the sign, applied to the search offset but not to this term.
     /// </summary>
     public required float RestLateralOffset { get; init; }
 
@@ -176,20 +184,22 @@ public static class PlacementMath
 
     /// <summary>
     /// ApplyVehicleTransform + settling:
-    /// rest = dest + D*heading + L*lateral + (0, H, 0).
+    /// rest = dest + D*heading + sign*L*lateral + (0, H, 0).
     /// </summary>
-    public static Vec3 PredictRestPosition(SpotEntry destination, PlacementModel model)
+    public static Vec3 PredictRestPosition(
+        SpotEntry destination, ContainerState container, PlacementModel model)
     {
         var heading = Geometry.HeadingAxis(destination.Orientation.Y);
         var lateral = Geometry.LateralAxis(destination.Orientation.Y);
+        var offset = Geometry.LateralSign(container.LateralSignSource) * model.RestLateralOffset;
         return new Vec3(
             destination.Position.X
                 + heading.X * model.RestForwardDistance
-                + lateral.X * model.RestLateralOffset,
+                + lateral.X * offset,
             destination.Position.Y + model.RestVerticalOffset,
             destination.Position.Z
                 + heading.Z * model.RestForwardDistance
-                + lateral.Z * model.RestLateralOffset);
+                + lateral.Z * offset);
     }
 
     /// <summary>
@@ -220,17 +230,18 @@ public static class PlacementMath
         // dest.yaw = pitPos.yaw - sign*C   =>   pitPos.yaw = dest.yaw + sign*C
         var entryYaw = desiredYaw + sign * model.YawOffsetMode2;
 
-        // rest = dest + D*heading(dest.yaw) + L*lateral(dest.yaw) + (0, H, 0)
+        // rest = dest + D*heading(dest.yaw) + sign*L*lateral(dest.yaw) + (0, H, 0)
         var heading = Geometry.HeadingAxis(desiredYaw);
         var restLateral = Geometry.LateralAxis(desiredYaw);
+        var restOffset = sign * model.RestLateralOffset;
         var destination = new Vec3(
             desiredRest.X
                 - heading.X * model.RestForwardDistance
-                - restLateral.X * model.RestLateralOffset,
+                - restLateral.X * restOffset,
             desiredRest.Y - model.RestVerticalOffset,
             desiredRest.Z
                 - heading.Z * model.RestForwardDistance
-                - restLateral.Z * model.RestLateralOffset);
+                - restLateral.Z * restOffset);
 
         // dest.pos = pitPos.pos + sign*d*lateral(pitPos.yaw)
         var lateral = Geometry.LateralAxis(entryYaw);
