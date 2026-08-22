@@ -74,6 +74,43 @@ public sealed class CalibrationProfile
     public float WorstHorizontalErrorMetres { get; init; }
     public string? SourcePath { get; init; }
 
+    /// <summary>
+    /// True when nothing measured this: a stand-in so a placement can proceed on
+    /// constants derived from the running engine. Before these existed, `place`
+    /// refused outright in any combination the user had not calibrated by hand,
+    /// and there was no command to calibrate with.
+    /// </summary>
+    public bool IsPlaceholder { get; init; }
+
+    /// <summary>
+    /// A calibration for a combination nobody has measured. D and L are filled
+    /// in later from <see cref="RestModel.Derive"/>, which needs the live
+    /// container; H falls back to <see cref="RestModel.DefaultVerticalOffset"/>.
+    /// </summary>
+    public static CalibrationProfile Placeholder(string track, string vehicle) => new()
+    {
+        TrackName = track,
+        VehicleName = vehicle,
+        ForwardDistance = 0f,
+        VerticalOffset = RestModel.DefaultVerticalOffset,
+        LateralOffset = 0f,
+        Valid = true,
+        IsPlaceholder = true,
+    };
+
+    /// <summary>
+    /// The calibration for this pair, or null. <see cref="Require"/> is the
+    /// same lookup with a refusal attached; callers that can fall back on
+    /// derived constants want this one.
+    /// </summary>
+    public static CalibrationProfile? Find(string dataDirectory, string track, string vehicle)
+    {
+        var match = LoadAllForData(dataDirectory).FirstOrDefault(p =>
+            string.Equals(p.TrackName, track, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(p.VehicleName, vehicle, StringComparison.OrdinalIgnoreCase));
+        return match is { Valid: true, Locked: false } ? match : null;
+    }
+
     public string Key => MakeKey(TrackName, VehicleName);
 
     public static string MakeKey(string track, string vehicle) =>

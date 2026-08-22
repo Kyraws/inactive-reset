@@ -93,9 +93,28 @@ public readonly record struct SpotTableGlobals(
     ulong PitPosTable, ulong GarPosTable, int Mult, int Count);
 
 /// <summary>Fields read from a slot container.</summary>
+///
+/// <param name="RestOffsetPrimary">
+/// With <paramref name="RestOffsetSecondary"/>, the engine's own rest placement
+/// offset. ApplyVehicleTransform sets the vehicle position to
+/// <c>destination - M*(0, b, a)</c> where local +Z is forward and
+/// <c>a = RestOffsetPrimary + RestOffsetSecondary</c>, so the forward placement
+/// distance is <c>-a</c>. Per vehicle, constant, and bit-stable while driving.
+/// </param>
 public readonly record struct ContainerState(
     int SlotIndex, int PitIndex, int GarageIndex, int ControlOwner,
-    float VehicleLength, float VehicleWidth, float LateralSignSource);
+    float VehicleLength, float VehicleWidth, float LateralSignSource,
+    float RestOffsetPrimary = 0f, float RestOffsetSecondary = 0f)
+{
+    /// <summary>
+    /// Where ApplyVehicleTransform puts the car, forward of the destination,
+    /// before it settles. Zero when the profile does not carry the fields.
+    /// </summary>
+    public float EnginePlacementDistance => -(RestOffsetPrimary + RestOffsetSecondary);
+
+    public bool HasEnginePlacementDistance =>
+        RestOffsetPrimary != 0f || RestOffsetSecondary != 0f;
+}
 
 public sealed record GateResult(bool Passed, IReadOnlyList<string> Failures);
 

@@ -89,6 +89,94 @@ model finally having the same degrees of freedom as the thing it models.
 Pinned by `tests/InactiveReset.Tests/RestLateralOffsetTests.cs`, which fails on
 the pre-2026-08-22 behaviour.
 
+## Where D actually comes from — 2026-08-22, later
+
+The lateral term above made placement exact, but D and L still had to be
+measured per track and per vehicle, and there was no command to measure them.
+They no longer do.
+
+### The engine hands us most of it
+
+`ApplyVehicleTransform` (RVA `0x00F55DE0` on `0F6DCAC1`, found from the tail of
+`slotReset`, which calls it as `(vehicle = container+8, destPos, destOri, flag)`)
+sets the vehicle position to
+
+    position = destination - M * (0, b, a)
+
+with `M` the orientation matrix at `vehicle+0x159B8` and local +Z forward. So the
+forward placement distance is `-a`, and
+
+    a = [vehicle+0x0000B4] + [vehicle+0x00009C]
+
+Two floats. Per vehicle, bit-stable while driving, already in memory.
+
+### The rest is settling, and it is 45 degrees for a reason
+
+`-a` is not D. For a 296 GT3 it reads 2.5516, while the measured D is 3.0494. The
+gap is the car SETTLING after placement, and the settle is
+
+    forward  ~ 0.1049 * vehicleLength
+    lateral  ~ 0.1064 * vehicleLength
+
+Very nearly equal. That equality is the 45 degree bearing this project measured
+in 2026-08-11, recorded as "a coincidence, though an annoying one", and carried
+for months. It is not a coincidence, it is the settle.
+
+It also explains the "regression" that started this work. `-a` for the GT3 is
+2.5516 against the OLD build's calibrated D of 2.5476 — four millimetres. The
+1.4.1.3 patch did not change the placement geometry at all. It added the settle.
+
+### Evidence
+
+Coefficients fitted to three cars at Circuit de Barcelona, residuals under
+1.7 mm, then tested BLIND on a fourth that had never been calibrated:
+
+| car | length | fitted or blind | error |
+|---|---|---|---|
+| Oreca 07 LMP2 | 4.6868 | fitted | 1.4 mm |
+| Ferrari 296 GT3 | 4.7457 | fitted | 0.2 mm |
+| Ferrari 499P | 5.0233 | fitted | 1.2 mm |
+| BMW M Hybrid V8 | 5.0233 | **blind** | **2.4 mm** |
+
+Two earlier models — D additive in length, and D proportional to length — each
+fitted two cars beautifully and died on the third. Three cars spanning 7% of
+length is where wrong models survive; the blind fourth is the row that matters.
+
+### Self-calibration
+
+Because the relationship is exactly linear, the miss IS the correction:
+
+    D_correct = D_used + forward_error
+    L_correct = L_used + lateral_error
+
+measured directly by placing with D deliberately doubled and watching the error
+move by exactly -deltaD, to 0.2 mm. So a placement calibrates itself, and
+`RestLearning` does it automatically, per checkpoint, keyed by build. Measured:
+3.2 mm on the derived constants, 0.27 mm on the next placement.
+
+### The guard, and why it exists
+
+A placement made against a wall missed by **1.794 m**, of which 1.7937 m lay
+along `lateral(entryYaw)` and 0.16 mm did not. That is the clearance-search axis:
+`PredictSearchCandidate` assumes the engine accepts candidate 0, and here the
+wall made it reject nine and step out to the last one it is allowed. Learning
+from that sample would have written `D = 1.95, L = 1.80` as fact.
+
+So `LearnedRest.RejectReason` refuses any miss beyond a quarter of a search step
+(`0.1 * width`). Real calibration errors are millimetres; a wrong candidate is
+hundreds of millimetres. Both are recorded in `data/observations/<build>.jsonl`,
+accepted and rejected alike, because the rejected ones are where this was found.
+
+### Not solved
+
+- **H.** Still borrowed: `RestModel.DefaultVerticalOffset` is the GT3's measured
+  value, and it matches neither the 0.362 nor the 0.322 that the transform's own
+  vertical term reads for the GT3 and 499P. It survives on ~1 mm vertical errors
+  across four cars. That is luck holding, not understanding.
+- **One track, one session, one setup.** The settle is physical.
+- **The clearance-search assumption is still in the model**, merely detected now
+  rather than silently mis-modelled.
+
 ---
 
 # Original diagnosis, 2026-08-11 (superseded conclusion)

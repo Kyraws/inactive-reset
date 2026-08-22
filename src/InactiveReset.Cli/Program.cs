@@ -440,7 +440,18 @@ internal static class Program
 
         Console.WriteLine();
         Console.WriteLine($"  achieved      [{outcome.Achieved}]");
+
+        // Learning is automatic and happens here, after the placement, from the
+        // miss it just measured. The guard inside decides whether the sample is
+        // trustworthy; either way it is logged.
+        var learning = RestLearning.Apply(
+            plan, outcome, new LearnedRestStore(dataDirectory), session.ExecutableSha256);
+
         PrintOutcome(outcome, plan.Calibration, session.ExecutableSha256);
+        Console.WriteLine();
+        Console.WriteLine(learning.Accepted
+            ? $"  + calibration   {learning.Message}"
+            : $"  ! calibration   not learned from: {learning.Message}");
         return 0;
     }
 
@@ -488,17 +499,35 @@ internal static class Program
     private static PlacementPlan BuildPlan(GameSession session, string dataDirectory, string name)
     {
         var checkpoint = Checkpoint.Require(Path.Combine(dataDirectory, "checkpoints"), name);
-        var calibration = CalibrationProfile.Require(
-            dataDirectory, checkpoint.TrackName, checkpoint.VehicleName);
-        return new PlacementService(session).Plan(checkpoint, calibration);
+
+        // No calibration is no longer fatal. A placeholder lets the constants be
+        // derived from the running engine, which works in any car; before this,
+        // `place` refused in every combination the user had not measured by hand
+        // and offered no way to measure one.
+        var calibration =
+            CalibrationProfile.Find(dataDirectory, checkpoint.TrackName, checkpoint.VehicleName)
+            ?? CalibrationProfile.Placeholder(checkpoint.TrackName, checkpoint.VehicleName);
+
+        var learned = new LearnedRestStore(dataDirectory).Load(
+            session.ExecutableSha256, checkpoint.TrackName,
+            checkpoint.VehicleName, checkpoint.Name);
+
+        return new PlacementService(session).Plan(checkpoint, calibration, learned);
     }
 
     private static void PrintPlan(PlacementPlan plan)
     {
         Console.WriteLine("== plan ==");
         Console.WriteLine($"  checkpoint    {plan.Checkpoint.Name}  ({plan.Checkpoint.TrackName} / {plan.Checkpoint.VehicleName})");
+        var source = plan.RestSource switch
+        {
+            RestSource.Learned => "learned from this checkpoint's own placements",
+            RestSource.Profile => "measured calibration",
+            _ => "derived from the running engine",
+        };
         Console.WriteLine($"  calibration   D = {plan.Model.RestForwardDistance:F5}  H = {plan.Model.RestVerticalOffset:F6}"
                         + $"  L = {plan.Model.RestLateralOffset:F6}");
+        Console.WriteLine($"                {source}");
         if (plan.Calibration.Advisory is not null)
         {
             Console.WriteLine("  ADVISORY:");

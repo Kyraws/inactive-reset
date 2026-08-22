@@ -41,6 +41,9 @@ public sealed record PlacementPlan
     /// </summary>
     public required Vec3 ForwardRecheck { get; init; }
 
+    /// <summary>Where this plan's D and L came from.</summary>
+    public required RestSource RestSource { get; init; }
+
     public float ResidualMetres => MathF.Sqrt(
         MathF.Pow(ForwardRecheck.X - Target.RestPosition.X, 2)
         + MathF.Pow(ForwardRecheck.Y - Target.RestPosition.Y, 2)
@@ -134,7 +137,8 @@ public sealed class PlacementService(GameSession session)
     /// nominal fallback, so this preview necessarily uses the same constants the
     /// placement will.
     /// </summary>
-    public PlacementPlan Plan(Checkpoint checkpoint, CalibrationProfile calibration)
+    public PlacementPlan Plan(
+        Checkpoint checkpoint, CalibrationProfile calibration, LearnedRest? learned = null)
     {
         if (!string.Equals(checkpoint.TrackName, calibration.TrackName, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(checkpoint.VehicleName, calibration.VehicleName, StringComparison.OrdinalIgnoreCase))
@@ -146,7 +150,31 @@ public sealed class PlacementService(GameSession session)
         }
 
         var model = calibration.ToPlacementModel(_session.ReadEngineTunables());
+
+        // The container read does not depend on D or L, so it is safe to read
+        // first and then decide the constants from what it says.
         var live = new LiveStateReader(_session).Read(model);
+
+        // Learned beats measured beats derived. Learned came from THIS
+        // checkpoint's own placements; a profile was measured by hand for this
+        // track and vehicle; derived works anywhere but has only ever been
+        // fitted on one track.
+        var rest = learned is not null
+            ? new RestConstants(learned.Forward, learned.Lateral, RestSource.Learned)
+            : !calibration.IsPlaceholder
+                ? new RestConstants(model.RestForwardDistance, model.RestLateralOffset, RestSource.Profile)
+                : RestModel.Derive(live.Container)
+                  ?? throw new CalibrationException(
+                      $"no calibration for '{checkpoint.TrackName}' / '{checkpoint.VehicleName}', and "
+                      + "this build's offset profile does not carry the engine placement fields, so "
+                      + "nothing can be derived either.");
+
+        model = model with
+        {
+            RestForwardDistance = rest.Forward,
+            RestLateralOffset = rest.Lateral,
+        };
+
         var target = Geometry.BuildTargetFromRecordedPose(checkpoint.Pose);
 
         var entry = PlacementMath.InvertToPitPosEntry(
@@ -164,6 +192,7 @@ public sealed class PlacementService(GameSession session)
             ComputedEntry = entry,
             Payload = PlacementMath.EncodeSpotEntry(entry),
             ForwardRecheck = PlacementMath.PredictRestPosition(destination, model),
+            RestSource = rest.Source,
         };
     }
 

@@ -142,24 +142,30 @@ translation are indistinguishable from outside the engine.
 Verified by driving on LMU 1.4.1.3 (build `0F6DCAC1`): 0.000500 m horizontal,
 0.000883 m vertical, down from 0.710 m.
 
-### The limit you will actually hit
+### Calibration takes care of itself
 
-**Placement needs a calibration for your exact track and vehicle, and only one
-ships.** Circuit de Barcelona in the Richard Mille AF Corse 296 GT3. In anything
-else, `place` refuses with a clear message; everything else in the tool works.
+`D` and `L` are **derived from the running engine**, not measured by hand:
+`ApplyVehicleTransform` stores the placement distance per vehicle, and the rest
+is a settle proportional to vehicle length. So placement works in any car
+immediately, to a few millimetres, with nothing to configure.
 
-The constants are per track, per vehicle **and per build** -- `D` moved 0.5 m
-across a single LMU patch. There is no `calibrate` command yet, so you cannot
-currently measure your own. Three cars were measured to see whether the
-constants could be derived from the vehicle dimensions the tool already reads
-live; no simple relationship holds. The intended fix is to find the value inside
-the running engine, the way the yaw offset and search factors already are.
+Then it **learns**. Every placement measures its own miss, and because the
+relationship is exactly linear the miss IS the correction — so the constants for
+that checkpoint refine themselves automatically. Measured on a car nobody had
+ever calibrated: 3.2 mm on the first placement, 0.27 mm on the next.
 
-A calibration used on a build it was not measured on still places the car, and
-warns when the miss is materially worse than that calibration has ever recorded.
-It is a warning, not a refusal: being wrong about offsets means writing bytes to
-wrong addresses, being wrong about a calibration means stopping half a metre
-away.
+You do not need to know any of this happens. There is no calibrate step.
+
+Learned values live in `data/learned-rest/`, keyed by game build, and every
+placement is logged to `data/observations/<build>.jsonl` — accepted or rejected,
+with the reason. Delete a learned file to re-learn it.
+
+A hand-measured calibration in `data/profiles/`, if you have one, still wins over
+the derived constants; a learned one wins over both.
+
+`H`, the vertical offset, is **not** derived — it is a single borrowed constant
+that happens to hold to about a millimetre on every car tested. That one is not
+understood, and `docs/HEADING_BUG.md` says so.
 
 ---
 

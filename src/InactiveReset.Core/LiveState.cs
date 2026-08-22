@@ -140,7 +140,29 @@ public sealed class LiveStateReader(GameSession session)
             ControlOwner: memory.ReadInt32(FieldAddress(slotIndex, "controlOwner")),
             VehicleLength: memory.ReadSingle(FieldAddress(slotIndex, "vehicleLength")),
             VehicleWidth: memory.ReadSingle(FieldAddress(slotIndex, "vehicleWidth")),
-            LateralSignSource: memory.ReadSingle(FieldAddress(slotIndex, "lateralSign")));
+            LateralSignSource: memory.ReadSingle(FieldAddress(slotIndex, "lateralSign")),
+            RestOffsetPrimary: ReadOptional(slotIndex, "restOffsetPrimary"),
+            RestOffsetSecondary: ReadOptional(slotIndex, "restOffsetSecondary"));
+    }
+
+    /// <summary>
+    /// Read a field that older profiles do not carry, as 0 when it is absent.
+    ///
+    /// Fields added after a profile was written must not make that profile
+    /// unloadable. A zero here means "this build's profile predates the rest
+    /// offsets", which callers detect through
+    /// <see cref="ContainerState.HasEnginePlacementDistance"/> and fall back on.
+    /// </summary>
+    private float ReadOptional(int slotIndex, string field)
+    {
+        try
+        {
+            return _session.Memory.ReadSingle(FieldAddress(slotIndex, field));
+        }
+        catch (Exception ex) when (ex is OffsetProfileException or MemoryAccessException)
+        {
+            return 0f;
+        }
     }
 
     private ulong FieldAddress(int slotIndex, string field) =>
