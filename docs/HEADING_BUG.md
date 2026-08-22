@@ -364,3 +364,131 @@ one range.
 2. Re-run `calibrate`, which writes nothing. Its residual should collapse.
 3. Check the vertical error stays near zero — if a "fix" moves it, the fix is
    wrong.
+
+
+---
+
+# L is signed — 2026-08-22, later still
+
+The lateral term added earlier today was applied **unsigned**. The engine's
+lateral sign — the same `sign(container+0x046898)` that already steered the
+clearance-search offset and the yaw adjustment — applies to `L` as well.
+
+`rest = dest + D*heading + `**`sign*`**`L*lateral + (0, H, 0)`
+
+## Why it hid for so long
+
+Every car `L` had ever been measured in reported **sign +1**. Under sign +1 the
+correction is a no-op, so the unsigned model was indistinguishable from the
+correct one across four cars and an entire calibration session.
+
+The first car with **sign -1** — a Genesis Magma Racing 2026 #17:LM — missed by
+**1.07 m of pure lateral**, which is `-2L`: the term was applied in exactly the
+wrong direction, so the miss is twice its magnitude.
+
+## The wrong turning, recorded because it was convincing
+
+The miss first appeared at **Daytona**, and Daytona is banked. The banking was
+the obvious suspect and it was wrong. What actually killed it:
+
+- Two Daytona spots 17 m apart with yaws differing by 0.19 rad missed by
+  1.0692 and 1.0746 m — agreeing to 0.5%. A slope-driven slide would not be
+  that constant.
+- The car moved 1.07 m **across its own heading** and the ground height changed
+  by **0.036 m**. That is a 1.9 deg cross-slope: ordinary road camber. Neither
+  spot was on the 31 deg banking, where a 1.07 m lateral move would drop 0.64 m.
+
+The confirming test — one placement at Barcelona in the same car — was then run
+**in the wrong car**, because nothing checked what was actually in the garage.
+That accident was the thing that solved it: Barcelona missed by 1.08 m too, so
+the miss was never a track property. Re-splitting the corpus by the **live
+vehicle geometry** rather than the checkpoint's recorded name separated it
+cleanly:
+
+| car (length / width) | placements | lateral error |
+|---|---|---|
+| BMW 5.0233 / 2.00482, sign **+1** | 4, Barcelona | +0.0027 … -0.0003 m |
+| Genesis 5.0982 / 1.99268, sign **-1** | 4, Daytona **and** Barcelona | -1.069 … -1.084 m |
+
+Confirmed by reading the sign directly in both cars: BMW `+1`, error 0.0002 m;
+Genesis `-1`, error `-2L`.
+
+## Consequences
+
+- `L` is now a **magnitude**. Stored values keep their meaning, because every
+  one of them was measured in a sign +1 car.
+- **Learning must invert through the sign**: `L_correct = L + sign * lateralError`.
+  Without that, learning in a sign -1 car drives `L` the wrong way. The
+  observation log keeps `error_lateral` as the raw world-frame miss, which is the
+  measurement, and records `lateral_sign` alongside it.
+- The signed model predicts the failing Daytona placement to **~1 cm**, from the
+  bytes that were actually written to the position the car actually reached.
+  The residual is a per-car settle difference and is what learning absorbs.
+
+## Two guards added, because both failures were silent
+
+**A checkpoint may only be placed in the car it was captured in.** Checkpoints,
+calibrations and learned constants are all keyed on a track and vehicle name
+recorded at capture time, and nothing compared that against the live session.
+`place` printed the checkpoint's vehicle name back while a different car was in
+the garage, which is what made a car-specific miss look like a track-specific
+one. `SessionIdentity.RequireMatches` now refuses.
+
+**A large miss is no longer described as expected.** The report used to explain
+any error above 5 cm as "a known, unfixed heading error ... expected, not a
+failed placement". That text outlived the defect it described and actively
+concealed this one for a full session of placements. It now names the two causes
+worth checking — a clearance search stepped out by an obstruction, or the wrong
+car's constants — and says to move to open ground and place again.
+
+## What is still open
+
+The ~1 cm residual in the Genesis is unexplained. It is small enough to be a
+genuine per-car settle difference, and learning removes it, but it has not been
+modelled. Note the settle coefficients in `RestModel` were fitted on sign +1
+cars only; if the settle is not symmetric about the vehicle's centreline, the
+lateral coefficient may be slightly different in a sign -1 car. Four placements
+in one car cannot tell.
+
+
+## Confirmed at a second track — 2026-08-22, end of day
+
+Two spots at Daytona in the Genesis (lateral sign **-1**, the case that was
+broken), on the rebuilt binary:
+
+| spot | ground | miss | vertical | learned |
+|---|---|---|---|---|
+| `day3` | flat | **0.0035 m** | 0.000 m | yes |
+| `day4` | banked, +2.6 m higher | **0.0606 m** | 0.011 m | yes, after the guard was retuned |
+
+This is the test §3.1 of the handoff was blocked on, and it passes: the derived
+constants transfer to a second track, in a car nobody calibrated, on both
+lateral signs.
+
+**Banking is real, but small.** `day4` sits 2.6 m higher than `day3` and missed
+by 0.0606 m, of which 0.0591 m is lateral and 0.0137 m forward — the car settles
+slightly downhill across the slope. That is 17x the flat-ground miss and still
+under 7 cm. It is per-spot, and per-checkpoint learning removes it.
+
+## The learning guard was refusing exactly the samples it wanted
+
+`day4` was rejected. The cap was **a quarter of a clearance-search step**
+(0.050 m for this car), which is below the settle that banking produces — so no
+banked spot could ever self-improve, and the one class of spot that most needs a
+learned correction was the one class that could never get one.
+
+The cap was never the point. The danger is the **clearance search**, which
+displaces the car by WHOLE steps of `0.1 * width` — minimum 0.199 m, and the
+measured bad case was candidate 9 at 1.794 m. The engine cannot take a fraction
+of a step, so the test is now whether the miss **lands on a whole step**, not
+whether it is large:
+
+1. Within 0.15 of a whole candidate `>= 1` — reject, and name the candidate.
+2. Otherwise larger than **0.6 of a step** — reject, and say explicitly that the
+   clearance search is NOT the cause.
+3. Otherwise learn.
+
+The 0.6 sits above the largest settle ever measured (0.061 m) and below one
+whole step, so no clearance-search miss can reach it. Learning is keyed per
+**checkpoint**, so a spot-specific correction can only ever be applied back at
+that spot — which is why a large-but-explicable settle is safe to keep.

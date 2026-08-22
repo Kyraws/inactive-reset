@@ -24,7 +24,7 @@
       Which LMU builds a release was verified against belongs in the release
       notes, and `status` prints the running build anyway.
     -->
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
   </PropertyGroup>
 
   <!--
