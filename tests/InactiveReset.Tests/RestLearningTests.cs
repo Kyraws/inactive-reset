@@ -1,4 +1,4 @@
-using InactiveReset.Core;
+﻿using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -62,7 +62,70 @@ public sealed class RestLearningTests
 
         Assert.NotNull(reject);
         Assert.Contains("clearance-search step", reject);
-        Assert.Contains("candidate", reject);
+        Assert.Contains("candidate 9", reject);
+    }
+
+    [Fact]
+    public void AMissOffTheWholeStepsDoesNotBlameTheClearanceSearch()
+    {
+        // The Daytona miss from an unsigned L: 1.075 m, implying candidate
+        // -3.81. The engine can only take WHOLE steps, so a fractional index is
+        // evidence AGAINST the clearance search, not for it. The message used to
+        // assert "candidate -3.8" as a finding and sent a diagnosis after the
+        // banking of a track that had nothing to do with it.
+        var reject = LearnedRest.RejectReason(
+            Outcome(), Bmw(), errorForward: 0.000735f, errorLateral: -1.074646f,
+            impliedCandidate: -3.81);
+
+        Assert.NotNull(reject);
+        Assert.Contains("does NOT lie on a whole step", reject);
+        Assert.DoesNotContain("used search candidate", reject);
+    }
+
+    /// <summary>Genesis Magma Racing 2026 #17:LM. Lateral sign -1.</summary>
+    private static ContainerState Genesis() =>
+        new(SlotIndex: 0, PitIndex: 0, GarageIndex: 0, ControlOwner: 1,
+            VehicleLength: 5.0982f, VehicleWidth: 1.99268f, LateralSignSource: -13.496212f);
+
+    [Fact]
+    public void ASpotSpecificSettleOnBankingIsLearnedFrom()
+    {
+        // Daytona day4, on the banking: 0.061 m, 59 mm of it lateral, arrival
+        // verified, in the open. Real and repeatable, and learning is keyed per
+        // CHECKPOINT so the correction can only ever apply back at this spot.
+        //
+        // The cap used to be a quarter step (0.050 m) and refused this, which
+        // meant no banked spot could ever self-improve.
+        Assert.Null(LearnedRest.RejectReason(
+            Outcome(), Genesis(), errorForward: -0.013712f, errorLateral: 0.059064f,
+            impliedCandidate: 0.2));
+    }
+
+    [Fact]
+    public void AMissBetweenASettleAndAWholeStepIsStillRefused()
+    {
+        // The murky middle: too big to be a settle, not on a whole step. Nothing
+        // measured has ever landed here, and a sample nobody can explain is not
+        // one to write down as truth.
+        var reject = LearnedRest.RejectReason(
+            Outcome(), Genesis(), errorForward: 0.02f, errorLateral: 0.15f,
+            impliedCandidate: 0.55);
+
+        Assert.NotNull(reject);
+        Assert.Contains("too large to be a calibration error", reject);
+    }
+
+    [Fact]
+    public void TheFirstWholeStepIsRefusedEvenThoughItIsSmall()
+    {
+        // Candidate 1 is only 0.199 m -- the smallest clearance-search artifact
+        // there is, and the one closest to passing for a settle. It must not.
+        var reject = LearnedRest.RejectReason(
+            Outcome(), Genesis(), errorForward: 0.0f, errorLateral: 0.199268f,
+            impliedCandidate: 1.0);
+
+        Assert.NotNull(reject);
+        Assert.Contains("candidate 1", reject);
     }
 
     [Fact]

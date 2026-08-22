@@ -1,4 +1,4 @@
-using InactiveReset.Core;
+﻿using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -129,20 +129,25 @@ public sealed class PlacementReportTests
         Assert.Contains("the bytes were restored", line.Sentence);
     }
 
-    // ---- the known heading error -------------------------------------------
+    // ---- a large horizontal miss -------------------------------------------
 
     /// <summary>
-    /// A 0.57 m miss is the documented heading error, not a failed placement,
-    /// and the report says so rather than leaving the number to speak for
-    /// itself. See docs/HEADING_BUG.md.
+    /// A large miss is a defect and the report must name the causes worth
+    /// checking, not reassure. It used to call the miss expected and blame a
+    /// documented heading error, which is how an unsigned L went a whole session
+    /// missing by 1.07 m without anyone reading it as broken.
+    /// See docs/HEADING_BUG.md.
     /// </summary>
     [Fact]
-    public void ExplainsTheExpectedHorizontalError()
+    public void ExplainsALargeHorizontalError()
     {
         var line = Line(Placed(), "horizontal error");
 
         Assert.Equal(OutcomeSeverity.Normal, line.Severity);
-        Assert.Contains("heading error", line.Sentence);
+        Assert.Contains("a real miss", line.Sentence);
+        Assert.Contains("clearance search", line.Sentence);
+        Assert.Contains("a different car", line.Sentence);
+        Assert.DoesNotContain("expected, not a failed placement", line.Sentence);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 
 namespace InactiveReset.Core;
@@ -93,17 +93,41 @@ public sealed record LearnedRest
                  + "so it had not finished settling";
         }
 
-        // A wrong clearance candidate displaces the car by whole steps of
-        // 0.1 * width -- 0.2 m for a Hypercar -- along one axis. Genuine
-        // constants are wrong by millimetres. Anything past a quarter step is
-        // not a calibration error, whatever else it is.
+        // The danger this guard exists for is the clearance search, which
+        // displaces the car by WHOLE steps of 0.1 * width -- 0.199 m for a
+        // Hypercar -- along one axis. The engine cannot take a fraction of one,
+        // so a miss that does not land on a whole step is not that failure,
+        // whatever else it is.
         var step = 0.1f * container.VehicleWidth;
         var magnitude = MathF.Sqrt(errorForward * errorForward + errorLateral * errorLateral);
-        if (step > 0f && magnitude > 0.25f * step)
+        if (step <= 0f)
+        {
+            return null;
+        }
+
+        var nearest = Math.Round(impliedCandidate);
+        if (Math.Abs(impliedCandidate - nearest) < 0.15 && Math.Abs(nearest) >= 1)
+        {
+            return $"the {magnitude:F3} m miss lies on a whole clearance-search step "
+                 + $"({step:F3} m): it implies the engine used search candidate "
+                 + $"{nearest:F0}, not 0";
+        }
+
+        // Everything else is a constant error, and learning is per CHECKPOINT --
+        // so a correction measured here can only ever be applied here, and a
+        // genuinely spot-specific settle is the thing worth keeping rather than
+        // the thing to fear. This cap was a quarter step, which refused a 0.061 m
+        // sample on Daytona's banking: real, repeatable, and exactly what this
+        // checkpoint needed. It sits above the largest settle measured and below
+        // one whole step, so no clearance-search miss can reach it.
+        const float MaxConstantErrorSteps = 0.6f;
+        if (magnitude > MaxConstantErrorSteps * step)
         {
             return $"the {magnitude:F3} m miss is too large to be a calibration error "
-                 + $"(a clearance-search step is {step:F3} m); "
-                 + $"it implies the engine used search candidate {impliedCandidate:F1}, not 0";
+                 + $"(more than {MaxConstantErrorSteps:F1} of the {step:F3} m "
+                 + $"clearance-search step), but it does NOT lie on a whole step "
+                 + $"({impliedCandidate:F2}), so the clearance search is not the cause "
+                 + "-- suspect the constants or the car";
         }
 
         return null;

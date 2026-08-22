@@ -1,4 +1,4 @@
-namespace InactiveReset.Core;
+﻿namespace InactiveReset.Core;
 
 /// <summary>
 /// How alarming a line is. Three levels, not two: <see cref="Good"/> exists
@@ -136,9 +136,12 @@ public static class PlacementReport
         : sha256.ToUpperInvariant();
 
     /// <summary>
-    /// Below this, the placement landed where it was aimed. Above it, the
-    /// documented heading error dominates -- see docs/HEADING_BUG.md. The
-    /// threshold is not a tolerance on the mechanism, which repeats to ~1.5 mm.
+    /// Below this, the placement landed where it was aimed. Above it something
+    /// is wrong -- see docs/HEADING_BUG.md. This used to be where the documented
+    /// heading error was explained away as expected, which is precisely how a
+    /// 1.07 m miss from an unsigned L survived a full session of placements
+    /// without being read as a defect. The threshold is not a tolerance on the
+    /// mechanism, which repeats to ~1.5 mm.
     /// </summary>
     private const float GoodHorizontalErrorMetres = 0.05f;
 
@@ -177,13 +180,14 @@ public static class PlacementReport
                 : OutcomeSeverity.Normal,
             outcome.HorizontalErrorMetres < GoodHorizontalErrorMetres
                 ? null
-                : "a known, unfixed heading error puts every placement out by a "
-                  + "constant amount in the vehicle frame; this is expected, not a "
-                  + "failed placement. The size is NOT constant across builds -- it "
-                  + "was ~0.57 m on 1AC2F605 and ~0.71 m on 0F6DCAC1, measured with "
-                  + "the same calibration and identical engine tunables. Compare "
-                  + "against the worst error recorded in the calibration, not a "
-                  + "remembered number."));
+                : "this is a real miss, not an expected offset. A placement in "
+                  + "the open should land within a few millimetres and improve "
+                  + "further as it learns. Two causes account for every large miss "
+                  + "measured so far: the spot was close enough to a wall or "
+                  + "another car that the engine stepped its clearance search out "
+                  + "to a later candidate, which the plan does not model; or the "
+                  + "constants belong to a different car. Move to open ground and "
+                  + "place again before trusting anything else here."));
 
         var staleness = StalenessLine(outcome, calibration, runningBuildSha256);
         if (staleness is not null)
