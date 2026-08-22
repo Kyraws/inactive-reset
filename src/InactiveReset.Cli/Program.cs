@@ -385,7 +385,7 @@ internal static class Program
         }
 
         using var session = GameSession.Attach(offsetDirectory, forWriting: false, AskToFetch(dataDirectory));
-        var plan = BuildPlan(session, dataDirectory, args[0]);
+        var plan = BuildPlan(session, offsetDirectory, dataDirectory, args[0]);
         PrintPlan(plan);
         Console.WriteLine("\nNOTHING WAS WRITTEN.");
         return plan.CanProceed ? 0 : 1;
@@ -406,7 +406,7 @@ internal static class Program
         }
 
         using var session = GameSession.Attach(offsetDirectory, forWriting: true, AskToFetch(dataDirectory));
-        var plan = BuildPlan(session, dataDirectory, args[0]);
+        var plan = BuildPlan(session, offsetDirectory, dataDirectory, args[0]);
         PrintPlan(plan);
 
         if (!plan.CanProceed)
@@ -496,7 +496,8 @@ internal static class Program
         }
     }
 
-    private static PlacementPlan BuildPlan(GameSession session, string dataDirectory, string name)
+    private static PlacementPlan BuildPlan(
+        GameSession session, string offsetDirectory, string dataDirectory, string name)
     {
         var checkpoint = Checkpoint.Require(Path.Combine(dataDirectory, "checkpoints"), name);
 
@@ -512,7 +513,20 @@ internal static class Program
             session.ExecutableSha256, checkpoint.TrackName,
             checkpoint.VehicleName, checkpoint.Name);
 
-        return new PlacementService(session).Plan(checkpoint, calibration, learned);
+        // What is actually loaded, so a checkpoint captured in another car cannot
+        // be placed with this one's constants. Null when shared memory has not
+        // filled in yet, which is not a reason to refuse.
+        SessionIdentity? live = null;
+        try
+        {
+            using var reader = OpenSharedMemory(offsetDirectory);
+            live = SessionIdentity.From(reader);
+        }
+        catch (SharedMemoryException)
+        {
+        }
+
+        return new PlacementService(session).Plan(checkpoint, calibration, learned, live);
     }
 
     private static void PrintPlan(PlacementPlan plan)
@@ -547,6 +561,8 @@ internal static class Program
         Console.WriteLine($"  slot/pit/gar  {live.Container.SlotIndex} / {live.Container.PitIndex} / {live.Container.GarageIndex}");
         Console.WriteLine($"  controlOwner  {live.Container.ControlOwner}  (1 = Ai/garage, 0 = player)");
         Console.WriteLine($"  vehicle L/W   {live.Container.VehicleLength:F4} / {live.Container.VehicleWidth:F5}");
+        Console.WriteLine($"  lateral sign  {Geometry.LateralSign(live.Container.LateralSignSource):+0;-0}  "
+                        + $"(source {live.Container.LateralSignSource:F6})");
         Console.WriteLine($"  MULT / COUNT  {live.Globals.Mult} / {live.Globals.Count}");
         Console.WriteLine($"  entry at      0x{live.EntryAddress:X}");
         Console.WriteLine($"  padding tail  {Convert.ToHexString(live.PaddingTail)}  (never written)");
