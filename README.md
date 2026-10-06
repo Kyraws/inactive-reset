@@ -62,11 +62,11 @@ nothing else.
 Every LMU patch moves every address. When those addresses are compiled-in
 constants, patch day means editing and rebuilding code.
 
-Here, **offsets are data**: a JSON profile keyed by the executable's SHA-256.
-A maintainer tool regenerates it by comparing two memory dumps, and publishing
-is a `git push`. **You never run it.** When LMU updates, the app tells you the
-build is new and offers to fetch the profile for it -- one file, over HTTPS, and
-only if you say yes.
+When LMU updates, Inactive Reset detects the changed executable hash and
+discovers its offsets locally from the running game's decrypted code. It saves
+the result in `offsets/<full-hash>.auto.json` and reuses it on later launches.
+There is no GitHub profile download or manual reanchor step. Missing or
+ambiguous matches report the unresolved field and prevent a placement.
 
 Constants the engine can retune without moving anything -- the pit-spot yaw
 offset and clearance search factors -- are read live out of the running game
@@ -81,7 +81,7 @@ instead of being stored, so most game updates need no new profile at all.
     src/InactiveReset.Cli    command-line front end, and `serve` for the UI
     src/InactiveReset.App    windowed app: WebView2 around that same page
     tests/                   the test suite
-    offsets/                 build profiles, one JSON per LMU build
+    offsets/                 SDK layout and locally discovered build offsets
     data/profiles-default/   calibrations shipped with a release
     docs/                    how the machinery actually works
 
@@ -177,7 +177,7 @@ and need no .NET runtime.
 
     inactive-reset-ui.exe    double-click; the windowed app
     inactive-reset.exe       console; run --help
-    offsets\                 build profiles - keep this folder beside the exes
+    offsets\                 SDK layout and local offset cache
     data\profiles-default\   calibrations shipped with the release
 
 Keep the folder together. Both executables find `offsets\` and `data\` by
@@ -194,8 +194,7 @@ Three things to expect on a first run:
 - **The windowed app needs the WebView2 runtime.** Present on Windows 11 and
   most Windows 10 installs; if the window comes up blank, install the Evergreen
   runtime from Microsoft. The CLI does not need it.
-- **A new LMU build** means the tool asks permission to fetch one JSON profile
-  over HTTPS. Say no and it refuses to touch the game rather than guessing.
+- **A new LMU build** triggers local offset discovery automatically.
 
 ### Your calibrations versus the shipped ones
 

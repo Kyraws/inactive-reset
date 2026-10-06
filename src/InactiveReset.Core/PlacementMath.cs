@@ -386,3 +386,61 @@ public static class PlacementMath
         return new SpotEntry(new Vec3(v[0], v[1], v[2]), new Vec3(v[3], v[4], v[5]));
     }
 }
+
+/// <summary>The newer indexed mode-2 entry maps directly to a resting pose.</summary>
+public readonly record struct IndexedRestOffset(float Forward, float Lateral, float Vertical, float YawBias);
+
+public static class IndexedPlacementMath
+{
+    public static ulong EntryAddress(ulong table, int pitIndex)
+    {
+        if (pitIndex is < 0 or >= 0x68) throw new GateException("indexed pit index outside ordinary range");
+        return checked(table + (ulong)(pitIndex * 3 + 2) * 32);
+    }
+
+    public static RestConstants? Derive(ContainerState container) =>
+        container.HasEnginePlacementDistance && container.EnginePlacementDistance is > 0 and < 5
+            ? new RestConstants(container.EnginePlacementDistance, 0, RestSource.Derived) : null;
+
+    public static IndexedRestOffset Calibrate(SpotEntry entry, Vec3 rest, float restYaw)
+    {
+        if (!entry.Position.IsFinite || !entry.Orientation.IsFinite || !rest.IsFinite ||
+            !float.IsFinite(restYaw)) throw new CalibrationException("non-finite indexed placement sample");
+        var displacement = new Vec3(rest.X - entry.Position.X, rest.Y - entry.Position.Y,
+                                    rest.Z - entry.Position.Z);
+        if (displacement.Length > 5f) throw new CalibrationException("car is too far from indexed entry for pit-box calibration");
+        var heading = Geometry.HeadingAxis(entry.Orientation.Y);
+        var lateral = Geometry.LateralAxis(entry.Orientation.Y);
+        var bias = MathF.Atan2(MathF.Sin(restYaw - entry.Orientation.Y),
+                              MathF.Cos(restYaw - entry.Orientation.Y));
+        if (MathF.Abs(bias) > 0.1f) throw new CalibrationException("indexed yaw differs too much from car yaw");
+        return new IndexedRestOffset(
+            displacement.X * heading.X + displacement.Z * heading.Z,
+            displacement.X * lateral.X + displacement.Z * lateral.Z,
+            displacement.Y, bias);
+    }
+
+    public static Vec3 PredictRest(SpotEntry entry, IndexedRestOffset offset)
+    {
+        var h = Geometry.HeadingAxis(entry.Orientation.Y);
+        var l = Geometry.LateralAxis(entry.Orientation.Y);
+        return new Vec3(entry.Position.X + h.X * offset.Forward + l.X * offset.Lateral,
+                        entry.Position.Y + offset.Vertical,
+                        entry.Position.Z + h.Z * offset.Forward + l.Z * offset.Lateral);
+    }
+
+    public static SpotEntry Invert(Vec3 desiredRest, float desiredYaw, SpotEntry template,
+                                   IndexedRestOffset offset)
+    {
+        if (!desiredRest.IsFinite || !float.IsFinite(desiredYaw))
+            throw new CalibrationException("non-finite indexed placement target");
+        var yaw = desiredYaw - offset.YawBias;
+        var h = Geometry.HeadingAxis(yaw);
+        var l = Geometry.LateralAxis(yaw);
+        return new SpotEntry(
+            new Vec3(desiredRest.X - h.X * offset.Forward - l.X * offset.Lateral,
+                     desiredRest.Y - offset.Vertical,
+                     desiredRest.Z - h.Z * offset.Forward - l.Z * offset.Lateral),
+            template.Orientation with { Y = yaw });
+    }
+}

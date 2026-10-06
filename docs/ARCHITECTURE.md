@@ -1,5 +1,24 @@
 # Architecture
 
+## Automatic build discovery (2026-10-06)
+
+`GameSession.Attach` hashes the installed executable and loads a local cache for
+that exact hash, or resolves offsets from the decrypted mapped image using
+`AutomaticOffsets`. Structural resolvers find the tables, indices, stride,
+control state, dimensions, and rule flags. Embedded masked instruction anchors
+resolve the remaining vehicle and lap fields, refusing ambiguous or disagreeing
+matches. The cache carries a resolver version and a structurally resolved probe;
+a changed build, resolver version, or probe causes discovery again. No published
+offset profile, previous dump, GitHub connection, or maintainer approval is needed.
+
+Placement selects the ordinary PitPos entry on older builds and the indexed
+`pitIndex * 3 + 2` entry on newer builds. The indexed path uses the existing
+direct inverse and the engine's live rest-offset fields, without the older
+clearance-search displacement. Existing per-build checkpoint learning applies
+to its arrival errors. The write and rule restoration flow is shared.
+
+The legacy profile/reanchor discussion below records earlier development.
+
 How Inactive Reset works, what is known to be wrong with it, and the mistakes
 already made here so they are not made again.
 
@@ -50,7 +69,7 @@ shipped first, in [`LAP_VALIDITY.md`](LAP_VALIDITY.md).
     src/InactiveReset.Ui     local HTTP server + the single HTML page
     src/InactiveReset.Cli    console front end
     src/InactiveReset.App    WinExe: WebView2 window around the same UI
-    tests/                   44 tests, including byte-exact fidelity vs the C++
+    tests/                   regression tests, including byte-exact fidelity vs the C++
 
 | | |
 |---|---|
@@ -420,6 +439,11 @@ and an 11 MB span, which is what confirmed the stride `0x472C8` survived
 `1.4.1.3` unchanged. `garageIndex` is not a useful discriminator — it reads `0`
 for every slot even in the garage.
 
+The later `1.4.2.0` build does **not** preserve that stride: its mapped code
+uses `0x47308` at 314 indexed-container sites. A reanchored array base with
+the old stride is unsafe even when its RVA references resolve. The placement
+gate now requires the live code's dominant stride to match the profile.
+
 ### What is still out of reach
 
 `derivedFlags.0` is refused by the reference profile: it is written by
@@ -457,32 +481,22 @@ nonsense.
 
 ---
 
-## Known defects — read before trusting a placement
+## Current limitations — read before trusting a placement
 
-**1. Placement is ~0.57 m off.** An **11.633 degree heading error** in the
-orientation-to-heading conversion. It is a *rotation*, not a translation: `H` is
-correct to 1.8 mm, and run-to-run repeatability is ~1.5 mm, so the mechanism is
-sound and only the aim is wrong. Full analysis in
-[`HEADING_BUG.md`](HEADING_BUG.md).
-
-**Do not re-calibrate to fix it.** That bakes a rotation into two translation
-constants and is correct at exactly one distance.
-
-Separately, and found later: the 1AC2F605 patch changed two engine constants the
-profile was still carrying from the previous build — the yaw offset (35 deg to
-45 deg, and it moved from an `.rdata` radian literal to a `.data` value in
-degrees) and the pit-spot search start (0.2 to 0.55 of vehicle width). Both are
-corrected in the profile. That is a *different* defect from the 11.633 deg error
-above, which was measured before the patch and is still open.
+**1. A new game build needs a verified offset profile.** The executable hash
+prevents an old profile from being used after a patch. `reanchor` finds moved
+addresses, but a maintainer still has to verify changed engine behaviour in the
+running game before publishing the profile. See [`HEADING_BUG.md`](HEADING_BUG.md)
+for the earlier heading diagnosis and its correction.
 
 **2. The cut flags re-arm themselves.** Session init sets derived flags 0 and 1
 together with a single word write, so returning to the garage silently re-enables
 lap invalidation. The UI shows the raw flag values read back from memory every
 refresh — trust those, not the toggle. Nothing re-applies them automatically.
 
-**3. Only one calibration exists** (Circuit de Barcelona, Richard Mille AF Corse
-296 GT3). `D` and `H` are per track **and** per vehicle. `place` refuses without
-a matching one.
+**3. Derived placement constants have a measured limit.** The tool can derive
+`D` and `L` for an uncalibrated vehicle, then learn from each placement. Its
+borrowed vertical constant `H` has only been confirmed on tested combinations.
 
 **4. Sector restoration is measured; the pit-flag clear is a secondary guard.**
 The sector write is the fix and was confirmed against the running game. The
@@ -545,8 +559,6 @@ decodes UTF-8 as ANSI.** Round-tripping a source file through `Get-Content` /
 ## What comes next
 
 [`TARGETS.md`](TARGETS.md) holds the candidates with what is already known about
-each. Nothing there is committed. The two most likely to matter:
+each. Nothing there is committed. The next likely candidate:
 
-1. **The heading error** — the open lead is `kSlotRestart`'s branch polarity
-   flip, and whether it changes which *mode* `GetPitDestination` is asked for.
-2. **Steward Penalties**, reopened now that the reference scan is correct.
+1. **Steward Penalties**, reopened now that the reference scan is correct.

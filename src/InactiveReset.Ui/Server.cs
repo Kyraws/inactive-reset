@@ -63,6 +63,14 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         try
         {
             var path = context.Request.Url?.AbsolutePath ?? "/";
+            var readOnly = path is "/" or "/api/state";
+            if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
+                (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
+            {
+                context.Response.StatusCode = 400;
+                SendJson(context, new JsonObject { ["error"] = "invalid request method or content type" });
+                return;
+            }
             switch (path)
             {
                 case "/":
@@ -79,9 +87,6 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/api/launch":
                     SendJson(context, _runner.Launch(ReadBody(context)));
-                    break;
-                case "/api/allow-fetch":
-                    SendJson(context, _runner.AllowFetch());
                     break;
                 case "/api/capture":
                     SendJson(context, _runner.Capture(ReadBody(context)));
@@ -142,4 +147,3 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         context.Response.Close();
     }
 }
-

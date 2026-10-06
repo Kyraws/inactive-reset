@@ -14,6 +14,7 @@ public sealed record LiveState
 
     public required SpotEntry CurrentEntry { get; init; }
     public required GateResult Preconditions { get; init; }
+    public bool IndexedDestination { get; init; }
 
     /// <summary>
     /// The 8 bytes at +0x18 this project never writes. Recorded so a report can
@@ -40,7 +41,7 @@ public sealed class LiveStateReader(GameSession session)
 
         // The table globals are POINTERS in the image; read through them.
         var globals = new SpotTableGlobals(
-            PitPosTable: memory.ReadUInt64(_session.Resolve(spot.PitPosTable, "PitPos table")),
+            PitPosTable: memory.ReadUInt64(_session.Resolve(spot.IndexedDestination ?? spot.PitPosTable, "placement table")),
             GarPosTable: memory.ReadUInt64(_session.Resolve(spot.GarPosTable, "GarPos table")),
             Mult: memory.ReadInt32(_session.Resolve(spot.Mult, "spot table MULT")),
             Count: memory.ReadInt32(_session.Resolve(spot.Count, "spot table COUNT")));
@@ -54,8 +55,9 @@ public sealed class LiveStateReader(GameSession session)
             container = ReadContainer(container.SlotIndex);
         }
 
-        var entryAddress = PlacementMath.ComputePitPosEntryAddress(
-            globals.PitPosTable, container.PitIndex);
+        var entryAddress = spot.IndexedDestination is null
+            ? PlacementMath.ComputePitPosEntryAddress(globals.PitPosTable, container.PitIndex)
+            : IndexedPlacementMath.EntryAddress(globals.PitPosTable, container.PitIndex);
 
         var entryBytes = globals.PitPosTable != 0 && container.PitIndex >= 0
             ? memory.ReadBytes(entryAddress, spot.EntryBytes)
@@ -69,6 +71,7 @@ public sealed class LiveStateReader(GameSession session)
             EntryBytes = entryBytes,
             CurrentEntry = PlacementMath.DecodeSpotEntry(entryBytes),
             Preconditions = PlacementMath.EvaluatePlacementPreconditions(container, globals, model),
+            IndexedDestination = spot.IndexedDestination is not null,
         };
     }
 

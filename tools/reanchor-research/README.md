@@ -1,5 +1,20 @@
 # Reanchor research scripts
 
+`build-discovery-seeds.py` generates the embedded instruction anchors used by
+the application's automatic discovery. It requires Python and Capstone only
+when regenerating those development resources; neither is needed by users.
+Pass a known mapped image, its offset profile, the output JSON path, and any
+additional mapped images against which the anchors must resolve uniquely:
+
+```text
+python build-discovery-seeds.py known.bin known-profile.json discovery-seeds.json check1.bin check2.bin
+```
+
+The generated JSON belongs in `src/InactiveReset.Core/discovery-seeds.json`.
+Bump `AutomaticOffsets.ResolverVersion` when changing discovery resources so
+existing local caches are rebuilt. The scripts described below remain research
+tools rather than application dependencies.
+
 Maintainer-only, like everything else that re-derives addresses. Never shipped,
 never run by a user, not referenced by any project.
 

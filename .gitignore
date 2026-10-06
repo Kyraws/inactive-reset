@@ -41,6 +41,9 @@ dumps/
 # Agent scratch: issues and specs (see AGENTS.md). Working notes, not history.
 .scratch/
 
+# Machine-local agent permissions
+.claude/settings.local.json
+
 # Private handoff notes: machine-local paths and session gotchas. The durable
 # content lives in docs/ARCHITECTURE.md, which IS tracked.
 HANDOFF.md
@@ -62,8 +65,13 @@ coverage*.*
 Thumbs.db
 Desktop.ini
 .DS_Store
+tools/observer/build*/
 
 # Secrets
 *.env
 .env.*
 secrets.json
+
+# Offsets discovered locally for an installed game build
+/offsets/*.auto.json
+/offsets/*.auto.json.*.tmp

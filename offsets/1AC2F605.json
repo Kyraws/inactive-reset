@@ -13,6 +13,7 @@
   "build": {
     "executableSha256": "1AC2F6059AA1FBC948373DF6883B83E91F82728330F1458D8C9D935C8CFB709D",
     "fileVersion": "1.4.0.0",
+    "placementValidated": true,
     "sizeOfImage": "0x3D39000",
     "derivedFrom": "LMU_runtime_44C3EE9C.bin",
     "derivedUtc": "2026-08-11T00:00:00Z",

@@ -55,6 +55,8 @@ public sealed class OffsetProfile
     public required string ExecutableSha256 { get; init; }
     public required string FileVersion { get; init; }
     public required ulong SizeOfImage { get; init; }
+    public required bool PlacementValidated { get; init; }
+    public int AutomaticResolverVersion { get; init; }
 
     public required ProbeSpec Probe { get; init; }
     public required SpotTableSpec SpotTable { get; init; }
@@ -62,6 +64,13 @@ public sealed class OffsetProfile
     public required RulesSpec Rules { get; init; }
     public required EngineModelSpec EngineModel { get; init; }
     public required RestGateSpec RestGates { get; init; }
+
+    public void RequirePlacementValidated()
+    {
+        if (!PlacementValidated && AutomaticResolverVersion != AutomaticOffsets.ResolverVersion)
+            throw new GateException(
+                "this build has candidate offsets but has not passed matching-car placement, control, rules, and exact-byte restore validation");
+    }
 
     /// <summary>Where this profile came from, for diagnostics.</summary>
     public string? SourcePath { get; init; }
@@ -116,6 +125,12 @@ public sealed class OffsetProfile
 
     // ---- parsing -----------------------------------------------------------
 
+    public static OffsetProfile Parse(string json, string path)
+    {
+        using var document = JsonDocument.Parse(json);
+        return FromJson(document.RootElement, path);
+    }
+
     private static OffsetProfile FromJson(JsonElement root, string path)
     {
         var build = Require(root, "build");
@@ -129,9 +144,13 @@ public sealed class OffsetProfile
         return new OffsetProfile
         {
             SourcePath = path,
+            AutomaticResolverVersion = build.TryGetProperty("automaticResolverVersion", out var resolver)
+                ? resolver.GetInt32() : 0,
             ExecutableSha256 = build.GetProperty("executableSha256").GetString()!,
             FileVersion = build.GetProperty("fileVersion").GetString()!,
             SizeOfImage = ParseHex(build.GetProperty("sizeOfImage").GetString()!),
+            PlacementValidated = build.TryGetProperty("placementValidated", out var validated) &&
+                                 validated.ValueKind == JsonValueKind.True,
 
             Probe = new ProbeSpec
             {
@@ -155,6 +174,8 @@ public sealed class OffsetProfile
                 Count = ReadRva(spot, "count"),
                 EntryBytes = spot.GetProperty("entryBytes").GetInt32(),
                 WriteBytes = spot.GetProperty("writeBytes").GetInt32(),
+                IndexedDestination = spot.TryGetProperty("indexedDestination", out _) ? ReadRva(spot, "indexedDestination") : null,
+                DestinationModeOffset = spot.TryGetProperty("destinationModeOffset", out var mode) ? ParseHex(mode.GetString()!) : null,
             },
 
             Containers = ContainerSpec.FromJson(containers),
@@ -271,6 +292,8 @@ public sealed class ProbeSpec
 
 public sealed class SpotTableSpec
 {
+    public Rva? IndexedDestination { get; init; }
+    public ulong? DestinationModeOffset { get; init; }
     public required Rva PitPosTable { get; init; }
     public required Rva GarPosTable { get; init; }
     public required Rva Mult { get; init; }

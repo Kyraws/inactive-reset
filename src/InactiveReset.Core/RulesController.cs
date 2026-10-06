@@ -119,10 +119,11 @@ public sealed class RulesController(GameSession session)
     // ---- write -------------------------------------------------------------
 
     /// <summary>
-    /// Disable the stop/go for pit-lane speeding.
+    /// Write the global Flag Rules setting. This also affects track-limit lap
+    /// invalidation, so placement must restore the original value after use.
     ///
     /// This writes the Flag Rules setting itself, which the penalty code reads
-    /// on every evaluation, so it takes effect on the next pit entry.
+    /// on every evaluation, so it takes effect without another Drive press.
     ///
     /// The game's REST setter clamps this value to a floor of 1 and therefore
     /// cannot disable the penalty at all. The floor lives in the setter, not in
@@ -135,6 +136,21 @@ public sealed class RulesController(GameSession session)
             ? field.DefaultValue ?? 2
             : field.DisableValue ?? 0;
         return Write("Pit-speeding gate", field, value);
+    }
+
+    /// <summary>Restore the exact value saved before a temporary placement write.</summary>
+    public RuleWriteResult RestorePitSpeedingPenalty(RuleWriteResult disabled)
+    {
+        var field = Spec.FlagRules;
+        var address = _session.ModuleBase + field.Rva.Require("Flag Rules");
+        if (disabled.Address != address || disabled.After != 0 || !disabled.Changed)
+            throw new InvalidOperationException("not a temporary Flag Rules write from this session");
+
+        var current = _session.Memory.ReadInt32(address);
+        if (current != 0 && current != disabled.Before)
+            throw new InvalidOperationException(
+                $"Flag Rules changed to {current} while placement was running; refusing to overwrite it");
+        return Write("Flag Rules restore", field, disabled.Before);
     }
 
     /// <summary>

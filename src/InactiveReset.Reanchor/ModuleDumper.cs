@@ -16,8 +16,13 @@ namespace InactiveReset.Reanchor;
 /// </summary>
 public static class ModuleDumper
 {
+    public sealed record CaptureResult(byte[] Image, ulong ModuleBase, int UnreadableBytes);
     public sealed record DumpResult(
         string Path, ulong ModuleBase, int Size, int UnreadableBytes, string Sha256);
+
+    /// <summary>Refuse to key a live capture by a different on-disk executable.</summary>
+    public static bool SamePeIdentity(ReadOnlySpan<byte> diskHeader, ReadOnlySpan<byte> mapped) =>
+        ProcessMemory.SamePeIdentity(diskHeader, mapped, mapped.Length);
 
     /// <summary>
     /// Read the whole mapped module. Unreadable pages are zero-filled rather
@@ -26,6 +31,15 @@ public static class ModuleDumper
     /// makes the dump useful.
     /// </summary>
     public static DumpResult Dump(Process process, string outputPath)
+    {
+        var capture = Capture(process);
+        File.WriteAllBytes(outputPath, capture.Image);
+        return new DumpResult(outputPath, capture.ModuleBase, capture.Image.Length,
+                              capture.UnreadableBytes,
+                              Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(capture.Image)));
+    }
+
+    public static CaptureResult Capture(Process process)
     {
         var module = process.MainModule
             ?? throw new MemoryAccessException("cannot read the game's main module");
@@ -54,8 +68,6 @@ public static class ModuleDumper
             }
         }
 
-        File.WriteAllBytes(outputPath, image);
-        return new DumpResult(outputPath, moduleBase, size, unreadable,
-                              Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image)));
+        return new CaptureResult(image, moduleBase, unreadable);
     }
 }

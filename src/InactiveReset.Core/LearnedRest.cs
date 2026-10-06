@@ -31,6 +31,8 @@ public sealed record LearnedRest
     public required string CheckpointName { get; init; }
     public required float Forward { get; init; }
     public required float Lateral { get; init; }
+    public float? Vertical { get; init; }
+    public int VerticalSampleCount { get; init; }
     public required int SampleCount { get; init; }
     public required string UpdatedUtc { get; init; }
 
@@ -137,13 +139,17 @@ public sealed record LearnedRest
     /// Fold a new measurement in. The stored value is the running mean, so one
     /// unusual spot cannot dominate once several samples exist.
     /// </summary>
-    public LearnedRest With(float forward, float lateral)
+    public LearnedRest With(float forward, float lateral, float? vertical = null)
     {
         var n = SampleCount + 1;
         return this with
         {
             Forward = Forward + (forward - Forward) / n,
             Lateral = Lateral + (lateral - Lateral) / n,
+            Vertical = vertical is null ? Vertical
+                : Vertical is null ? vertical
+                : Vertical + (vertical - Vertical) / (VerticalSampleCount + 1),
+            VerticalSampleCount = VerticalSampleCount + (vertical is null ? 0 : 1),
             SampleCount = n,
             UpdatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
@@ -151,7 +157,7 @@ public sealed record LearnedRest
 
     public static LearnedRest First(
         string build, string track, string vehicle, string checkpoint,
-        float forward, float lateral) => new()
+        float forward, float lateral, float? vertical = null) => new()
         {
             BuildSha256 = build,
             TrackName = track,
@@ -159,6 +165,8 @@ public sealed record LearnedRest
             CheckpointName = checkpoint,
             Forward = forward,
             Lateral = lateral,
+            Vertical = vertical,
+            VerticalSampleCount = vertical is null ? 0 : 1,
             SampleCount = 1,
             UpdatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
         };
@@ -206,6 +214,10 @@ public sealed class LearnedRestStore(string dataDirectory)
                 CheckpointName = root.GetProperty("checkpoint").GetString()!,
                 Forward = root.GetProperty("forward_distance_D").GetSingle(),
                 Lateral = root.GetProperty("lateral_offset_L").GetSingle(),
+                Vertical = root.TryGetProperty("vertical_offset_H", out var vertical)
+                    && vertical.ValueKind == JsonValueKind.Number ? vertical.GetSingle() : null,
+                VerticalSampleCount = root.TryGetProperty("vertical_sample_count", out var verticalCount)
+                    ? verticalCount.GetInt32() : 0,
                 SampleCount = root.GetProperty("sample_count").GetInt32(),
                 UpdatedUtc = root.GetProperty("updated_utc").GetString()!,
             };
@@ -233,6 +245,8 @@ public sealed class LearnedRestStore(string dataDirectory)
             ["checkpoint"] = learned.CheckpointName,
             ["forward_distance_D"] = learned.Forward,
             ["lateral_offset_L"] = learned.Lateral,
+            ["vertical_offset_H"] = learned.Vertical,
+            ["vertical_sample_count"] = learned.VerticalSampleCount,
             ["sample_count"] = learned.SampleCount,
             ["updated_utc"] = learned.UpdatedUtc,
         }, new JsonSerializerOptions { WriteIndented = true }) + "\n");

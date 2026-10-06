@@ -5,10 +5,10 @@ namespace InactiveReset.Core;
 /// <summary>What learning did with a placement, in words a report can print.</summary>
 public sealed record LearningResult(
     bool Accepted, string Message, float ImpliedForward, float ImpliedLateral,
-    double ImpliedSearchCandidate);
+    double ImpliedSearchCandidate, float? ImpliedVertical);
 
 /// <summary>
-/// Turns a finished placement into better constants.
+/// Turns a finished placement into better checkpoint-specific constants.
 ///
 /// <para><b>Why one placement is sufficient.</b> The miss IS the correction. A
 /// placement made with D too small by x lands exactly x short, which was
@@ -30,6 +30,8 @@ public static class RestLearning
     /// The lateral component is measured against <c>lateral(yaw)</c> and the
     /// forward against <c>heading(yaw)</c>, the same axes the model builds the
     /// rest offset on, so the two numbers ARE the corrections to D and L.
+    /// Height is learned only near the target, where banking cannot turn a
+    /// horizontal miss into a misleading vertical correction.
     /// </summary>
     public static LearningResult Evaluate(PlacementPlan plan, PlacementOutcome outcome)
     {
@@ -46,7 +48,7 @@ public static class RestLearning
         // L is a magnitude and the model applies sign*L, so the world-frame miss
         // has to come back through the sign before it corrects the stored value.
         // Without this, learning in a sign -1 car would drive L the wrong way.
-        var sign = Geometry.LateralSign(plan.Live.Container.LateralSignSource);
+        var sign = plan.Live.IndexedDestination ? 1f : Geometry.LateralSign(plan.Live.Container.LateralSignSource);
 
         var impliedForward = plan.Model.RestForwardDistance + forwardError;
         var impliedLateral = plan.Model.RestLateralOffset + sign * lateralError;
@@ -56,11 +58,23 @@ public static class RestLearning
         var reject = LearnedRest.RejectReason(
             outcome, plan.Live.Container, forwardError, lateralError, candidate);
 
+        // On banking, correcting the horizontal miss changes the ground height
+        // beneath the car. Learn H only after D/L put it near the target.
+        const float MaxVerticalCorrection = 0.10f;
+        const float MaxHorizontalMissForVertical = 0.01f;
+        var verticalError = outcome.VerticalErrorMetres;
+        float? impliedVertical = reject is null && float.IsFinite(verticalError)
+            && MathF.Sqrt(forwardError * forwardError + lateralError * lateralError)
+                <= MaxHorizontalMissForVertical
+            && MathF.Abs(verticalError) <= MaxVerticalCorrection
+            ? plan.Model.RestVerticalOffset + verticalError : null;
+
         return new LearningResult(
             reject is null,
-            reject ?? $"learned D = {impliedForward:F6}, L = {impliedLateral:F6} "
+            reject ?? $"learned D = {impliedForward:F6}, L = {impliedLateral:F6}"
+                    + (impliedVertical is null ? "; H unchanged" : $", H = {impliedVertical:F6}") + " "
                     + $"from a {MathF.Sqrt(forwardError * forwardError + lateralError * lateralError):F4} m miss",
-            impliedForward, impliedLateral, candidate);
+            impliedForward, impliedLateral, candidate, impliedVertical);
     }
 
     /// <summary>
@@ -91,6 +105,7 @@ public static class RestLearning
     /// </summary>
     public static double ImpliedSearchCandidate(PlacementPlan plan, PlacementOutcome outcome)
     {
+        if (plan.Live.IndexedDestination) return 0;
         var width = plan.Live.Container.VehicleWidth;
         if (!(width > 0f))
         {
@@ -159,8 +174,10 @@ public static class RestLearning
         store.Save(existing is null
             ? LearnedRest.First(
                 buildSha256, plan.Checkpoint.TrackName, plan.Checkpoint.VehicleName,
-                plan.Checkpoint.Name, result.ImpliedForward, result.ImpliedLateral)
-            : existing.With(result.ImpliedForward, result.ImpliedLateral));
+                plan.Checkpoint.Name, result.ImpliedForward, result.ImpliedLateral,
+                result.ImpliedVertical)
+            : existing.With(result.ImpliedForward, result.ImpliedLateral,
+                result.ImpliedVertical));
 
         return result;
     }

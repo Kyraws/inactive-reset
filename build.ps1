@@ -97,9 +97,9 @@ switch ($Task) {
             throw 'Close the running app before shipping.'
         }
 
-        if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
-
         Invoke-Step 'test (Release)' { dotnet test $solution -c Release --nologo }
+
+        if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 
         foreach ($project in 'src\InactiveReset.App', 'src\InactiveReset.Cli') {
             Invoke-Step "publish $project" {
@@ -134,9 +134,8 @@ switch ($Task) {
     'package' {
         # A zip of dist\ alone would be BROKEN. Both exes find offsets\ and
         # data\ by walking up from their own directory, so a user who unzips to
-        # the desktop has neither. ProfileFetch can download the build profile,
-        # but it only ever fetches <HASH>.json -- shared-memory.json is required
-        # by watch, plan and place and is never fetched, so it must ship.
+        # the desktop has neither. Build offsets are discovered locally, while
+        # shared-memory.json is the SDK layout needed by watch, plan and place.
         & $PSCommandPath -Task ship -Configuration Release
         if ($LASTEXITCODE -ne 0) { throw 'ship failed' }
 
@@ -153,11 +152,13 @@ switch ($Task) {
         }
 
         Invoke-Step 'stage offsets and calibrations' {
-            # offsets\: shared-memory.json plus every published build profile.
+            # Only the SDK layout ships; build offsets are discovered locally.
             # data\profiles-default\: calibrations shipped with the release. The
             # user's own live in data\profiles\, which a release NEVER writes,
             # so upgrading cannot replace something they measured themselves.
-            Copy-Item (Join-Path $root 'offsets') $stage -Recurse -Force
+            $sdkOffsets = Join-Path $stage 'offsets'
+            New-Item -ItemType Directory -Path $sdkOffsets -Force | Out-Null
+            Copy-Item (Join-Path $root 'offsets\shared-memory.json') $sdkOffsets -Force
             $profiles = Join-Path $stage 'data\profiles-default'
             New-Item -ItemType Directory -Path $profiles -Force | Out-Null
             Copy-Item (Join-Path $root 'data\profiles-default\*.json') $profiles -Force

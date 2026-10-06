@@ -206,6 +206,72 @@ public sealed class RestLearningTests
     }
 
     [Fact]
+    public void VerticalLearningIsPerCheckpointAndOldFilesKeepTheirHeightFallback()
+    {
+        var data = Directory.CreateTempSubdirectory("inactive-reset-height-").FullName;
+        try
+        {
+            var store = new LearnedRestStore(data);
+            var old = LearnedRest.First("BUILD", "T", "V", "cp", 3f, 0.5f);
+            store.Save(old);
+            var loaded = store.Load("BUILD", "T", "V", "cp")!;
+            Assert.Null(loaded.Vertical);
+            Assert.Equal(0, loaded.VerticalSampleCount);
+
+            var firstHeight = loaded.With(3f, 0.5f, 0.403f);
+            Assert.Equal(0.403f, firstHeight.Vertical);
+            Assert.Equal(1, firstHeight.VerticalSampleCount);
+            store.Save(firstHeight);
+            var averaged = store.Load("BUILD", "T", "V", "cp")!.With(3f, 0.5f, 0.397f);
+            Assert.Equal(0.400f, averaged.Vertical!.Value, 5);
+            Assert.Equal(2, averaged.VerticalSampleCount);
+        }
+        finally
+        {
+            Directory.Delete(data, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void HeightCorrectionUsesVerticalMissButRefusesLargeAnomalies()
+    {
+        var container = Genesis();
+        var model = new PlacementModel
+        {
+            YawOffsetMode2 = 0.785f, SearchStartFactor = 0.55f,
+            SearchStepFactor = 0.1f, SearchMaxFactor = 1.5f,
+            RestForwardDistance = 3.3f, RestLateralOffset = 0.54f,
+            RestVerticalOffset = 0.373f,
+        };
+        var plan = new PlacementPlan
+        {
+            Checkpoint = new Checkpoint { Name = "day4", TrackName = "Daytona", VehicleName = "Genesis",
+                Pose = new RecordedPose(new Vec3(0, 0, 0), new Vec3(1, 0, 0),
+                    new Vec3(0, 1, 0), new Vec3(0, 0, 1)) },
+            Calibration = CalibrationProfile.Placeholder("Daytona", "Genesis"),
+            Model = model,
+            Live = new LiveState { Globals = default, Container = container, EntryAddress = 0,
+                EntryBytes = new byte[32], CurrentEntry = default,
+                Preconditions = new GateResult(true, []) },
+            Target = new TargetPose { Valid = true, RestPosition = new Vec3(0, 0, 0), Yaw = 0 },
+            ComputedEntry = default, Payload = new byte[24], ForwardRecheck = default,
+            RestSource = RestSource.Derived,
+        };
+
+        var daytona = Outcome() with { Achieved = new Vec3(0, 0.028f, 0), VerticalErrorMetres = 0.028f };
+        Assert.Equal(0.401f, RestLearning.Evaluate(plan, daytona).ImpliedVertical!.Value, 5);
+        var indexed = plan with { Live = plan.Live with { IndexedDestination = true,
+            Container = plan.Live.Container with { LateralSignSource = -1 } } };
+        var indexedMiss = daytona with { Achieved = new Vec3(0.004f, 0.028f, 0) };
+        Assert.Equal(0.544f, RestLearning.Evaluate(indexed, indexedMiss).ImpliedLateral, 5);
+        Assert.Equal(0, RestLearning.ImpliedSearchCandidate(indexed, indexedMiss));
+        Assert.Null(RestLearning.Evaluate(plan, daytona with
+            { Achieved = new Vec3(0.06f, 0.028f, 0) }).ImpliedVertical);
+        Assert.Null(RestLearning.Evaluate(plan, daytona with
+            { Achieved = new Vec3(0, 0.3f, 0), VerticalErrorMetres = 0.3f }).ImpliedVertical);
+    }
+
+    [Fact]
     public void ALearnedValueFromAnotherBuildIsNotUsed()
     {
         // D moved 0.5 m across a single patch, so a learned value from another

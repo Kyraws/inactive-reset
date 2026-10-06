@@ -30,8 +30,8 @@ public enum Consumption
 public sealed class RulesSpec
 {
     /// <summary>
-    /// Gates the stop/go for pit-lane speeding. Read live, so a direct write
-    /// applies at once.
+    /// Gates the stop/go for pit-lane speeding and track-limit invalidation.
+    /// Read live, so a direct write applies at once.
     ///
     /// Note the REST setter clamps this to a floor of 1 and therefore CANNOT
     /// disable the penalty; the floor lives in the setter, not the consumer.

@@ -17,8 +17,7 @@
 
     <!--
       The tool's own version. It deliberately does NOT track the Le Mans Ultimate
-      build: the binary is build-agnostic by design, because ProfileFetch
-      downloads the offset profile for whatever build is running. Naming a
+      build: the binary discovers offsets locally for the running build. Naming a
       release after one LMU build would claim a compatibility limit that does not
       exist, and force a re-release every patch to ship identical binaries.
       Which LMU builds a release was verified against belongs in the release

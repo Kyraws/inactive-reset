@@ -198,12 +198,14 @@ public sealed class PlacementService(GameSession session)
         // Learned beats measured beats derived. Learned came from THIS
         // checkpoint's own placements; a profile was measured by hand for this
         // track and vehicle; derived works anywhere but has only ever been
-        // fitted on one track.
+        // fitted on one track. Old learned files have no H and retain the
+        // calibration's vertical offset until a near-target sample supplies it.
         var rest = learned is not null
             ? new RestConstants(learned.Forward, learned.Lateral, RestSource.Learned)
-            : !calibration.IsPlaceholder
+            : !calibration.IsPlaceholder && (!live.IndexedDestination ||
+                string.Equals(calibration.ExecutableSha256, _session.ExecutableSha256, StringComparison.OrdinalIgnoreCase))
                 ? new RestConstants(model.RestForwardDistance, model.RestLateralOffset, RestSource.Profile)
-                : RestModel.Derive(live.Container)
+                : (live.IndexedDestination ? IndexedPlacementMath.Derive(live.Container) : RestModel.Derive(live.Container))
                   ?? throw new CalibrationException(
                       $"no calibration for '{checkpoint.TrackName}' / '{checkpoint.VehicleName}', and "
                       + "this build's offset profile does not carry the engine placement fields, so "
@@ -213,12 +215,16 @@ public sealed class PlacementService(GameSession session)
         {
             RestForwardDistance = rest.Forward,
             RestLateralOffset = rest.Lateral,
+            RestVerticalOffset = learned?.Vertical ?? model.RestVerticalOffset,
         };
 
         var target = Geometry.BuildTargetFromRecordedPose(checkpoint.Pose);
 
-        var entry = PlacementMath.InvertToPitPosEntry(
-            target.RestPosition, target.Yaw, live.Container, model, live.CurrentEntry);
+        var indexedOffset = new IndexedRestOffset(model.RestForwardDistance,
+            model.RestLateralOffset, model.RestVerticalOffset, 0);
+        var entry = live.IndexedDestination
+            ? IndexedPlacementMath.Invert(target.RestPosition, target.Yaw, live.CurrentEntry, indexedOffset)
+            : PlacementMath.InvertToPitPosEntry(target.RestPosition, target.Yaw, live.Container, model, live.CurrentEntry);
 
         var destination = PlacementMath.PredictDriveDestination(entry, live.Container, model);
 
@@ -231,7 +237,8 @@ public sealed class PlacementService(GameSession session)
             Target = target,
             ComputedEntry = entry,
             Payload = PlacementMath.EncodeSpotEntry(entry),
-            ForwardRecheck = PlacementMath.PredictRestPosition(destination, live.Container, model),
+            ForwardRecheck = live.IndexedDestination ? IndexedPlacementMath.PredictRest(entry, indexedOffset)
+                : PlacementMath.PredictRestPosition(destination, live.Container, model),
             RestSource = rest.Source,
         };
     }
@@ -271,6 +278,35 @@ public sealed class PlacementService(GameSession session)
             return Failed($"preconditions not met: {string.Join("; ", reasons)}", progress);
         }
 
+        // Check mapped code before trusting profile fields or changing rules.
+        var mapped = _session.Memory.CaptureMappedModule(_session.Process);
+        var spot = _session.Offsets.SpotTable;
+        if (spot.IndexedDestination is null)
+            SpotTableResolver.RequireOrdinaryPitPos(mapped, spot.PitPosTable.Require("PitPos table"));
+        else
+        {
+            var indexed = SpotTableResolver.FindIndexedDestination(mapped);
+            var mode = SpotTableResolver.FindDestinationMode(mapped);
+            var selection = SpotTableResolver.FindNormalSlotSelection(mapped);
+            if (!plan.Live.IndexedDestination || indexed?.TableRva != spot.IndexedDestination.Require("indexed destination") ||
+                mode is null || mode.Offset != spot.DestinationModeOffset || selection is null ||
+                _session.Memory.ReadInt32(_session.ModuleBase + selection.SwitchRva) != 0 ||
+                _session.Memory.ReadInt32(_session.Offsets.Containers.ContainerAddress(_session.ModuleBase,
+                    plan.Live.Container.SlotIndex) + mode.Offset) != 0 ||
+                _session.Memory.ReadUInt64(_session.ModuleBase + indexed.TableRva) != plan.Live.Globals.PitPosTable ||
+                IndexedPlacementMath.EntryAddress(plan.Live.Globals.PitPosTable, plan.Live.Container.PitIndex) != plan.Live.EntryAddress)
+                throw new GateException("the live indexed destination selection changed; return to the garage");
+        }
+        SpotTableResolver.RequireContainerStride(mapped, _session.Offsets.Containers.Stride);
+        SpotTableResolver.RequireContainerArrayBase(
+            mapped, _session.Offsets.Containers.ArrayBase.Require("container array base"));
+        SpotTableResolver.RequireSpecialSlotIndices(
+            mapped, _session.Offsets.Containers, _session.Offsets.Probe.Rva.Require("transform probe"));
+        SpotTableResolver.RequireControlOwner(mapped, _session.Offsets.Containers);
+        SpotTableResolver.RequireLateralSign(mapped, _session.Offsets.Containers);
+        SpotTableResolver.RequireVehicleDimensions(mapped, _session.Offsets.Containers);
+        SpotTableResolver.RequirePitState(mapped, _session.Offsets.Containers);
+
         var reader = new LiveStateReader(_session);
         var slot = plan.Live.Container.SlotIndex;
         var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(120));
@@ -281,16 +317,19 @@ public sealed class PlacementService(GameSession session)
             return Failed("the car is not parked under Ai - return to the garage first", progress);
         }
 
-        // Disable the pit-speeding penalty before the car is placed.
+        // Disable Flag Rules before the car is placed, then restore the exact
+        // original value once pit state clears. Flag Rules also gates track
+        // limits, so leaving it off for the whole session is not acceptable.
         //
         // A placement always leaves the car carrying pit state, so the penalty is
         // never wanted during practice -- there is no case where you want to be
         // given a stop/go for a position the tool put you in. Doing it here rather
         // than asking the driver to remember means it is true of every placement.
         //
-        // Deliberately OUTSIDE the spot-entry transaction: those 24 bytes are
-        // borrowed and always given back, whereas this is meant to stay off.
+        // Deliberately separate from the spot-entry transaction: it has a
+        // different restore point, after the car has driven clear of pit state.
         var (penalty, penaltyFailure) = TryDisablePitSpeedingPenalty(progress);
+        using var flags = new FlagRulesRestore(_session, penalty);
 
         using var transaction = SpotWriteTransaction.Begin(
             _session, plan.Live.EntryAddress, plan.Live.EntryBytes);
@@ -313,7 +352,8 @@ public sealed class PlacementService(GameSession session)
         if (!sawTransition)
         {
             transaction.Restore();
-            return Failed("timed out waiting for Drive; the bytes were restored", progress);
+            flags.Restore();
+            return Failed("timed out waiting for Drive; spot bytes and Flag Rules were restored", progress);
         }
 
         // Sample arrival HERE, before any settle delay: afterwards the driver has
@@ -335,11 +375,10 @@ public sealed class PlacementService(GameSession session)
         // After a placement the car briefly carries pit state, and accelerating
         // while it is set earns a stop/go for pit-lane speeding.
         //
-        // But ONLY if that penalty is enabled. When the pit limiter penalty is
-        // switched off there is nothing to wait for, so waiting would be pure
-        // ceremony -- and pit state clears with DISTANCE, not time, so it would
-        // also strand a stationary driver until the timeout.
-        var pitPenaltyOn = PitPenaltyEnabled();
+        // Wait even while our temporary Flag Rules write has the penalty off:
+        // the original rule must not come back until pit state has cleared.
+        // If the rule was already off before placement, there is no restore.
+        var pitPenaltyOn = flags.Pending || PitPenaltyEnabled();
         if (!pitPenaltyOn)
         {
             Report(progress, PlacementPhase.Clear,
@@ -356,7 +395,7 @@ public sealed class PlacementService(GameSession session)
                 VerticalErrorMetres = dy,
                 Arrival = ArrivalCheck.Verify(arrival),
                 TimeToClear = TimeSpan.Zero,
-                PitStateCleared = true,
+                PitStateCleared = false,
                 PitWaitSkipped = true,
                 LapValidity = lapFixEarly,
                 PitFlagFailure = lapFixEarlyFailure,
@@ -389,19 +428,21 @@ public sealed class PlacementService(GameSession session)
             Thread.Sleep(50);
         }
         stopwatch.Stop();
+        flags.Restore();
 
         // Never claim CLEAR on a timeout. Giving up is not the same as the pit
         // state having cleared, and reporting it as such would tell the driver
         // it is safe to accelerate when we simply stopped looking.
         if (cleared)
         {
-            Report(progress, PlacementPhase.Clear, "CLEAR - safe to accelerate");
+            Report(progress, PlacementPhase.Clear, "CLEAR - original Flag Rules restored; safe to accelerate");
         }
         else
         {
             Report(progress, PlacementPhase.WaitingToClear,
-                   $"gave up waiting after {clearTimeout.TotalSeconds:F0} s and {distance:F0} m - " +
-                   "pit state is STILL SET. Accelerating now may earn a stop/go.");
+                   $"gave up waiting after {stopwatch.Elapsed.TotalSeconds:F0} s and {distance:F0} m - " +
+                   "pit state is STILL SET and original Flag Rules were restored. " +
+                   "Keep the pit limiter on; accelerating may earn a stop/go.");
         }
 
         // Deliberately AFTER the pit-state wait. That wait is about the speeding
@@ -507,7 +548,7 @@ public sealed class PlacementService(GameSession session)
     }
 
     /// <summary>
-    /// Switch off the stop/go for pit-lane speeding, at arm time.
+    /// Temporarily switch off Flag Rules, at arm time.
     ///
     /// Never allowed to fail a placement. A profile that cannot reach this field
     /// still produces a perfectly good placement -- the driver simply has to keep
@@ -537,6 +578,21 @@ public sealed class PlacementService(GameSession session)
         }
     }
 
+    private sealed class FlagRulesRestore(GameSession session, RuleWriteResult? disabled) : IDisposable
+    {
+        private bool _restored;
+        public bool Pending => !_restored && disabled is { Changed: true };
+
+        public void Restore()
+        {
+            if (!Pending) return;
+            new RulesController(session).RestorePitSpeedingPenalty(disabled!);
+            _restored = true;
+        }
+
+        public void Dispose() => Restore();
+    }
+
     /// <summary>
     /// Is the pit-lane speeding penalty currently active?
     ///
@@ -549,13 +605,13 @@ public sealed class PlacementService(GameSession session)
         try
         {
             var field = _session.Offsets.Rules.FlagRules;
-            var address = _session.ModuleBase + field.Rva.Value;
+            var address = _session.ModuleBase + field.Rva.Require("Flag Rules");
             var value = field.Type == FieldType.Byte
                 ? _session.Memory.ReadByte(address)
                 : _session.Memory.ReadInt32(address);
             return value != 0;
         }
-        catch (MemoryAccessException)
+        catch (Exception ex) when (ex is MemoryAccessException or OffsetProfileException or StaleOffsetException)
         {
             // If it cannot be read, assume the penalty is live. The cautious
             // direction is the one that does not invite a stop/go.

@@ -1,0 +1,14 @@
+# label|dataRva|readerRva -- curated static seeds, not proof of rule consumption
+Flag Rules|0x01E10A38|0x00D1D3A6
+Track limits stored setting|0x01E10AB8|0x00D15AE8
+Track limits effective flag 1|0x03B493B5|0x00CE649C
+Track limits effective flag 2|0x03B493B6|0x00CEDD18
+Steward penalties|0x01E14CD8|0x00B420F8
+Pit spot table pointer|0x01DFA578|0x00A90C27
+Garage spot table pointer|0x01DFA5D8|0x00A90900
+Spot table count|0x01DFA618|0x00A908C9
+Spot table multiplier|0x01DFA614|0x00A908DF
+Lap flag/latch update|-|0x00CE85BA
+Next-lap invalidation|-|0x00CE698B
+Pit flag set|-|0x00EA208E
+Track limits effective flag 0|-|-

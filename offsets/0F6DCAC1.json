@@ -13,6 +13,7 @@
   "build": {
     "executableSha256": "0F6DCAC1524A3802C8F950B44DE4CA83ACB8C836DCD70253A875C36F3EFA144C",
     "fileVersion": "1.4.1.3",
+    "placementValidated": true,
     "sizeOfImage": "0x3CFE000",
     "derivedFrom": "LMU_runtime_0F6DCAC1_garage-multicar.bin",
     "derivedUtc": "2026-08-21T14:30:01.6682055Z",

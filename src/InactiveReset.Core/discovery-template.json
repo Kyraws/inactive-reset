@@ -1,0 +1,249 @@
+{
+  "build": {},
+  "probe": {},
+  "spotTable": {
+    "pitPosTable": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "garPosTable": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "mult": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "count": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "entryBytes": 32,
+    "writeBytes": 24,
+    "tailNote": "Only the first 24 bytes are ever written. The 8-byte tail is read and reported so it can be shown untouched."
+  },
+  "containers": {
+    "arrayBase": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "pointer": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "table": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "stride": "0x472C8",
+    "vehicleDelta": 8,
+    "offsets": {
+      "controlOwner": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "slotIndex": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "pitIndex": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "garageIndex": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "vehicleLength": {
+        "off": "0x0",
+        "type": "float"
+      },
+      "vehicleWidth": {
+        "off": "0x0",
+        "type": "float"
+      },
+      "lateralSign": {
+        "off": "0x0",
+        "type": "float"
+      },
+      "pitState": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "pitFlag": {
+        "off": "0x0",
+        "type": "byte"
+      },
+      "countLapFlag": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "lapCountsNext": {
+        "off": "0x0",
+        "type": "byte"
+      },
+      "lapStartEt": {
+        "off": "0x0",
+        "type": "double"
+      },
+      "lapNumber": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "sector": {
+        "off": "0x0",
+        "type": "int32"
+      },
+      "vehCachedPose": {
+        "off": "0x0",
+        "type": "float[]",
+        "base": "vehicle"
+      },
+      "vehMotionState": {
+        "off": "0x0",
+        "type": "float[9]",
+        "base": "vehicle"
+      },
+      "vehGear": {
+        "off": "0x0",
+        "type": "int32",
+        "base": "vehicle"
+      },
+      "restOffsetPrimary": {
+        "off": "0x0",
+        "type": "float",
+        "base": "vehicle"
+      },
+      "restOffsetSecondary": {
+        "off": "0x0",
+        "type": "float",
+        "base": "vehicle"
+      }
+    }
+  },
+  "rules": {
+    "flagRules": {
+      "rva": "0x0",
+      "type": "int32",
+      "confidence": "U",
+      "consumption": "readLive",
+      "disableValue": 0,
+      "defaultValue": 2,
+      "domain": "0 none, 1 penalties only, 2 penalties + full-course yellows, 3 all except DQ",
+      "gates": "the stop/go for speeding in the pit lane"
+    },
+    "trackLimits": {
+      "config": {
+        "rva": "0x0",
+        "type": "byte",
+        "confidence": "U",
+        "consumption": "expandedOnce",
+        "domain": "0 disabled, 1 default, 2 strict, 3 relaxed"
+      },
+      "$derivedNote": [
+        "These are marked readLive because the EVALUATOR dereferences them on every",
+        "evaluation -- they are the expansion OUTPUT, not the config input. That is",
+        "what makes them writable mid-session while the config byte above is not."
+      ],
+      "derivedFlags": [
+        {
+          "rva": "0x0",
+          "type": "byte",
+          "consumption": "readLive",
+          "confidence": "U",
+          "disableValue": 0,
+          "defaultValue": 1
+        },
+        {
+          "rva": "0x0",
+          "type": "byte",
+          "consumption": "readLive",
+          "confidence": "U",
+          "disableValue": 0,
+          "defaultValue": 1
+        },
+        {
+          "rva": "0x0",
+          "type": "byte",
+          "consumption": "readLive",
+          "confidence": "U",
+          "disableValue": 0,
+          "defaultValue": 1
+        }
+      ],
+      "disableValue": 0,
+      "enableValue": 1,
+      "initNote": "Session init does `mov word ptr [0x03B36274], 0x0101`, setting 74 AND 75 together. The engine's own Disabled branch clears only 74, which is why 75 must be written by hand."
+    },
+    "stewardPenalties": {
+      "rva": "0x0",
+      "type": "int32",
+      "confidence": "U",
+      "consumption": "unknown"
+    }
+  },
+  "engineModel": {
+    "tunables": {
+      "yawOffsetDegrees": {
+        "rva": "0x0",
+        "confidence": "U"
+      },
+      "searchStartFactor": {
+        "rva": "0x0",
+        "confidence": "U"
+      },
+      "searchStepFactor": {
+        "rva": "0x0",
+        "confidence": "U"
+      },
+      "searchMaxFactor": {
+        "rva": "0x0",
+        "confidence": "U"
+      }
+    },
+    "fallback": {
+      "yawOffsetMode2": 0.7853982,
+      "searchStartFactor": 0.55,
+      "searchStepFactor": 0.1,
+      "searchMaxFactor": 1.5
+    },
+    "ranges": {
+      "yawOffsetDegreesMin": 0.0,
+      "yawOffsetDegreesMax": 90.0,
+      "searchFactorMin": 0.001,
+      "searchFactorMax": 5.0
+    }
+  },
+  "stale": {
+    "physicsTickCounter": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "physicsThreadHandle": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "playerVehicleValid": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "gameState": {
+      "rva": "0x0",
+      "confidence": "U"
+    },
+    "sessionType": {
+      "rva": "0x0",
+      "confidence": "U"
+    }
+  },
+  "restGates": {
+    "baseUrl": "http://127.0.0.1:6397",
+    "endpoints": [
+      "/rest/multiplayer/join/state",
+      "/rest/watch/sessionInfo",
+      "/rest/replay/isActive",
+      "/rest/sessions/GetGameState"
+    ],
+    "sessionsRead": "/rest/sessions"
+  }
+}

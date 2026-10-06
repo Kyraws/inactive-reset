@@ -26,41 +26,6 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private string? _lastBuildSha256;
     private Task? _running;
 
-    private FetchConsent Consent => new(dataDirectory);
-
-    /// <summary>
-    /// Fetch a missing profile only if the user has already agreed.
-    ///
-    /// The window cannot block on a console prompt, so consent is a stored
-    /// answer rather than a question asked mid-attach. Until it is given, attach
-    /// fails with the ordinary "no profile for this build" error and the page
-    /// offers the choice explicitly -- which keeps the rule identical to the
-    /// CLI's: this tool does not reach the internet until told it may.
-    /// </summary>
-    private bool FetchIfAllowed(MissingProfile request) => Consent.Granted;
-
-    /// <summary>
-    /// Grant consent, then report whether a profile can now be had. Called by
-    /// the page's "allow and fetch" action.
-    /// </summary>
-    public JsonObject AllowFetch()
-    {
-        var result = new JsonObject();
-        try
-        {
-            Consent.Grant();
-            using var session = GameSession.Attach(offsetDirectory, forWriting: false, FetchIfAllowed);
-            result["ok"] = true;
-            result["message"] = $"profile ready for build {session.ExecutableSha256[..8]}";
-        }
-        catch (Exception ex)
-        {
-            result["ok"] = false;
-            result["message"] = ex.Message;
-        }
-        return result;
-    }
-
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
     // Both calibration directories are resolved from the data directory itself;
     // see CalibrationProfile.LoadAllForData.
@@ -73,7 +38,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
         try
         {
-            using var session = GameSession.Attach(offsetDirectory, forWriting: false, FetchIfAllowed);
+            using var session = GameSession.Attach(offsetDirectory, forWriting: false);
             state["connected"] = true;
             state["pid"] = session.Process.Id;
             state["build"] = session.ExecutableSha256[..8];
@@ -133,11 +98,9 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 },
             };
 
-            // The pit-speeding penalty is NOT a toggle. Every placement disables
-            // it, because there is no case where you want a stop/go for a
-            // position the tool put the car in. Shown as status so the true
-            // state is still visible -- read back from memory, like everything
-            // else here, rather than assumed from what was last written.
+            // The pit-speeding penalty is NOT a toggle. Placement temporarily
+            // disables Flag Rules, then restores them when pit state clears.
+            // Show the live value, not an assumption about the last write.
             //
             // NOTE: this is the penalty, not the car's pit limiter, which this
             // tool never touches. See CONTEXT.md; the two were confused for as
@@ -145,7 +108,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             state["pitSpeedingPenalty"] = new JsonObject
             {
                 ["label"] = "Pit-speeding penalty",
-                ["detail"] = "stop/go for speeding in the pit lane; disabled at every placement",
+                ["detail"] = "Flag Rules temporarily off during placement, restored after pit state clears",
                 ["on"] = pit is not null && pit.Resolved && pit.Value != 0,
                 ["known"] = pit is not null && pit.Resolved,
             };
@@ -157,18 +120,6 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             state["connected"] = false;
             state["error"] = ex.Message;
 
-            // A new LMU build is patch day, not a fault. Tell the page exactly
-            // that, so it can offer the one action that helps instead of showing
-            // the same dead end as "game not running".
-            if (ex is MissingProfileException missing)
-            {
-                state["missingProfile"] = new JsonObject
-                {
-                    ["build"] = missing.Request.Short,
-                    ["url"] = missing.Request.Url,
-                    ["consentGiven"] = Consent.Granted,
-                };
-            }
         }
 
         state["game"] = Game_();
@@ -408,7 +359,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         var pit = body["pitSpeeding"]?.GetValue<bool>() ?? false;
         var limits = body["trackLimits"]?.GetValue<bool>() ?? false;
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: true, FetchIfAllowed);
+        using var session = GameSession.Attach(offsetDirectory, forWriting: true);
         var rules = new RulesController(session);
 
         var changes = new JsonArray();
@@ -497,13 +448,27 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     {
         try
         {
-            using var session = GameSession.Attach(offsetDirectory, forWriting: true, FetchIfAllowed);
+            using var session = GameSession.Attach(offsetDirectory, forWriting: true);
             var checkpoint = Checkpoint.Require(Checkpoints, name);
-            var calibration = CalibrationProfile.Require(
-                dataDirectory, checkpoint.TrackName, checkpoint.VehicleName);
+            var calibration = CalibrationProfile.Find(
+                dataDirectory, checkpoint.TrackName, checkpoint.VehicleName)
+                ?? CalibrationProfile.Placeholder(checkpoint.TrackName, checkpoint.VehicleName);
+            var learned = new LearnedRestStore(dataDirectory).Load(
+                session.ExecutableSha256, checkpoint.TrackName,
+                checkpoint.VehicleName, checkpoint.Name);
+            SessionIdentity? live = null;
+            try
+            {
+                var offsets = SharedMemoryOffsets.Load(Path.Combine(offsetDirectory, "shared-memory.json"));
+                using var reader = new SharedMemoryReader(offsets);
+                live = SessionIdentity.From(reader);
+            }
+            catch (SharedMemoryException)
+            {
+            }
 
             var service = new PlacementService(session);
-            var plan = service.Plan(checkpoint, calibration);
+            var plan = service.Plan(checkpoint, calibration, learned, live);
 
             Log($"plan residual {plan.ResidualMetres:F6} m");
             if (!plan.CanProceed)
@@ -561,4 +526,3 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         }
     }
 }
-

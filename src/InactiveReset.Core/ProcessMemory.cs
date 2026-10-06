@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -37,6 +38,30 @@ public sealed partial class ProcessMemory : IDisposable
         ProcessId = processId;
         CanWrite = canWrite;
     }
+
+    public static bool SamePeIdentity(ReadOnlySpan<byte> diskHeader, ReadOnlySpan<byte> mapped, int moduleSize)
+    {
+        if (diskHeader.Length < 0x1000 || mapped.Length < 0x1000 ||
+            diskHeader[0] != 'M' || diskHeader[1] != 'Z' ||
+            mapped[0] != 'M' || mapped[1] != 'Z') return false;
+        var pe = BinaryPrimitives.ReadInt32LittleEndian(diskHeader.Slice(0x3C, 4));
+        if (pe < 0x40 || pe > 0x400 ||
+            BinaryPrimitives.ReadInt32LittleEndian(mapped.Slice(0x3C, 4)) != pe ||
+            BinaryPrimitives.ReadUInt32LittleEndian(diskHeader.Slice(pe, 4)) != 0x4550 ||
+            !diskHeader.Slice(pe, 24).SequenceEqual(mapped.Slice(pe, 24))) return false;
+        var sections = BinaryPrimitives.ReadUInt16LittleEndian(diskHeader.Slice(pe + 6, 2));
+        var optionalSize = BinaryPrimitives.ReadUInt16LittleEndian(diskHeader.Slice(pe + 20, 2));
+        var sectionAt = pe + 24 + optionalSize;
+        if (sections is < 1 or > 96 || optionalSize < 0x40 ||
+            sectionAt + sections * 40 > diskHeader.Length ||
+            BinaryPrimitives.ReadUInt16LittleEndian(diskHeader.Slice(pe + 24, 2)) != 0x20B ||
+            !diskHeader.Slice(pe + 24, 2).SequenceEqual(mapped.Slice(pe + 24, 2)) ||
+            BinaryPrimitives.ReadUInt32LittleEndian(diskHeader.Slice(pe + 24 + 0x38, 4)) != moduleSize)
+            return false;
+        return diskHeader.Slice(sectionAt, sections * 40)
+                         .SequenceEqual(mapped.Slice(sectionAt, sections * 40));
+    }
+
 
     public static ProcessMemory OpenRead(int processId) => Open(processId, write: false);
 
@@ -201,6 +226,27 @@ public sealed partial class ProcessMemory : IDisposable
     /// </summary>
     public static ulong MainModuleBase(Process process) =>
         (ulong)process.MainModule!.BaseAddress.ToInt64();
+
+    /// <summary>Capture RVA-aligned mapped bytes; refuse unreadable pages.</summary>
+    public byte[] CaptureMappedModule(Process process)
+    {
+        var module = process.MainModule
+            ?? throw new MemoryAccessException("cannot read the game's main module");
+        var size = module.ModuleMemorySize;
+        if (size < 0x1000 || size > 0x20000000)
+            throw new MemoryAccessException($"implausible mapped module size 0x{size:X}");
+        var image = new byte[size];
+        var baseAddress = (ulong)module.BaseAddress.ToInt64();
+        const int chunk = 0x10000;
+        for (var offset = 0; offset < size; offset += chunk)
+        {
+            var span = image.AsSpan(offset, Math.Min(chunk, size - offset));
+            if (!TryRead(baseAddress + (ulong)offset, span, out var read))
+                throw new MemoryAccessException(
+                    $"mapped module unreadable at RVA 0x{offset:X} ({read}/{span.Length} bytes)");
+        }
+        return image;
+    }
 
     public void Dispose()
     {

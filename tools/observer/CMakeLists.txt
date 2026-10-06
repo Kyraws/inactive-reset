@@ -1,0 +1,52 @@
+cmake_minimum_required(VERSION 3.21)
+project(lmu_spot_observer LANGUAGES C CXX)
+
+include(FetchContent)
+FetchContent_Declare(minhook
+  GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+  GIT_TAG c3fcafdc10146beb5919319d0683e44e3c30d537
+  GIT_SHALLOW FALSE)
+FetchContent_MakeAvailable(minhook)
+
+add_library(lmu_spot_observer SHARED observer.cpp)
+target_compile_features(lmu_spot_observer PRIVATE cxx_std_17)
+target_link_libraries(lmu_spot_observer PRIVATE minhook)
+set_target_properties(lmu_spot_observer PROPERTIES OUTPUT_NAME "lmu_spot_observer")
+
+add_executable(spot_resolver_test resolver_test.cpp)
+target_compile_features(spot_resolver_test PRIVATE cxx_std_17)
+
+add_library(lmu_flag_observer SHARED flag_observer.cpp)
+target_compile_features(lmu_flag_observer PRIVATE cxx_std_17)
+target_link_libraries(lmu_flag_observer PRIVATE minhook)
+
+add_executable(flag_resolver_test flag_resolver_test.cpp)
+target_compile_features(flag_resolver_test PRIVATE cxx_std_17)
+
+add_executable(pit_resolver_test pit_resolver_test.cpp)
+target_compile_features(pit_resolver_test PRIVATE cxx_std_17)
+
+add_library(lmu_pit_observer SHARED pit_observer.cpp)
+target_compile_features(lmu_pit_observer PRIVATE cxx_std_17)
+target_link_libraries(lmu_pit_observer PRIVATE minhook)
+
+add_executable(pit_lookup_resolver_test pit_lookup_resolver_test.cpp)
+target_compile_features(pit_lookup_resolver_test PRIVATE cxx_std_17)
+
+add_library(lmu_pit_lookup_observer SHARED pit_lookup_observer.cpp)
+target_compile_features(lmu_pit_lookup_observer PRIVATE cxx_std_17)
+target_link_libraries(lmu_pit_lookup_observer PRIVATE minhook)
+
+add_executable(drive_resolver_test drive_resolver_test.cpp)
+target_compile_features(drive_resolver_test PRIVATE cxx_std_17)
+
+add_library(lmu_drive_observer SHARED drive_observer.cpp)
+target_compile_features(lmu_drive_observer PRIVATE cxx_std_17)
+target_link_libraries(lmu_drive_observer PRIVATE minhook)
+
+add_executable(final_transform_resolver_test final_transform_resolver_test.cpp)
+target_compile_features(final_transform_resolver_test PRIVATE cxx_std_17)
+
+add_library(lmu_final_spot_observer SHARED final_transform_observer.cpp)
+target_compile_features(lmu_final_spot_observer PRIVATE cxx_std_17)
+target_link_libraries(lmu_final_spot_observer PRIVATE minhook)

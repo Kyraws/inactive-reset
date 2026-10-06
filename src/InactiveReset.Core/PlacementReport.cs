@@ -315,25 +315,31 @@ public static class PlacementReport
     }
 
     /// <summary>
-    /// The pit-speeding penalty write performed at arm time, if there was one.
-    /// Reported separately from the placement result because it happens before
-    /// the car moves and is not part of what the placement achieved.
+    /// The temporary Flag Rules write performed at arm time, if there was one.
+    /// Flag Rules also gates track-limit invalidation, so report its restoration.
     /// </summary>
     public static OutcomeLine? ForPenalty(PlacementOutcome outcome)
     {
         if (outcome.PitSpeedingPenalty is { } write)
         {
+            if (write.Changed)
+            {
+                return new OutcomeLine(
+                    "Flag Rules",
+                    $"{write.Before} -> {write.After} -> {write.Before}",
+                    outcome.PitStateCleared ? OutcomeSeverity.Good : OutcomeSeverity.Warning,
+                    outcome.PitStateCleared
+                        ? "temporarily disabled for placement; restored after pit state cleared"
+                        : "restored before pit state cleared; keep the pit limiter on or a stop/go may follow");
+            }
             return new OutcomeLine(
-                "pit-speeding penalty",
-                write.Changed ? $"{write.Before} -> {write.After}" : "already off",
-                OutcomeSeverity.Good,
-                write.Changed ? "disabled for this placement" : null);
+                "Flag Rules", "already off", OutcomeSeverity.Normal);
         }
 
         if (outcome.PitSpeedingPenaltyFailure is { } failure)
         {
             return new OutcomeLine(
-                "pit-speeding penalty", "NOT DISABLED", OutcomeSeverity.Warning,
+                "Flag Rules", "NOT DISABLED", OutcomeSeverity.Warning,
                 $"{failure}. Speeding in the pit lane may still earn a stop/go.");
         }
 

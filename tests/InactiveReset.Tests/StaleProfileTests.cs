@@ -14,6 +14,26 @@ namespace InactiveReset.Tests;
 /// </summary>
 public sealed class StaleProfileTests
 {
+    [Fact]
+    public void Unvalidated_or_unmarked_profile_refuses_placement()
+    {
+        var source = FindUpwards(Path.Combine("offsets", "0F6DCAC1.json"));
+        var json = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
+        var path = Path.Combine(Path.GetTempPath(), $"ir-validation-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, json.ToJsonString());
+            OffsetProfile.Load(path).RequirePlacementValidated();
+            json["build"]!["placementValidated"] = false;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<GateException>(() => OffsetProfile.Load(path).RequirePlacementValidated());
+            json["build"]!.AsObject().Remove("placementValidated");
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<GateException>(() => OffsetProfile.Load(path).RequirePlacementValidated());
+        }
+        finally { File.Delete(path); }
+    }
+
     /// <summary>
     /// The real tracked profile, with only the probe's confidence changed.
     ///

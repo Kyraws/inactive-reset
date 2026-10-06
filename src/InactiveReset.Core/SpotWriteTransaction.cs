@@ -13,8 +13,8 @@ namespace InactiveReset.Core;
 ///   * the live bytes are re-read and compared against what was planned, so a
 ///     reallocated table or a competing writer aborts instead of corrupting;
 ///   * the write is verified by read-back and rolled back if it disagrees;
-///   * restore is unconditional, including from <see cref="Dispose"/> if the
-///     program dies between write and restore.
+///   * restore is attempted from <see cref="Dispose"/> on normal or exceptional
+///     scope exit. Process termination cannot run this cleanup.
 /// </summary>
 public sealed class SpotWriteTransaction : IDisposable
 {
@@ -42,7 +42,7 @@ public sealed class SpotWriteTransaction : IDisposable
     /// longer match, the table moved or something else is writing it, and we
     /// refuse rather than overwrite an entry we do not understand.
     /// </param>
-    public static SpotWriteTransaction Begin(
+    internal static SpotWriteTransaction Begin(
         GameSession session, ulong address, ReadOnlySpan<byte> expectedOriginal)
     {
         if (!session.Memory.CanWrite)
@@ -122,19 +122,8 @@ public sealed class SpotWriteTransaction : IDisposable
     }
 
     /// <summary>
-    /// Last line of defence. If anything unwinds between write and restore, the
-    /// entry still goes back.
+    /// Last line of defence. If anything unwinds between write and restore,
+    /// attempt the restore and surface failure rather than hiding uncertain bytes.
     /// </summary>
-    public void Dispose()
-    {
-        try
-        {
-            Restore();
-        }
-        catch (MemoryAccessException)
-        {
-            // Nothing useful left to do — the process may already be gone. The
-            // caller's own error is more informative than one thrown here.
-        }
-    }
+    public void Dispose() => Restore();
 }

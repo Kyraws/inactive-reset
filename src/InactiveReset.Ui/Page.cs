@@ -316,27 +316,8 @@ function renderStatus(s) {
   const meta = document.getElementById('meta');
 
   if (!s.connected) {
-    var mp = s.missingProfile;
-    if (mp) {
-      // A new game build. Not a fault, and not the same as "game not running":
-      // there is exactly one action that helps, so offer it here.
-      status.innerHTML = badge('new game build ' + mp.build, false);
-      meta.innerHTML =
-        'Le Mans Ultimate updated. This tool needs an offset profile for build '
-        + mp.build + ' before it can read or write anything safely.'
-        + '<br><br>'
-        + (mp.consentGiven
-            ? 'No profile has been published for this build yet.'
-            : '<button id="allowFetch">Allow and fetch it</button>'
-              + ' <span class="fnote">downloads one file over HTTPS from GitHub.'
-              + ' This is the only time this tool uses the internet.</span>')
-        + '<br><span class="fnote">' + mp.url + '</span>';
-      var btn = document.getElementById('allowFetch');
-      if (btn) btn.onclick = allowFetch;
-      return;
-    }
-    status.innerHTML = badge('game not running', false);
-    meta.textContent = '';
+    status.innerHTML = badge('not connected', false);
+    meta.textContent = s.error || 'Le Mans Ultimate is not running';
     return;
   }
   const gates = s.gates || [];
@@ -347,13 +328,6 @@ function renderStatus(s) {
   meta.textContent = 'pid ' + s.pid + '  |  build ' + s.build + '  |  v' + s.gameVersion;
 }
 
-async function allowFetch() {
-  const btn = document.getElementById('allowFetch');
-  if (btn) { btn.disabled = true; btn.textContent = 'fetching...'; }
-  const res = await api('/api/allow-fetch', {});
-  if (!res.ok) alert(res.message || 'fetch failed');
-  refresh();
-}
 
 // The game card answers two questions that must not be allowed to look alike:
 // is the game up, and if it is, can this tool touch it? A protected session is
@@ -537,10 +511,9 @@ function renderActivity(s) {
     (armed ? ' armed' : (phase === 'Failed' ? ' bad' : (s.busy ? ' live' : '')));
   document.getElementById('phaseMsg').textContent = s.phaseMessage || 'nothing running';
 
-  // The pit-state wait only exists when the pit-speeding penalty is on. Every
-  // placement now disables it, so this step is normally unreachable, and showing
-  // a step nobody will ever reach makes the trail look stuck.
-  const pitOn = s.pitSpeedingPenalty && s.pitSpeedingPenalty.on;
+  // A temporary Flag Rules write keeps the pit-state wait active even while
+  // the live rule reads off. Keep that step visible when the wait is running.
+  const pitOn = phase === 'WaitingToClear' || (s.pitSpeedingPenalty && s.pitSpeedingPenalty.on);
   const at = PHASE_STEP[phase] === undefined ? -1 : PHASE_STEP[phase];
 
   document.getElementById('steps').innerHTML = STEPS

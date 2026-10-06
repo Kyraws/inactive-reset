@@ -20,7 +20,7 @@ public sealed class PlacementReportTests
         Message = "placed",
         HorizontalErrorMetres = 0.5663f,
         VerticalErrorMetres = 0.0018f,
-        PitStateCleared = true,
+        PitStateCleared = false,
         PitWaitSkipped = true,
         SectorWrite = new RuleWriteResult("sector", 0x1234, 0, 2, Changed: true),
     };
@@ -171,6 +171,40 @@ public sealed class PlacementReportTests
         Assert.NotNull(line);
         Assert.Equal(OutcomeSeverity.Warning, line.Severity);
         Assert.Contains("stop/go", line.Sentence);
+    }
+
+    [Fact]
+    public void ReportsTemporaryFlagRulesRestoredAfterClear()
+    {
+        var outcome = Placed() with
+        {
+            PitWaitSkipped = false,
+            PitStateCleared = true,
+            PitSpeedingPenalty = new RuleWriteResult("Pit-speeding gate", 0x1234, 3, 0, Changed: true),
+        };
+
+        var line = PlacementReport.ForPenalty(outcome);
+
+        Assert.NotNull(line);
+        Assert.Equal("3 -> 0 -> 3", line.Value);
+        Assert.Equal(OutcomeSeverity.Good, line.Severity);
+    }
+
+    [Fact]
+    public void WarnsWhenOriginalRulesReturnBeforePitStateClears()
+    {
+        var outcome = Placed() with
+        {
+            PitWaitSkipped = false,
+            PitStateCleared = false,
+            PitSpeedingPenalty = new RuleWriteResult("Pit-speeding gate", 0x1234, 2, 0, Changed: true),
+        };
+
+        var line = PlacementReport.ForPenalty(outcome);
+
+        Assert.NotNull(line);
+        Assert.Equal(OutcomeSeverity.Warning, line.Severity);
+        Assert.Contains("limiter", line.Sentence);
     }
 
     /// <summary>

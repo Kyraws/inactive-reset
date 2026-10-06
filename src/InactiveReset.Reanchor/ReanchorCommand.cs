@@ -46,20 +46,24 @@ internal static class ReanchorCommand
         var basePath = Value(args, "--base")
             ?? throw new ArgumentException("--base <profile.json> is required (the pre-patch offsets)");
 
-        var process = Process.GetProcessesByName(GameSession.ProcessName).FirstOrDefault()
-            ?? throw new GateException($"{GameSession.ProcessName} is not running.");
-
         var newDumpPath = Value(args, "--new-dump");
+        var imagePath = Value(args, "--new-exe");
         if (newDumpPath is null)
         {
+            var process = Process.GetProcessesByName(GameSession.ProcessName).FirstOrDefault()
+                ?? throw new GateException($"{GameSession.ProcessName} is not running.");
+            imagePath ??= process.MainModule!.FileName;
             newDumpPath = Path.Combine(Path.GetTempPath(), $"lmu-new-{DateTime.Now:HHmmss}.bin");
             Console.WriteLine("capturing the running game...");
             var dumped = ModuleDumper.Dump(process, newDumpPath);
             Console.WriteLine($"  {dumped.Size:N0} bytes, {dumped.UnreadableBytes:N0} unreadable\n");
         }
+        imagePath ??= Process.GetProcessesByName(GameSession.ProcessName).FirstOrDefault()?.MainModule?.FileName
+            ?? throw new GateException("offline reanchor requires --new-exe <matching game executable>");
 
         var older = File.ReadAllBytes(oldDumpPath);
         var newer = File.ReadAllBytes(newDumpPath);
+        RequireMatchingPeHeader(newer, imagePath);
         Console.WriteLine($"old image 0x{older.Length:X}   new image 0x{newer.Length:X}");
         if (older.Length != newer.Length)
         {
@@ -68,6 +72,12 @@ internal static class ReanchorCommand
         Console.WriteLine();
 
         var profile = JsonNode.Parse(File.ReadAllText(basePath))!.AsObject();
+        var basePitRva = profile["spotTable"]?["pitPosTable"]?["rva"]?.GetValue<string>()
+            ?? throw new GateException("source profile has no PitPos table");
+        // These historical research fields are not read by OffsetProfile;
+        // carrying stale RVAs into a runtime candidate only obscures its gates.
+        profile.Remove("functions");
+        profile.Remove("stale");
         var addresses = Collect(profile).ToList();
 
         // One pass over the old image, reused for every data address.
@@ -300,8 +310,67 @@ internal static class ReanchorCommand
             InferAdjacent(profile, deferred, resolvedData, unresolved);
         }
 
-        // Refresh build identity from the running game.
-        var imagePath = process.MainModule!.FileName;
+        // Container offsets and stride are not RVAs, so reference reanchoring
+        // cannot move them. Derive them from the new image or refuse output.
+        var containerStride = SpotTableResolver.FindContainerStride(newer)
+            ?? throw new GateException("container stride cannot be derived from the new image; refusing profile output");
+        var indices = SpotTableResolver.FindSpecialSlotIndices(newer)
+            ?? throw new GateException("slot/pit/garage indices cannot be derived from the new image; refusing profile output");
+        var owner = SpotTableResolver.FindControlOwner(newer)
+            ?? throw new GateException("control-owner offset cannot be derived from the new image; refusing profile output");
+        var lateral = SpotTableResolver.FindLateralSign(newer)
+            ?? throw new GateException("lateral-sign offset cannot be derived from the new image; refusing profile output");
+        var dimensions = SpotTableResolver.FindVehicleDimensions(newer)
+            ?? throw new GateException("vehicle dimensions cannot be derived from the new image; refusing profile output");
+        var pitState = SpotTableResolver.FindPitState(newer)
+            ?? throw new GateException("pit-state and pit-flag offsets cannot be derived from the new image; refusing profile output");
+        var trackFlags = SpotTableResolver.FindTrackLimitsFlags(newer)
+            ?? throw new GateException("track-limits derived flags cannot be derived from the new image; refusing profile output");
+        var pitSpeedRule = SpotTableResolver.FindPitSpeedRule(newer)
+            ?? throw new GateException("pit-speed Flag Rules reader cannot be derived from the new image; refusing profile output");
+        var containers = profile["containers"]!.AsObject();
+        containers["stride"] = $"0x{containerStride.Stride:X}";
+        var fields = containers["offsets"]!.AsObject();
+        fields["slotIndex"]!["off"] = $"0x{indices.SlotIndex:X}";
+        fields["pitIndex"]!["off"] = $"0x{indices.PitIndex:X}";
+        fields["garageIndex"]!["off"] = $"0x{indices.GarageIndex:X}";
+        fields["controlOwner"]!["off"] = $"0x{owner.Offset:X}";
+        fields["lateralSign"]!["off"] = $"0x{lateral.Offset:X}";
+        fields["vehicleLength"]!["off"] = $"0x{dimensions.LengthOffset:X}";
+        fields["vehicleWidth"]!["off"] = $"0x{dimensions.WidthOffset:X}";
+        fields["pitState"]!["off"] = $"0x{pitState.StateOffset:X}";
+        fields["pitFlag"]!["off"] = $"0x{pitState.PitFlagOffset:X}";
+        var limits = profile["rules"]!["trackLimits"]!.AsObject();
+        for (var i = 0; i < 3; i++)
+            Apply(profile, ["rules", "trackLimits", "derivedFlags", i.ToString()],
+                  trackFlags.FirstRva + (uint)i, unanimous: true);
+        Navigate(profile, ["rules", "trackLimits", "derivedFlags", "0"])?.Remove("note");
+        limits["initNote"] = "Session init writes 0x0101 to the first two derived flags; independent readers validate all three bytes.";
+        unresolved.Remove("rules.trackLimits.derivedFlags.0");
+        Apply(profile, ["rules", "flagRules"], pitSpeedRule.FlagRulesRva, unanimous: true);
+        var flagRules = profile["rules"]!["flagRules"]!.AsObject();
+        flagRules["readBy"] = $"0x{pitSpeedRule.SpeedGateRva:X8}";
+        flagRules["note"] = "Structurally resolved from the pit-speed gate in this build; live effect and exact restoration require separate validation.";
+        unresolved.Remove("rules.flagRules");
+
+        // A pointer can reanchor perfectly while its consumer changes meaning.
+        // The working profile writes ordinary-slot PitPos; a special-slot-only
+        // reader is not an equivalent placement target.
+        var oldPit = SpotTableResolver.FindPitPos(older);
+        var sourcePit = Navigate(profile, ["spotTable", "pitPosTable"])
+            ?? throw new GateException("source profile has no PitPos table");
+        if (!SpotTableResolver.MatchesOrdinaryPitPos(oldPit, ParseHex(basePitRva)))
+            throw new GateException("old dump does not prove the source profile's ordinary-slot PitPos consumer");
+        var newPit = SpotTableResolver.FindPitPos(newer);
+        if (!SpotTableResolver.MatchesOrdinaryPitPos(
+                newPit, ParseHex(sourcePit["rva"]!.GetValue<string>())))
+        {
+            MarkUnresolved(profile, ["spotTable", "pitPosTable"]);
+            sourcePit["note"] = "Address may identify PitPos, but an equivalent ordinary-slot placement consumer was not proved in the new build.";
+            if (!unresolved.Contains("spotTable.pitPosTable")) unresolved.Add("spotTable.pitPosTable");
+        }
+
+        // Refresh build identity from the executable matching this mapped dump.
         var hash = GameSession.Sha256File(imagePath);
         var build = profile["build"]!.AsObject();
         build["executableSha256"] = hash;
@@ -309,6 +378,10 @@ internal static class ReanchorCommand
         build["sizeOfImage"] = $"0x{newer.Length:X}";
         build["derivedFrom"] = Path.GetFileName(newDumpPath);
         build["derivedUtc"] = DateTime.UtcNow.ToString("O");
+        // Reanchoring addresses alone cannot prove container semantics or a
+        // matching-car placement/restore. Only the live validation workflow
+        // may change this to true.
+        build["placementValidated"] = false;
 
         // The probe bytes are read from the NEW image at the NEW address, so the
         // build gate matches this build rather than the previous one.
@@ -351,7 +424,7 @@ internal static class ReanchorCommand
         if (unresolved.Count > 0)
         {
             Console.WriteLine();
-            Console.WriteLine($"{unresolved.Count} address(es) could NOT be re-derived and are marked");
+            Console.WriteLine($"{unresolved.Count} address(es) could NOT be fully validated and are marked");
             Console.WriteLine("confidence \"U\" in the profile. Anything using them will refuse rather");
             Console.WriteLine("than read the wrong place:");
             foreach (var name in unresolved)
@@ -536,6 +609,14 @@ internal static class ReanchorCommand
     }
 
     // ---- output -------------------------------------------------------------
+
+    private static void RequireMatchingPeHeader(ReadOnlySpan<byte> mapped, string executablePath)
+    {
+        Span<byte> disk = stackalloc byte[0x1000];
+        using (var file = File.OpenRead(executablePath)) file.ReadExactly(disk);
+        if (!ModuleDumper.SamePeIdentity(disk, mapped))
+            throw new GateException("--new-dump and --new-exe PE identities differ; refusing profile output");
+    }
 
     private static void Report(string name, ulong oldRva, ulong? newRva, string evidence, long delta = 0)
     {

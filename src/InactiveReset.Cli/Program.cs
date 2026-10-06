@@ -122,52 +122,6 @@ internal static class Program
         return 2;
     }
 
-    /// <summary>
-    /// The console consent prompt for the one outbound connection this tool makes.
-    ///
-    /// Asks unless the user previously answered "always". Refuses silently when
-    /// stdin is redirected: a script piping into this must never be taken to have
-    /// agreed to anything on the user's behalf.
-    /// </summary>
-    private static Func<MissingProfile, bool> AskToFetch(string dataDirectory) => request =>
-    {
-        var consent = new FetchConsent(dataDirectory);
-        if (consent.Granted)
-        {
-            Console.WriteLine($"  fetching offset profile for build {request.Short} ...");
-            return true;
-        }
-
-        if (Console.IsInputRedirected)
-        {
-            Console.Error.WriteLine(
-                $"  no offset profile for build {request.Short}, and stdin is not a terminal");
-            Console.Error.WriteLine("  so you cannot be asked. Download it manually:");
-            Console.Error.WriteLine($"    {request.Url}");
-            return false;
-        }
-
-        Console.WriteLine();
-        Console.WriteLine($"  This Le Mans Ultimate build ({request.Short}) is new to this machine.");
-        Console.WriteLine("  An offset profile describes where things live in it, and without one");
-        Console.WriteLine("  the tool cannot safely read or write anything.");
-        Console.WriteLine();
-        Console.WriteLine($"    download from: {request.Url}");
-        Console.WriteLine($"    save to:       {request.OffsetDirectory}");
-        Console.WriteLine();
-        Console.WriteLine("  This is the ONLY time this tool connects to the internet.");
-        Console.Write("  Fetch it? [y]es / [N]o / [a]lways: ");
-
-        var answer = (Console.ReadLine() ?? string.Empty).Trim().ToLowerInvariant();
-        if (answer is "a" or "always")
-        {
-            consent.Grant();
-            Console.WriteLine($"  remembered in {consent.Path_}");
-            return true;
-        }
-        return answer is "y" or "yes";
-    };
-
     // ---- serve -------------------------------------------------------------
 
     private static int Serve(string offsetDirectory, string dataDirectory, string[] args)
@@ -384,7 +338,7 @@ internal static class Program
             return 64;
         }
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: false, AskToFetch(dataDirectory));
+        using var session = GameSession.Attach(offsetDirectory, forWriting: false);
         var plan = BuildPlan(session, offsetDirectory, dataDirectory, args[0]);
         PrintPlan(plan);
         Console.WriteLine("\nNOTHING WAS WRITTEN.");
@@ -405,7 +359,7 @@ internal static class Program
             return 64;
         }
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: true, AskToFetch(dataDirectory));
+        using var session = GameSession.Attach(offsetDirectory, forWriting: true);
         var plan = BuildPlan(session, offsetDirectory, dataDirectory, args[0]);
         PrintPlan(plan);
 
@@ -674,7 +628,7 @@ internal static class Program
 
     private static int Status(string offsetDirectory, string dataDirectory)
     {
-        using var session = GameSession.Attach(offsetDirectory, forWriting: false, AskToFetch(dataDirectory));
+        using var session = GameSession.Attach(offsetDirectory, forWriting: false);
 
         Console.WriteLine("== build ==");
         foreach (var gate in session.Gates)
@@ -733,7 +687,7 @@ internal static class Program
             return 64;
         }
 
-        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite, AskToFetch(dataDirectory));
+        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite);
         var slot = new LiveStateReader(session).ResolveSlotIndex();
         var lap = new LapValidityController(session);
         var state = lap.Read(slot);
@@ -793,7 +747,7 @@ internal static class Program
     private static int Rules(string offsetDirectory, string dataDirectory, string[] args)
     {
         var wantsWrite = args.Any(a => a is "--off" or "--on");
-        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite, AskToFetch(dataDirectory));
+        using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite);
         var rules = new RulesController(session);
 
         if (!wantsWrite)
