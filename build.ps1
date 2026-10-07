@@ -65,7 +65,7 @@ function Show-BuildOutput {
     Write-Host '  Run without publishing:' -ForegroundColor DarkGray
     Write-Host '    dotnet run --project src\InactiveReset.Cli -- status' -ForegroundColor DarkGray
     Write-Host '    dotnet run --project src\InactiveReset.App' -ForegroundColor DarkGray
-    Write-Host '  Standalone single-file builds:  .\build ship' -ForegroundColor DarkGray
+    Write-Host '  Standalone single-file builds:  .\build.cmd ship' -ForegroundColor DarkGray
 }
 
 switch ($Task) {
@@ -152,7 +152,8 @@ switch ($Task) {
         }
 
         Invoke-Step 'stage offsets and calibrations' {
-            # Only the SDK layout ships; build offsets are discovered locally.
+            # Placement and tyre offsets are discovered locally. Only the
+            # compiler-generated shared-memory layout is shipped.
             # data\profiles-default\: calibrations shipped with the release. The
             # user's own live in data\profiles\, which a release NEVER writes,
             # so upgrading cannot replace something they measured themselves.
@@ -166,8 +167,22 @@ switch ($Task) {
         }
 
         Invoke-Step 'stage documents' {
-            foreach ($file in 'README.md', 'LICENSE', 'NOTICE') {
+            foreach ($file in 'README.md', 'CONTRIBUTING.md', 'CONTEXT.md', 'LICENSE', 'NOTICE') {
                 Copy-Item (Join-Path $root $file) $stage -Force
+            }
+            # Keep README's relative documentation links usable in the ZIP.
+            $guides = Get-ChildItem (Join-Path $root 'docs') -Recurse -File -Filter *.md
+            foreach ($guide in $guides) {
+                $relative = $guide.FullName.Substring($root.Length + 1)
+                $destination = Join-Path $stage $relative
+                New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+                Copy-Item -LiteralPath $guide.FullName -Destination $destination -Force
+            }
+            foreach ($relative in 'tools\README.md', 'tools\observer\README.md',
+                'tools\reanchor-research\README.md', 'tools\reanchor-research\archive\README.md') {
+                $destination = Join-Path $stage $relative
+                New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+                Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $destination -Force
             }
             $global:LASTEXITCODE = 0
         }

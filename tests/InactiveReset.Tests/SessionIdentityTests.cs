@@ -4,11 +4,7 @@ using Xunit;
 namespace InactiveReset.Tests;
 
 /// <summary>
-/// The guard that stops one car's constants being placed onto another.
-///
-/// Without it, a checkpoint captured in car A and placed while car B was loaded
-/// produced a ~1 m miss that read as a property of the TRACK, because the report
-/// printed the checkpoint's vehicle name rather than the one in the garage.
+/// Track geometry can be shared; calibration must belong to the loaded car.
 /// </summary>
 public class SessionIdentityTests
 {
@@ -32,13 +28,13 @@ public class SessionIdentityTests
             .RequireMatches(Checkpoint("Circuit de Barcelona", "BMW M Team WRT 2026 #15:LM"));
 
     [Fact]
-    public void DifferentVehicleIsRefused()
+    public void DifferentVehicleCanUseTheSameTrackPose()
     {
-        var ex = Assert.Throws<CheckpointException>(() =>
-            new SessionIdentity("Circuit de Barcelona", "Genesis Magma Racing 2026 #17:LM")
-                .RequireMatches(Checkpoint("Circuit de Barcelona", "BMW M Team WRT 2026 #15:LM")));
-        Assert.Contains("Genesis", ex.Message);
-        Assert.Contains("BMW", ex.Message);
+        var identity = new SessionIdentity("Circuit de Barcelona", "Genesis Magma Racing 2026 #17:LM");
+        identity.RequireMatches(Checkpoint("Circuit de Barcelona", "BMW M Team WRT 2026 #15:LM"));
+        identity.RequireCalibration(CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName));
+        Assert.Throws<CalibrationException>(() => identity.RequireCalibration(
+            CalibrationProfile.Placeholder(identity.TrackName, "BMW M Team WRT 2026 #15:LM")));
     }
 
     [Fact]

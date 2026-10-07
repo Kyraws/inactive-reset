@@ -9,9 +9,9 @@ namespace InactiveReset.Ui;
 /// <summary>
 /// A local HTTP front end.
 ///
-/// It calls exactly the same Core services the CLI does, so the two cannot
-/// drift. Built on <see cref="HttpListener"/> rather than ASP.NET to keep the
-/// single-file publish small and the dependency list at zero.
+/// Uses the shared Core services through PlacementRunner. Front-end
+/// orchestration still differs from the CLI. Built on <see cref="HttpListener"/>
+/// with loopback binding and no web-framework dependency.
 ///
 /// Bound to loopback only. This exposes memory writes to the game; it has no
 /// business listening on anything routable.
@@ -21,6 +21,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
     private readonly PlacementRunner _runner = new(offsetDirectory, dataDirectory);
 
     public string Url => $"http://127.0.0.1:{port}/";
+    public Task StopAsync() => _runner.StopAsync();
 
     public async Task RunAsync(CancellationToken cancellation)
     {
@@ -40,21 +41,29 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         Console.WriteLine($"Inactive Reset UI on {Url}");
         Console.WriteLine("Ctrl+C to stop.");
 
-        cancellation.Register(() => listener.Abort());
-
-        while (!cancellation.IsCancellationRequested)
+        using var registration = cancellation.Register(() => listener.Abort());
+        try
         {
-            HttpListenerContext context;
-            try
+            while (!cancellation.IsCancellationRequested)
             {
-                context = await listener.GetContextAsync().ConfigureAwait(false);
-            }
-            catch (Exception) when (cancellation.IsCancellationRequested)
-            {
-                break;
-            }
+                HttpListenerContext context;
+                try
+                {
+                    context = await listener.GetContextAsync().ConfigureAwait(false);
+                }
+                catch (Exception) when (cancellation.IsCancellationRequested)
+                {
+                    break;
+                }
 
-            _ = Task.Run(() => Handle(context), CancellationToken.None);
+                _ = Task.Run(() => Handle(context), CancellationToken.None);
+            }
+        }
+        finally
+        {
+            // The process must stay alive until a placement has restored its
+            // temporary writes, including when the console server is cancelled.
+            await _runner.StopAsync().ConfigureAwait(false);
         }
     }
 
@@ -84,6 +93,12 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/api/place":
                     SendJson(context, _runner.StartPlace(ReadBody(context)));
+                    break;
+                case "/api/tyres":
+                    SendJson(context, _runner.StartTyres(ReadBody(context)));
+                    break;
+                case "/api/cancel":
+                    SendJson(context, _runner.CancelPlace());
                     break;
                 case "/api/launch":
                     SendJson(context, _runner.Launch(ReadBody(context)));

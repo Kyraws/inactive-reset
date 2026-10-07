@@ -136,7 +136,12 @@ internal static class Program
 
         var server = new Server(offsetDirectory, dataDirectory, port);
         using var cancellation = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cancellation.Cancel();
+            Console.WriteLine("Stopping after placement cleanup. Return to the garage if a placement is active.");
+        };
 
         var serving = server.RunAsync(cancellation.Token);
 
@@ -272,8 +277,7 @@ internal static class Program
             && string.Equals(c.VehicleName, checkpoint.VehicleName, StringComparison.OrdinalIgnoreCase));
         if (!hasCalibration)
         {
-            Console.WriteLine("\n  NOTE: there is no calibration for this track/vehicle pair, so "
-                            + "`place` will refuse. Calibration is per track AND per vehicle.");
+            Console.WriteLine("\n  No measured calibration for this car. Placement will use live engine offsets when available.");
         }
         return 0;
     }
@@ -382,10 +386,22 @@ internal static class Program
                 ? chosen
                 : LapValidityController.LastSector;
 
-        var outcome = new PlacementService(session).Place(
-            plan, OnProgress,
-            clearPitFlag: !args.Contains("--keep-pit-flag"),
-            setSector: setSector);
+        using var cancellation = new CancellationTokenSource();
+        void Cancel(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+            cancellation.Cancel();
+            Console.WriteLine("Cleanup requested. If already placed, return to the garage or wait for pit state to clear.");
+        }
+        Console.CancelKeyPress += Cancel;
+        PlacementOutcome outcome;
+        try
+        {
+            outcome = new PlacementService(session).Place(plan, OnProgress,
+                cancellation: cancellation.Token,
+                clearPitFlag: !args.Contains("--keep-pit-flag"), setSector: setSector);
+        }
+        finally { Console.CancelKeyPress -= Cancel; }
         if (!outcome.Completed)
         {
             Console.Error.WriteLine($"\nFAILED: {outcome.Message}");
@@ -453,23 +469,8 @@ internal static class Program
     private static PlacementPlan BuildPlan(
         GameSession session, string offsetDirectory, string dataDirectory, string name)
     {
-        var checkpoint = Checkpoint.Require(Path.Combine(dataDirectory, "checkpoints"), name);
-
-        // No calibration is no longer fatal. A placeholder lets the constants be
-        // derived from the running engine, which works in any car; before this,
-        // `place` refused in every combination the user had not measured by hand
-        // and offered no way to measure one.
-        var calibration =
-            CalibrationProfile.Find(dataDirectory, checkpoint.TrackName, checkpoint.VehicleName)
-            ?? CalibrationProfile.Placeholder(checkpoint.TrackName, checkpoint.VehicleName);
-
-        var learned = new LearnedRestStore(dataDirectory).Load(
-            session.ExecutableSha256, checkpoint.TrackName,
-            checkpoint.VehicleName, checkpoint.Name);
-
-        // What is actually loaded, so a checkpoint captured in another car cannot
-        // be placed with this one's constants. Null when shared memory has not
-        // filled in yet, which is not a reason to refuse.
+        // Resolve name collisions using the live track, then use the loaded
+        // car's offsets rather than the car that originally captured the pose.
         SessionIdentity? live = null;
         try
         {
@@ -480,6 +481,14 @@ internal static class Program
         {
         }
 
+        var checkpoint = Checkpoint.Require(Path.Combine(dataDirectory, "checkpoints"), name, live);
+        var identity = live ?? new SessionIdentity(checkpoint.TrackName, checkpoint.VehicleName);
+        identity.RequireMatches(checkpoint);
+        var calibration = CalibrationProfile.Find(dataDirectory, identity.TrackName, identity.VehicleName)
+            ?? CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName);
+        var learned = new LearnedRestStore(dataDirectory).Load(session.ExecutableSha256,
+            identity.TrackName, identity.VehicleName, checkpoint.LearningKey(identity.VehicleName));
+
         return new PlacementService(session).Plan(checkpoint, calibration, learned, live);
     }
 
@@ -487,6 +496,7 @@ internal static class Program
     {
         Console.WriteLine("== plan ==");
         Console.WriteLine($"  checkpoint    {plan.Checkpoint.Name}  ({plan.Checkpoint.TrackName} / {plan.Checkpoint.VehicleName})");
+        Console.WriteLine($"  loaded car    {plan.PlacementIdentity.VehicleName}");
         var source = plan.RestSource switch
         {
             RestSource.Learned => "learned from this checkpoint's own placements",
@@ -888,12 +898,13 @@ internal static class Program
 
               inactive-reset lap
                   Whether this lap and the next one will be timed, and why.
-                  Placing a car sets the engine's pit flag, and until that
-                  clears the next start/finish crossing is demoted to an
-                  out-lap - which costs a whole extra lap. READS ONLY.
+                  Shows sector, lap-counting, and pit-flag state. READS ONLY.
 
               inactive-reset lap --clear-pit-flag --accept-write
                   Clear the pit flag. One byte, verified by read-back.
+
+              inactive-reset lap --set-sector 2 --accept-write
+                  Restore the final-sector index for a start/finish crossing.
 
               inactive-reset list
                   Calibrations and recorded checkpoints.
@@ -910,24 +921,23 @@ internal static class Program
                   Everything a placement would do, including the exact 24 bytes.
                   WRITES NOTHING.
 
-              inactive-reset place <checkpoint> --accept-write [--keep-pit-flag]
+              inactive-reset place <checkpoint> --accept-write
+                  [--keep-pit-flag] [--keep-sector] [--sector N]
                   Place the car. Park in the garage first, then press Drive when
                   it prints ARMED.
 
-                  Afterwards the car briefly carries pit state. Drive away
-                  GENTLY - pit state clears with distance travelled, not with
-                  time, so standing still will never clear it. CLEAR means it
-                  has cleared and you can accelerate.
+                  Flag Rules is temporarily disabled. Follow the progress
+                  messages while pit state clears; the current implementation
+                  restores rules after clearing or a 120-second timeout.
+                  A timeout can restore penalties while pit state is active.
 
-                  Once clear, the pit flag is cleared too so your first flying
-                  lap is timed instead of being treated as an out-lap. The
-                  before/after values are printed, so a run that reports 0 -> 0
-                  says the flag was not the problem. --keep-pit-flag skips it.
+                  Sector and pit-flag repairs run after that wait. Read their
+                  individual results; placement completion does not guarantee
+                  lap timing. Accepted CLI outcomes save learned corrections.
 
               inactive-reset launch direct
-                  Start the game with no anticheat in the process tree. This is
-                  the only kind of session this tool can attach to. Steam must
-                  already be running.
+                  Start without EAC. The game allows local sessions only;
+                  choose single-player Practice. Steam must already be running.
 
               inactive-reset launch eac
                   Start the game the normal, protected way, for online racing.
@@ -944,12 +954,12 @@ internal static class Program
 
             Not here on purpose:
               dump, reanchor    Maintainer tools, in the unpublished
-                                InactiveReset.Reanchor project. When LMU
-                                updates you do not re-derive anything -- the
-                                app offers to fetch the new profile.
+                                InactiveReset.Reanchor project. Application
+                                offsets are discovered locally after updates;
+                                no profile download is required.
 
             Options:
-              --offsets <dir>   folder of per-build offset profiles
+              --offsets <dir>   SDK layout and local build-offset caches
               --data <dir>      folder holding profiles/ and checkpoints/
 
             Note: track-limits penalties are latched at session start, so the

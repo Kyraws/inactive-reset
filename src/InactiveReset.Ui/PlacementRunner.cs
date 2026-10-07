@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using InactiveReset.Core;
 
 namespace InactiveReset.Ui;
@@ -25,6 +26,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private CalibrationProfile? _lastCalibration;
     private string? _lastBuildSha256;
     private Task? _running;
+    private CancellationTokenSource? _placementCancellation;
+    private bool _stopping;
 
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
     // Both calibration directories are resolved from the data directory itself;
@@ -114,6 +117,23 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             };
 
             state["lapValidity"] = LapValidity_(session);
+            try
+            {
+                var live = new LiveStateReader(session);
+                var owner = live.ReadControlOwner(live.ResolveSlotIndex());
+                if (owner is 0 or 1) state["inGarage"] = owner == 1;
+            }
+            catch (Exception ex) when (ex is MemoryAccessException or GateException) { }
+            try
+            {
+                state["tyreRules"] = JsonSerializer.SerializeToNode(
+                    TyrePhysicsReader.Read(session, offsetDirectory),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            }
+            catch (Exception ex) when (ex is MemoryAccessException or OffsetProfileException or StaleOffsetException or GateException or InvalidOperationException or FormatException or OverflowException or IOException)
+            {
+                state["tyreRulesError"] = ex.Message;
+            }
         }
         catch (Exception ex)
         {
@@ -308,6 +328,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["z"] = snapshot.Pose.Position.Z,
                 ["yaw"] = target.Yaw,
                 ["capturable"] = target.Valid,
+                ["tyres"] = JsonSerializer.SerializeToNode(snapshot.Tyres,
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
             };
         }
         catch (Exception)
@@ -324,6 +346,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             array.Add(new JsonObject
             {
                 ["name"] = checkpoint.Name,
+                ["id"] = checkpoint.SelectionId(Checkpoints),
                 ["track"] = checkpoint.TrackName,
                 ["vehicle"] = checkpoint.VehicleName,
                 ["lapDistance"] = checkpoint.LapDistance,
@@ -346,6 +369,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["lateralOffset"] = calibration.LateralOffset,
                 ["locked"] = calibration.Locked,
                 ["advisory"] = calibration.Advisory,
+                ["build"] = calibration.ExecutableSha256 is { Length: >= 8 } hash ? hash[..8] : null,
             });
         }
         return array;
@@ -421,6 +445,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     /// </summary>
     public JsonObject StartPlace(JsonObject body)
     {
+        var tyreOptions = ReadTyreOptions(body);
         var name = body["checkpoint"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -429,6 +454,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
         lock (_gate)
         {
+            if (_stopping) return new JsonObject { ["error"] = "the app is closing" };
             if (_running is { IsCompleted: false })
             {
                 return new JsonObject { ["ok"] = false, ["error"] = "a placement is already running" };
@@ -439,23 +465,94 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             _lastBuildSha256 = null;
             _phase = PlacementPhase.Gating;
             _phaseMessage = "starting";
-            _running = Task.Run(() => RunPlacement(name));
+            _placementCancellation?.Dispose();
+            _placementCancellation = new CancellationTokenSource();
+            var token = _placementCancellation.Token;
+            _running = Task.Run(() => RunPlacement(name, tyreOptions, token));
         }
         return new JsonObject { ["ok"] = true };
     }
 
-    private void RunPlacement(string name)
+    private static TyreResetOptions? ReadTyreOptions(JsonObject body)
+    {
+        if (body["tyres"] is not JsonObject value) return null;
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        return TyreResetOptions.FromJson(document.RootElement);
+    }
+
+    public JsonObject StartTyres(JsonObject body)
+    {
+        var options = ReadTyreOptions(body) ?? new TyreResetOptions();
+        lock (_gate)
+        {
+            if (_stopping) return new JsonObject { ["error"] = "the app is closing" };
+            if (_running is { IsCompleted: false })
+                return new JsonObject { ["error"] = "an operation is already running" };
+            _log.Clear();
+            _lastOutcome = null;
+            _phase = PlacementPhase.Gating;
+            _phaseMessage = "preparing tyres";
+            _placementCancellation?.Dispose();
+            _placementCancellation = new CancellationTokenSource();
+            var token = _placementCancellation.Token;
+            _running = Task.Run(() => RunTyres(options, token));
+        }
+        return new JsonObject { ["ok"] = true };
+    }
+
+    private void RunTyres(TyreResetOptions options, CancellationToken cancellation)
     {
         try
         {
             using var session = GameSession.Attach(offsetDirectory, forWriting: true);
-            var checkpoint = Checkpoint.Require(Checkpoints, name);
-            var calibration = CalibrationProfile.Find(
-                dataDirectory, checkpoint.TrackName, checkpoint.VehicleName)
-                ?? CalibrationProfile.Placeholder(checkpoint.TrackName, checkpoint.VehicleName);
-            var learned = new LearnedRestStore(dataDirectory).Load(
-                session.ExecutableSha256, checkpoint.TrackName,
-                checkpoint.VehicleName, checkpoint.Name);
+            using var tyres = new TyreResetPreparation(session, offsetDirectory, options);
+            var reader = new LiveStateReader(session);
+            var slot = reader.ResolveSlotIndex();
+            cancellation.ThrowIfCancellationRequested();
+            tyres.Stage();
+            OnProgress(new(PlacementPhase.Armed, "TYRES PREPARED - press Drive"));
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            while (reader.ReadControlOwner(slot) != 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                tyres.CheckContext();
+                if (timer.Elapsed.TotalSeconds > 120) throw new GateException("timed out waiting for Drive; pending tyre records restored");
+                Thread.Sleep(20);
+            }
+            tyres.ObserveDrive();
+            OnProgress(new(PlacementPhase.Settling, "checking fitted tyres"));
+            Thread.Sleep(400);
+            var result = tyres.AfterDrive();
+            OnProgress(new(result.Verified ? PlacementPhase.Done : PlacementPhase.Failed, result.Message));
+        }
+        catch (OperationCanceledException)
+        {
+            OnProgress(new(PlacementPhase.Cancelled, "cancelled; pending tyre records restored where the garage session is unchanged"));
+        }
+        catch (Exception ex) { OnProgress(new(PlacementPhase.Failed, ex.Message)); }
+    }
+
+    public JsonObject CancelPlace()
+    {
+        lock (_gate) _placementCancellation?.Cancel();
+        return new JsonObject { ["ok"] = true };
+    }
+
+    public Task StopAsync()
+    {
+        lock (_gate)
+        {
+            _stopping = true;
+            _placementCancellation?.Cancel();
+            return _running ?? Task.CompletedTask;
+        }
+    }
+
+    private void RunPlacement(string name, TyreResetOptions? tyreOptions, CancellationToken cancellation)
+    {
+        try
+        {
+            using var session = GameSession.Attach(offsetDirectory, forWriting: true);
             SessionIdentity? live = null;
             try
             {
@@ -466,6 +563,14 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             catch (SharedMemoryException)
             {
             }
+
+            var checkpoint = Checkpoint.Require(Checkpoints, name, live);
+            var identity = live ?? new SessionIdentity(checkpoint.TrackName, checkpoint.VehicleName);
+            identity.RequireMatches(checkpoint);
+            var calibration = CalibrationProfile.Find(dataDirectory, identity.TrackName, identity.VehicleName)
+                ?? CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName);
+            var learned = new LearnedRestStore(dataDirectory).Load(session.ExecutableSha256,
+                identity.TrackName, identity.VehicleName, checkpoint.LearningKey(identity.VehicleName));
 
             var service = new PlacementService(session);
             var plan = service.Plan(checkpoint, calibration, learned, live);
@@ -479,7 +584,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 }
             }
 
-            var outcome = service.Place(plan, OnProgress);
+            using var tyres = tyreOptions is null ? null : new TyreResetPreparation(session, offsetDirectory, tyreOptions);
+            var outcome = service.Place(plan, OnProgress, cancellation: cancellation, tyres: tyres);
             lock (_gate)
             {
                 _lastOutcome = outcome;
@@ -488,7 +594,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             }
             Log(outcome.Completed
                 ? $"placed, error {outcome.HorizontalErrorMetres:F4} m"
-                : $"failed: {outcome.Message}");
+                : $"{(outcome.Cancelled ? "cancelled" : "failed")}: {outcome.Message}");
         }
         catch (Exception ex)
         {

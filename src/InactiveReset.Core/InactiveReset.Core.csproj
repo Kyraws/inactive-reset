@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="InactiveReset.Tests" />
     <EmbeddedResource Include="discovery-*.json" LogicalName="InactiveReset.Core.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

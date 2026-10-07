@@ -21,21 +21,11 @@ public enum TunableSource
 /// -- and every build gate stayed green while placement went a metre wrong,
 /// because `reanchor` re-derives *addresses* and these were never addresses.
 ///
-/// Reading them live collapses that failure into one this project already
-/// handles well:
-///
-///   RETUNED -> picked up on the next placement. No profile change, no publish,
-///              no download. The user never finds out.
-///   MOVED   -> the read lands on unrelated bytes, fails the range check, and
-///              becomes an ordinary `reanchor` job.
-///
-/// THE RANGE CHECKS ARE THE WHOLE SAFETY ARGUMENT. A stale address does not
-/// fault -- it returns four perfectly plausible floats, and a plausible float
-/// places the car somewhere plausible and wrong. That is the exact failure this
-/// project keeps having. The bounds below are deliberately WIDE: they exist to
-/// reject nonsense, not to second-guess Studio 397's tuning. A yaw offset of
-/// 60 deg would be surprising and is accepted; one of 4e+38 is not a tuning
-/// choice, it is a wrong address.
+/// Addresses come from the discovered profile. Values are read per placement
+/// and range-checked, with a checked profile snapshot as fallback. Bounds reject
+/// implausible values; they do not prove an address or placement model correct.
+/// Automatic discovery also depends on a known tuning-block value anchor, so
+/// a retune can require resolver changes before these live reads are reached.
 /// </summary>
 public sealed record EngineTunables
 {

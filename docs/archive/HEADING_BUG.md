@@ -1,3 +1,5 @@
+> Archived on 2026-10-07. Historical evidence and superseded guidance; not current operating instructions. Build-specific addresses, measurements, and conclusions apply only to the recorded experiments. See the [current architecture](../ARCHITECTURE.md) and [status](../STATUS.md) before using this material.
+
 # The heading error — resolved 2026-08-22
 
 **Status: fixed and verified by driving.** Placement at `cp-023328` on build

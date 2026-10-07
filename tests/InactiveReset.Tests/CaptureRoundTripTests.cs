@@ -38,6 +38,7 @@ public sealed class CaptureRoundTripTests : IDisposable
         Assert.Equal(Original.TrackName, loaded.TrackName);
         Assert.Equal(Original.VehicleName, loaded.VehicleName);
         Assert.Equal(Original.Gear, loaded.Gear);
+        Assert.Null(loaded.Tyres); // Legacy captures have no tyre block.
         Assert.Equal(Original.LapDistance, loaded.LapDistance, 4);
 
         Assert.Equal(Original.Pose.Position, loaded.Pose.Position);

@@ -1,358 +1,84 @@
 namespace InactiveReset.Ui;
 
-/// <summary>
-/// The whole UI, as one self-contained page. No CDN, no build step, no
-/// framework - it is a control panel with about a dozen controls, and anything
-/// heavier would be a liability to keep working across LMU patches.
-///
-/// DELIBERATELY PURE ASCII. Non-ASCII characters in this literal have been
-/// corrupted before by a text pipeline that decoded UTF-8 as ANSI, turning an
-/// em dash into three characters on screen. HTML entities survive that; raw
-/// characters do not.
-/// </summary>
+/// <summary>Self-contained local control panel, shared by the desktop host and CLI.</summary>
 internal static class Page
 {
     public const string Html = """
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Inactive Reset</title>
-<style>
-  :root {
-    --bg:#f4f6f8; --card:#ffffff; --ink:#151a1f; --muted:#5d6b7a;
-    --line:#e2e7ec; --accent:#1f7a4d; --accent-ink:#ffffff;
-    --good:#1f7a4d; --bad:#b3261e; --warn:#8a5a00;
-    --chip:#eef2f6; --shadow:0 1px 2px rgba(16,24,32,.06), 0 6px 18px rgba(16,24,32,.06);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg:#101316; --card:#191d22; --ink:#e8ecf0; --muted:#93a1b0;
-      --line:#262c33; --accent:#48b07a; --accent-ink:#08160f;
-      --good:#5cc98f; --bad:#e58a84; --warn:#dcae63;
-      --chip:#212730; --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.32);
-    }
-  }
-  * { box-sizing:border-box; }
-  html, body { height:100%; }
-  body {
-    margin:0; background:var(--bg); color:var(--ink);
-    font:15px/1.55 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Inactive Reset</title><style>
 
-  /* ---- banner ---- */
-  .banner {
-    position:sticky; top:0; z-index:10;
-    background:var(--card); border-bottom:1px solid var(--line);
-    padding:12px 20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-  }
-  .brand { font-size:16px; font-weight:680; letter-spacing:-.01em; margin-right:4px; }
-  .status { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .badge {
-    display:inline-flex; align-items:center; gap:6px;
-    font-size:12.5px; font-weight:560; padding:4px 10px; border-radius:999px;
-    background:var(--chip); color:var(--muted); white-space:nowrap;
-  }
-  .badge.ok { color:var(--good); }
-  .badge.no { color:var(--bad); }
-  .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
-  .spacer { flex:1; }
-  .meta { font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; }
+:root{color-scheme:dark;--bg:#17191d;--card:#202329;--field:#191c21;--ink:#eef0f3;--muted:#b3bbc6;--line:#414750;--accent:#dda177;--accent-ink:#2b1b12;--good:#99d8b4;--bad:#ff9da3;--warn:#f2c87a}
+*{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:12px/1.35 'Segoe UI',system-ui,sans-serif}
+button,input,select{font:inherit}button,select,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}[hidden]{display:none!important}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.banner{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);flex-shrink:0}.brand{font-weight:650;font-size:13px}.spacer{flex:1}.actions{display:flex;gap:6px}
+main{padding:10px 12px 12px;display:grid;grid-template-columns:210px minmax(0,1fr);grid-template-rows:28px minmax(0,1fr);gap:9px;flex:1;min-height:0;min-width:0}
+.session-card{grid-column:1/-1;display:flex;align-items:center;gap:8px;min-width:0}.session{display:flex;gap:10px;align-items:center;flex:1;min-width:0}.session strong,.session-car{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.session strong{max-width:48%;font-size:12px}.session-car{flex:1;font-size:11px;color:var(--muted)}.session-state,#status{white-space:nowrap;color:var(--muted);font-size:10px;flex-shrink:0}.session-state{border:1px solid var(--line);border-radius:3px;padding:3px 6px}
+.card{padding:9px;background:var(--card);border:1px solid var(--line);border-radius:4px;min-width:0;min-height:0}h2,p{margin:0}h2{font-size:12px;font-weight:650;margin-bottom:8px}
+.checkpoints-card{display:flex;flex-direction:column;grid-column:1;grid-row:2;overflow:hidden}
+input,select{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:3px;padding:5px 7px;min-width:0}input[type=text]{width:0;flex:1}input[type=number]{width:64px}input[type=checkbox]{accent-color:var(--accent);margin:0;flex-shrink:0}
+#cp{flex:1;min-height:0;width:100%;padding:3px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) var(--field);overscroll-behavior:contain}#cp option{padding:5px 6px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;line-height:18px;border-radius:2px}#cp option:checked{background:var(--accent);color:var(--accent-ink)}
+.capture-area{border-top:1px solid var(--line);margin-top:8px;padding-top:8px;flex-shrink:0}.field{display:flex;gap:5px;align-items:center;min-width:0}.capture-area .act{flex-shrink:0}.hint{margin-top:5px;font-size:10px;color:var(--muted);overflow-wrap:anywhere}.hint:empty{display:none}
+.work-area{grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;min-height:0}
+.placement-strip{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0}#destinationName{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act{padding:5px 10px;background:var(--field);border:1px solid var(--line);color:var(--ink);font-size:11px;border-radius:3px;white-space:nowrap}.act:hover:not(:disabled){border-color:var(--accent)}.act.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:650}
+.controls-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px;flex-shrink:0}
+#tyreSetup{padding:0;margin:0;border:0;min-width:0}#tyreSetup:disabled{opacity:.55}.tyre-settings{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}.tyre-settings th{font-weight:500;color:var(--muted);text-align:left;padding:0 3px 4px}.tyre-settings th:first-child{width:30px}.tyre-settings th:nth-child(2){width:38%}.tyre-settings td{padding:3px}.tyre-settings input[type=number]{width:100%;padding:4px 5px}.tyre-settings td:nth-child(3){width:22px;text-align:center}.tyre-settings tr>th[scope=row]{padding-top:5px;color:var(--ink)}
+.checkbox-row{display:flex;align-items:center;gap:6px;font-size:11px;margin:9px 0 7px}#tyreSummary{line-height:1.4}#tyreResetHint,#placeHint{display:none}
+.toggle,.rule-status{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;font-size:11px}.toggle{border:0;background:transparent;color:var(--ink);text-align:left}.state,.rule-status span{font-size:10px;color:var(--muted)}.rules-note{font-size:10px;color:var(--muted);margin-top:7px}
+.activity-card{display:flex;flex-direction:column;flex:1;margin-top:8px;overflow:hidden}.activity-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0}.activity-head h2{margin:0}.phasebar{display:flex;align-items:flex-start;gap:8px;margin:7px 0;flex-shrink:0;min-width:0}.phase{font-size:9px;white-space:nowrap;padding:3px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted)}.phase.armed{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.phase.bad{color:var(--bad)}.phase.live{color:var(--accent)}.phasemsg{font-size:11px;min-width:0;overflow-wrap:anywhere}
+#log{margin:0;padding-top:7px;border-top:1px solid var(--line);min-height:0;flex:1;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.6 Consolas,monospace;scrollbar-width:thin;scrollbar-color:var(--line) var(--card);overscroll-behavior:contain}
+.toast{position:fixed;right:12px;bottom:12px;max-width:min(460px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;white-space:pre-wrap;padding:12px 15px;border:1px solid var(--bad);background:#30272a;color:var(--ink);border-radius:4px;z-index:10;box-shadow:0 8px 30px #0008}
+@media(max-width:700px){main{grid-template-columns:175px minmax(0,1fr)}.session-car,#status{display:none}#tyreSetup{grid-template-columns:1fr}.controls-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 
-  /* ---- layout ---- */
-  main {
-    max-width:1120px; margin:0 auto; padding:20px;
-    display:grid; gap:16px; grid-template-columns:repeat(auto-fit, minmax(340px,1fr));
-  }
-  .card {
-    background:var(--card); border:1px solid var(--line); border-radius:12px;
-    padding:16px 18px; box-shadow:var(--shadow);
-  }
-  .card h2 {
-    font-size:11.5px; text-transform:uppercase; letter-spacing:.08em;
-    color:var(--muted); margin:0 0 14px; font-weight:700;
-  }
-  .wide { grid-column:1 / -1; }
+</style></head><body>
 
-  /* ---- key/value ---- */
-  .kv { display:grid; grid-template-columns:auto 1fr; gap:7px 16px; align-items:baseline; }
-  .kv dt { color:var(--muted); font-size:13.5px; }
-  .kv dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
-  .big { font-size:17px; font-weight:620; letter-spacing:-.01em; }
-  .mono { font-family:ui-monospace,"Cascadia Mono",Consolas,monospace; font-size:12.5px; }
-
-  /* ---- toggles ---- */
-  .toggles { display:grid; gap:10px; }
-  .toggle {
-    display:flex; align-items:center; gap:14px; width:100%; text-align:left;
-    font:inherit; cursor:pointer; padding:13px 15px; border-radius:10px;
-    border:1px solid var(--line); background:var(--chip); color:var(--ink);
-    transition:border-color .12s ease, transform .06s ease;
-  }
-  .toggle:hover:not(:disabled) { border-color:var(--accent); }
-  .toggle:active:not(:disabled) { transform:translateY(1px); }
-  .toggle:disabled { opacity:.5; cursor:not-allowed; }
-  .toggle .name { font-weight:620; }
-  .toggle .detail { font-size:12.5px; color:var(--muted); }
-  .switch {
-    margin-left:auto; flex:none; width:52px; height:29px; border-radius:999px;
-    background:var(--bad); position:relative; transition:background .16s ease;
-  }
-  .switch.off { background:var(--good); }
-  .switch::after {
-    content:""; position:absolute; top:3px; left:3px; width:23px; height:23px;
-    border-radius:50%; background:#fff; transition:transform .16s ease;
-    box-shadow:0 1px 3px rgba(0,0,0,.35);
-  }
-  .switch.off::after { transform:translateX(23px); }
-  .state { font-size:12px; font-weight:650; width:30px; text-align:right; }
-
-  /* ---- forms ---- */
-  .field { display:flex; gap:9px; }
-  input[type=text], select {
-    font:inherit; padding:9px 11px; border-radius:9px; min-width:0; flex:1;
-    border:1px solid var(--line); background:var(--card); color:var(--ink);
-  }
-  input[type=text]:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
-  button.act {
-    font:inherit; font-weight:600; padding:9px 16px; border-radius:9px; cursor:pointer;
-    border:1px solid var(--line); background:var(--chip); color:var(--ink); white-space:nowrap;
-  }
-  button.act:hover:not(:disabled) { border-color:var(--accent); }
-  button.act.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
-  button.act:disabled { opacity:.5; cursor:not-allowed; }
-  .actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
-  span.ok { color:var(--good); }
-  span.warn { color:var(--warn); }
-  .divider { height:1px; background:var(--line); margin:15px 0; }
-  .label { font-size:12px; font-weight:650; color:var(--muted); margin-bottom:7px;
-           text-transform:uppercase; letter-spacing:.05em; }
-  /* Raw derived flags, so the toggle can be checked against reality. */
-  .flags { margin-top:12px; display:grid; gap:5px; }
-  .flagrow {
-    display:flex; align-items:center; gap:10px; font-size:12.5px;
-    font-family:ui-monospace,Consolas,monospace;
-    padding:6px 10px; border-radius:7px; background:var(--chip);
-  }
-  .flagrow .fname { color:var(--muted); flex:1; }
-  .flagrow .frva { color:var(--muted); opacity:.75; }
-  .flagrow .fval {
-    font-weight:700; width:16px; text-align:center; border-radius:4px;
-  }
-  .flagrow .fval.set   { color:var(--bad); }
-  .flagrow .fval.clear { color:var(--good); }
-  .flagrow .fnote { color:var(--warn); font-size:11.5px; }
-  .hint { font-size:12.5px; color:var(--muted); margin-top:9px; }
-  .hint.warn { color:var(--warn); }
-  .hint.bad { color:var(--bad); }
-
-  /* ---- activity ---- */
-  .phasebar { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
-  .phase {
-    font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
-    padding:5px 12px; border-radius:8px; background:var(--chip); color:var(--muted);
-  }
-  .phase.live { background:var(--accent); color:var(--accent-ink); }
-  .phase.bad  { background:var(--bad); color:#fff; }
-  /* The moment the driver has to act on. With no audio cue this is the only
-     signal, so it is deliberately loud. */
-  .phase.armed {
-    background:var(--warn); color:#fff; font-size:15px; padding:7px 16px;
-    animation:pulse 1s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.55; } }
-  .step.now.act { background:var(--warn); color:#fff; }
-  .phasemsg { color:var(--muted); font-size:13.5px; }
-  .steps { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
-  .step {
-    font-size:11.5px; padding:3px 9px; border-radius:999px;
-    background:var(--chip); color:var(--muted);
-  }
-  .step.done { color:var(--good); }
-  .step.now  { background:var(--accent); color:var(--accent-ink); font-weight:650; }
-  #log {
-    font-family:ui-monospace,Consolas,monospace; font-size:12.5px;
-    background:var(--chip); border-radius:9px; padding:12px;
-    height:180px; overflow:auto; white-space:pre-wrap; line-height:1.5;
-  }
-  .results { margin-top:13px; display:grid; gap:7px 16px;
-             grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
-  .result { background:var(--chip); border-radius:9px; padding:10px 12px; }
-  .result .rk { font-size:11.5px; color:var(--muted); text-transform:uppercase;
-                letter-spacing:.05em; }
-  .result .rv { font-size:16px; font-weight:640; font-variant-numeric:tabular-nums; }
-  .result .rv.good { color:var(--good); }
-  .result .rv.bad  { color:var(--bad); }
-  .empty { color:var(--muted); font-size:13.5px; }
-</style>
-</head>
-<body>
-
-<div class="banner">
-  <span class="brand">Inactive Reset</span>
-  <div class="status" id="status"></div>
-  <span class="spacer"></span>
-  <span class="meta" id="meta"></span>
-</div>
-
+<header class="banner"><span class="brand">Inactive Reset</span><span class="spacer"></span><div class="actions"><button class="act" id="launchDirect" onclick="launch('direct')" title="Starts LMU without EAC for local sessions">Launch game</button><button class="act" id="launchEac" onclick="launch('eac')" title="Use EAC for online racing; Inactive Reset will not attach">Launch with EAC</button></div></header>
 <main>
-  <section class="card">
-    <h2>Game</h2>
-    <div id="game"><div class="empty">looking for the install</div></div>
-    <div class="actions">
-      <button class="act primary" id="launchDirect" onclick="launch('direct')">Launch direct</button>
-      <button class="act" id="launchEac" onclick="launch('eac')">Launch with EAC</button>
-    </div>
-    <div class="hint" id="launchHint">
-      A direct launch has no anticheat in the process tree, and is the only kind
-      of session this tool can attach to. Launch with EAC for online racing -
-      this tool refuses to touch that session on purpose. Steam must already be
-      running either way.
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>Session</h2>
-    <div id="session"><div class="empty">waiting for the game</div></div>
-  </section>
-
-  <section class="card">
-    <h2>Penalties</h2>
-    <div class="toggles" id="penalties"></div>
-    <div class="flags" id="flags"></div>
-    <div class="hint">
-      Track limits are latched when the session starts, so this writes the
-      engine's derived flags rather than the setting. The engine can re-arm
-      them when you return to the garage, which is why the raw values are
-      shown: they are read back from memory every refresh, so what you see is
-      what the engine has, not what was last asked for.
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>Checkpoints</h2>
-    <div class="label">Capture the current position</div>
-    <div class="field">
-      <input type="text" id="capName" placeholder="name, for example turn-1-entry"
-             autocomplete="off" spellcheck="false">
-      <button class="act" id="capBtn" onclick="capture()">Capture</button>
-    </div>
-    <div class="hint" id="capHint"></div>
-
-    <div class="divider"></div>
-
-    <div class="label">Place the car at a checkpoint</div>
-    <div class="field">
-      <select id="cp"></select>
-      <button class="act primary" id="placeBtn" onclick="place()">Place</button>
-    </div>
-    <div class="hint">
-      Park in the garage, press Place, then press Drive when Activity below
-      shows <strong>PRESS DRIVE</strong>.
-    </div>
-    <div class="hint warn" id="advisory"></div>
-  </section>
-
-  <section class="card wide">
-    <h2>Activity</h2>
-    <div class="phasebar">
-      <span class="phase" id="phase">idle</span>
-      <span class="phasemsg" id="phaseMsg">nothing running</span>
-    </div>
-    <div class="steps" id="steps"></div>
-    <div id="log"></div>
-    <div class="results" id="results"></div>
-  </section>
-</main>
+<section class="session-card" aria-label="Current session"><div class="session" id="session"><strong>Launch the game to begin</strong></div><span id="status"></span></section>
+<section class="card checkpoints-card"><h2 id="destinationsLabel">Destinations</h2><select id="cp" size="12" aria-labelledby="destinationsLabel" onchange="updateDestination()"></select><div class="capture-area"><div class="field"><input id="capName" type="text" placeholder="Checkpoint name" aria-label="Capture name" autocomplete="off" spellcheck="false"><button class="act" id="capBtn" onclick="capture()">Capture</button></div><p class="hint" id="capHint"></p></div></section>
+<div class="work-area">
+<div class="placement-strip"><span id="destinationName">Choose a destination</span><button class="act primary" id="placeBtn" onclick="place()">Place</button></div><p id="placeHint"></p>
+<div class="controls-grid">
+<section class="card tyres-card"><h2>Tyres</h2><fieldset id="tyreSetup"><table class="tyre-settings"><thead><tr><th>Tyre</th><th>Condition %</th><th colspan="2">Initial heat °C</th></tr></thead><tbody><tr><th scope="row">FL</th><td><input id="tyreConditionFL" aria-label="Front left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFL" aria-label="Set front left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFL" aria-label="Front left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">FR</th><td><input id="tyreConditionFR" aria-label="Front right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFR" aria-label="Set front right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFR" aria-label="Front right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RL</th><td><input id="tyreConditionRL" aria-label="Rear left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRL" aria-label="Set rear left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRL" aria-label="Rear left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RR</th><td><input id="tyreConditionRR" aria-label="Rear right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRR" aria-label="Set rear right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRR" aria-label="Rear right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr></tbody></table></fieldset><label class="checkbox-row"><input id="freshOnPlace" type="checkbox" onchange="updateTyreSettings()">Apply on placement</label><button class="act" id="tyreResetBtn" onclick="resetTyres()" disabled>Prepare tyres</button><p class="hint" id="tyreSummary"></p><p id="tyreResetHint"></p></section>
+<section class="card penalties-card"><h2>Rules</h2><div id="penalties"></div><div class="rule-status"><span>Flag Rules</span><span id="flagStatus">Unknown</span></div><p class="rules-note">Flag Rules are managed during pit cleanup. Keep the pit limiter on until CLEAR.</p></section>
+</div>
+<section class="card activity-card" aria-label="Activity and operation progress"><div class="activity-head"><h2>Activity</h2><button class="act" id="cancelBtn" onclick="cancelPlacement()" disabled>Cancel</button></div><div class="phasebar"><span class="phase" id="phase">IDLE</span><span class="phasemsg" id="phaseMsg" role="status" aria-live="polite" aria-atomic="true">Load a Practice session.</span></div><pre id="log" aria-label="Activity log"></pre></section>
+</div>
+</main><div id="notice" class="toast" role="alert" hidden></div>
 
 <script>
+
 'use strict';
-
-// The trail the driver reads. Internal phases such as Settling and Restoring
-// still appear in the log, but they are not moments anyone acts on, so putting
-// them here would only dilute the one step that matters.
-const STEPS = [
-  {key:'Gating',         label:'not armed'},
-  {key:'Armed',          label:'armed'},
-  {key:'WaitingToClear', label:'keep pit limiter', conditional:true},
-  {key:'Clear',          label:'drive'}
-];
-
-// Where each reported phase sits on that trail.
-const PHASE_STEP = {
-  Idle:-1, Gating:0, Armed:1, Settling:1, Restoring:1,
-  WaitingToClear:2, Clear:3, Done:3, Failed:-1
-};
 
 function esc(s) {
   return String(s === null || s === undefined ? '' : s)
     .replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+let noticeTimer;
+function showNotice(message) {
+  const el = document.getElementById('notice');
+  el.textContent = message;
+  el.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { el.hidden = true; }, 10000);
+}
+
 async function api(path, body) {
-  const res = await fetch(path, {
+  try {
+    const res = await fetch(path, {
     method: body ? 'POST' : 'GET',
     headers: body ? {'Content-Type':'application/json'} : {},
     body: body ? JSON.stringify(body) : undefined
-  });
-  return res.json();
-}
-
-function badge(label, ok) {
-  return '<span class="badge ' + (ok ? 'ok' : 'no') + '">' +
-         '<span class="dot"></span>' + esc(label) + '</span>';
-}
-
-function kv(rows) {
-  return '<dl class="kv">' + rows.map(r =>
-    '<dt>' + esc(r[0]) + '</dt><dd class="' + (r[2] || '') + '">' + r[1] + '</dd>'
-  ).join('') + '</dl>';
+    });
+    return await res.json();
+  } catch {
+    return {error:'The app connection was lost. Check that Inactive Reset is still running.'};
+  }
 }
 
 function renderStatus(s) {
-  const status = document.getElementById('status');
-  const meta = document.getElementById('meta');
-
-  if (!s.connected) {
-    status.innerHTML = badge('not connected', false);
-    meta.textContent = s.error || 'Le Mans Ultimate is not running';
-    return;
-  }
-  const gates = s.gates || [];
-  const named = {process:'process', anticheat:'anti-cheat absent', build:'build', probe:'probe'};
-  status.innerHTML = gates
-    .filter(g => g.name === 'process' || g.name === 'anticheat')
-    .map(g => badge(named[g.name] || g.name, g.passed)).join('');
-  meta.textContent = 'pid ' + s.pid + '  |  build ' + s.build + '  |  v' + s.gameVersion;
-}
-
-
-// The game card answers two questions that must not be allowed to look alike:
-// is the game up, and if it is, can this tool touch it? A protected session is
-// running perfectly well and is still unusable here.
-function renderGame(s) {
-  const el = document.getElementById('game');
-  const g = s.game || {};
-  const rows = [];
-
-  if (g.running) {
-    rows.push(['running', 'pid ' + g.pid + (g.protected
-      ? ' <span class="warn">started with EasyAntiCheat - this tool will not attach</span>'
-      : ' <span class="ok">started direct - attachable</span>')]);
-  } else {
-    rows.push(['running', 'no']);
-  }
-
-  if (g.install) {
-    rows.push(['install', esc(g.install)]);
-    rows.push(['found by', esc(g.foundBy)]);
-  } else if (g.installError) {
-    rows.push(['install', '<span class="warn">' + esc(g.installError) + '</span>']);
-  }
-
-  el.innerHTML = kv(rows);
+  document.getElementById('status').textContent = s.connected ? 'Local Practice' : 'Not connected';
 }
 
 async function launch(mode) {
@@ -364,218 +90,138 @@ async function launch(mode) {
     const res = await api('/api/launch', {mode: mode});
     // The server reports a refused gate as an error with its reason. Showing it
     // verbatim matters: every one of them says what to do about it.
-    if (res.error) alert(res.error);
+    if (res.error) showNotice(res.error);
   } catch (e) {
-    alert('could not reach the server');
+    showNotice('could not reach the server');
   }
   refresh();
 }
 
 function renderSession(s) {
-  const el = document.getElementById('session');
-  const d = s.session;
-  if (!d) {
-    el.innerHTML = '<div class="empty">' +
-      (s.connected ? 'no car in shared memory (in menus?)' : 'waiting for the game') +
-      '</div>';
-    return;
-  }
-  el.innerHTML = kv([
-    ['Track', '<span class="big">' + esc(d.track) + '</span>'],
-    ['Car', esc(d.vehicle)],
-    ['Lap distance', d.lapDistance.toFixed(1) + ' m'],
-    ['Gear', d.gear === 0 ? 'neutral' : (d.gear < 0 ? 'reverse' : String(d.gear))],
-    ['Position', '<span class="mono">' + d.x.toFixed(2) + ', ' + d.y.toFixed(2) +
-                 ', ' + d.z.toFixed(2) + '</span>'],
-    ['Heading', d.yaw.toFixed(4) + ' rad']
-  ]);
-  document.getElementById('capHint').textContent = d.capturable
-    ? 'Ready to capture this spot.'
-    : 'This pose cannot be captured: the heading is ill-conditioned.';
+  const d = s.session, garage = s.inGarage ?? s.tyreRules?.inGarage;
+  document.getElementById('session').innerHTML = d
+    ? '<strong title="' + esc(d.track) + '">' + esc(d.track) + '</strong><span class="session-car" title="' + esc(d.vehicle) + '">' + esc(d.vehicle) + '</span><span class="session-state">' + (garage === true ? 'In garage' : garage === false ? 'On track' : 'Session loaded') + '</span>'
+    : '<strong>' + (s.connected ? 'Load single-player Practice' : 'Launch the game to begin') + '</strong>';
+  document.getElementById('capHint').textContent = d ? (d.capturable ? 'Capture your current position.' : 'This position cannot be captured.') : 'Load a session to capture.';
 }
 
 function renderPenalties(s) {
-  const el = document.getElementById('penalties');
-  const p = s.penalties;
-  if (!p) { el.innerHTML = '<div class="empty">unavailable</div>'; return; }
-
-  el.innerHTML = [['trackLimits', p.trackLimits]]
-    .map(([key, v]) =>
-      '<button class="toggle" ' + (v.known ? '' : 'disabled ') +
-      'onclick="toggle(\'' + key + '\',' + (v.on ? 'false' : 'true') + ')">' +
-        '<span><span class="name">' + esc(v.label) + '</span><br>' +
-        '<span class="detail">' + esc(v.detail) + '</span></span>' +
-        '<span class="switch ' + (v.on ? '' : 'off') + '"></span>' +
-        '<span class="state">' + (v.on ? 'ON' : 'OFF') + '</span>' +
-      '</button>'
-    ).join('') + pitSpeedingStatus(s);
-
-  renderFlags(s);
+  const p = s.penalties?.trackLimits;
+  document.getElementById('penalties').innerHTML = p
+    ? '<button class="toggle" aria-pressed="' + !!p.on + '" ' + (p.known && !s.busy ? '' : 'disabled ') +
+      'onclick="toggle(\'trackLimits\',' + !p.on + ')"><span>Track limits</span><span class="state">' +
+      (p.known ? (p.on ? 'ON' : 'OFF') : 'Unknown') + '</span></button>'
+    : '<div class="rule-status">Track limits <span>Unavailable</span></div>';
+  const flag = s.pitSpeedingPenalty;
+  document.getElementById('flagStatus').textContent = !flag?.known ? 'Unknown' : flag.on ? 'ON' : 'OFF';
 }
 
-// The pit-speeding penalty is status, not a control. Every placement disables
-// it, so a toggle would be a switch that flips itself back the moment you use
-// the tool. An unusable control is worse than none.
-//
-// This is the game's penalty, NOT the car's pit limiter, which this tool never
-// touches. The control was labelled "Pit Limiter" for a long time and the two
-// were confused constantly. See CONTEXT.md.
-function pitSpeedingStatus(s) {
-  const v = s.pitSpeedingPenalty;
-  if (!v) return '';
-  const state = !v.known ? 'unknown' : (v.on ? 'ON' : 'off');
-  const cls = !v.known ? '' : (v.on ? 'bad' : 'good');
-  return '<div class="result"><div class="rk">' + esc(v.label) + '</div>' +
-         '<div class="rv ' + cls + '">' + state + '</div>' +
-         '<div class="detail">' + esc(v.detail) + '</div></div>';
-}
-
-/// Raw values read back from memory, so the toggle above can be checked
-/// against what the engine actually holds rather than what was last written.
-function renderFlags(s) {
-  const el = document.getElementById('flags');
-  const rules = (s.rules || []).filter(r =>
-    r.name.indexOf('Track limits flag') === 0 || r.name.indexOf('Pit-speeding') === 0);
-
-  let html = rules.map(r => {
-    // An unresolved address is neither set nor clear: it was never read.
-    const set = r.resolved !== false && r.value !== 0;
-    const unknown = r.resolved === false;
-    const invalidation = r.name.indexOf('lap invalidation') > 0;
-    const name = r.name
-      .replace('Pit-speeding gate (Flag Rules)', 'pit speeding gate')
-      .replace('Track limits flag ', 'cut flag ');
-    return '<div class="flagrow">' +
-      '<span class="fname">' + esc(name) + '</span>' +
-      (invalidation ? '<span class="fnote">gates lap invalidation</span>' : '') +
-      '<span class="frva">' + esc(r.rva) + '</span>' +
-      '<span class="fval ' + (unknown ? 'warn' : set ? 'set' : 'clear') + '">' +
-        esc(r.display !== undefined ? r.display : String(r.value)) + '</span>' +
-      '</div>';
-  }).join('');
-
-  html += renderLapValidity(s);
-  el.innerHTML = html;
-}
-
-// Lap validity, read back from memory every refresh like the cut flags above.
-// countLapFlag is the lap you are ON; lapCountsNext is the latch consumed at the
-// next start/finish crossing. pitFlag is highlighted because when it is set it
-// demotes that crossing to an out-lap, which is what costs a placed car a lap.
-function renderLapValidity(s) {
-  const v = s.lapValidity;
-  if (!v) return '';
-
-  const row = function (name, value, note, bad) {
-    return '<div class="flagrow">' +
-      '<span class="fname">' + esc(name) + '</span>' +
-      (note ? '<span class="fnote">' + esc(note) + '</span>' : '') +
-      '<span class="frva"></span>' +
-      '<span class="fval ' + (bad ? 'set' : 'clear') + '">' + esc(String(value)) + '</span>' +
-      '</div>';
-  };
-
-  return row('count lap flag', v.countLapFlag,
-             v.currentLapTimed ? 'this lap is timed' : 'this lap is NOT timed',
-             !v.currentLapTimed)
-       + row('next lap latch', v.lapCountsNext ? 1 : 0, '', !v.lapCountsNext)
-       + row('pit flag', v.pitFlag ? 1 : 0,
-             v.pitFlag ? 'demotes the next crossing to an out-lap' : '',
-             v.pitFlag);
+function updateDestination() {
+  const select = document.getElementById('cp');
+  document.getElementById('destinationName').textContent = select.options[select.selectedIndex]?.textContent || 'Choose a destination';
 }
 
 function renderCheckpoints(s) {
   const select = document.getElementById('cp');
   const chosen = select.value;
-  const list = s.checkpoints || [];
-  select.innerHTML = list.length
-    ? list.map(c => '<option value="' + esc(c.name) + '">' + esc(c.name) +
-        ' &mdash; ' + esc(c.track) + ' (' + c.lapDistance.toFixed(0) + ' m)</option>').join('')
-    : '<option value="">no checkpoints yet</option>';
-  if (chosen) select.value = chosen;
+  const scroll = select.scrollTop;
+  const sameTrack = select.dataset.track === (s.session?.track || '').toLowerCase();
+  const session = s.session;
+  const list = session ? (s.checkpoints || []).filter(c =>
+    c.track.toLowerCase() === session.track.toLowerCase()) : [];
+  const options = list.length
+    ? list.map(c => '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>').join('')
+    : '<option value="">' + (session ? 'No captures for this track yet' : 'Load a track to see captures') + '</option>';
+  // Polling must not rebuild an open selector or interrupt keyboard selection.
+  if (select.dataset.options !== options) {
+    select.innerHTML = options;
+    select.dataset.options = options;
+  }
+  if (list.some(c => c.id === chosen)) select.value = chosen;
+  select.scrollTop = sameTrack ? scroll : 0;
+  select.dataset.track = (session?.track || '').toLowerCase();
+  select.disabled = !!s.busy || !list.length;
+  document.getElementById('destinationName').textContent = list.find(c => c.id === select.value)?.name || 'Choose a destination';
+}
 
-  const advisory = (s.calibrations || []).find(c => c.advisory);
-  document.getElementById('advisory').textContent = advisory
-    ? 'Calibration note: a known heading error puts placement out by a constant amount. It was about 0.57 m on the previous build and about 0.71 m on this one, so treat the recorded worst error as the guide, not a fixed figure.'
-    : '';
+const diagnosticValues = new Map();
+const diagnosticLog = [];
+function collectDiagnostics(s) {
+  const calibration = s.session && (s.calibrations || []).find(c =>
+    c.track.toLowerCase() === s.session.track.toLowerCase() && c.vehicle.toLowerCase() === s.session.vehicle.toLowerCase());
+  const rows = [
+    ['Connection', s.connected ? 'Local Practice connected' : s.error || 'Game not connected'],
+    ['Build', s.connected ? [s.build, s.gameVersion].filter(Boolean).join(' / ') : null],
+    ['Tyre discovery', s.tyreRules ? 'Validated; tyre preparation available' : s.tyreRulesError || 'Unavailable; tyre preparation disabled'],
+    ['Calibration', calibration ? calibration.advisory || 'Saved profile; compatibility checked before placement' : s.session ? 'Compatibility checked before placement' : null],
+    ['Game launch', s.game?.installError || (s.game?.protected ? 'EAC session; attachment refused' : null)]
+  ];
+  if (s.tyreRules && s.session) rows.push(['Tyre protection',
+    'Effective invulnerability ' + (s.tyreRules.invulnerable ? 'ON' : 'OFF') +
+    '; stored ' + s.tyreRules.storedInvulnerability + '; wear multiplier ' + s.tyreRules.storedWearMultiplier +
+    '; damage multiplier ' + s.tyreRules.storedDamageMultiplier]);
+  const checkpoint = (s.checkpoints || []).find(c => c.id === document.getElementById('cp').value);
+  rows.push(['Destination', checkpoint ? checkpoint.name + ' / ' + checkpoint.id + ' / captured in ' + checkpoint.vehicle : null]);
+  for (const [label,value] of rows) {
+    if (diagnosticValues.get(label) !== value) {
+      diagnosticValues.set(label,value);
+      if (value) diagnosticLog.push(label + ': ' + value);
+    }
+  }
+  if (diagnosticLog.length > 60) diagnosticLog.splice(0,diagnosticLog.length-60);
 }
 
 function renderActivity(s) {
-  const phase = s.phase || 'Idle';
-  const el = document.getElementById('phase');
-  const armed = phase === 'Armed';
-  el.textContent = armed
-    ? 'PRESS DRIVE'
-    : (phase === 'Idle' ? 'idle' : phase.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase());
-  el.className = 'phase' +
-    (armed ? ' armed' : (phase === 'Failed' ? ' bad' : (s.busy ? ' live' : '')));
-  document.getElementById('phaseMsg').textContent = s.phaseMessage || 'nothing running';
-
-  // A temporary Flag Rules write keeps the pit-state wait active even while
-  // the live rule reads off. Keep that step visible when the wait is running.
-  const pitOn = phase === 'WaitingToClear' || (s.pitSpeedingPenalty && s.pitSpeedingPenalty.on);
-  const at = PHASE_STEP[phase] === undefined ? -1 : PHASE_STEP[phase];
-
-  document.getElementById('steps').innerHTML = STEPS
-    .filter(step => !step.conditional || pitOn)
-    .map(step => {
-      const i = STEPS.indexOf(step);
-      let cls = at < 0 ? '' : (i < at ? ' done' : (i === at ? ' now' : ''));
-      if (i === at && armed) cls += ' act';
-      return '<span class="step' + cls + '">' + step.label + '</span>';
-    }).join('');
-
+  const phase = s.phase || 'Idle', el = document.getElementById('phase');
+  el.textContent = phase === 'Armed' ? 'PRESS DRIVE' : phase.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
+  el.className = 'phase' + (phase === 'Armed' ? ' armed' : phase === 'Failed' ? ' bad' : s.busy ? ' live' : '');
+  document.getElementById('phaseMsg').textContent = s.phaseMessage || (!s.connected
+    ? 'Launch local Practice to begin.' : !s.session ? 'Load a Practice session.'
+    : (s.inGarage ?? s.tyreRules?.inGarage) === true ? 'Choose a destination or prepare your tyres.' : 'Capture here; return to the garage to prepare.');
+  collectDiagnostics(s);
   const log = document.getElementById('log');
   const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
-  log.textContent = (s.log || []).join('\n') || 'nothing yet';
+  const lines = [...diagnosticLog, ...(s.log || [])];
+  if (s.outcome) {
+    lines.push('', 'LAST RESULT');
+    for (const line of s.outcome.lines || []) lines.push(line.label + ': ' + line.value + (line.sentence ? ' — ' + line.sentence : ''));
+  }
+  const text = lines.join('\n') || 'No activity yet.';
+  if (log.textContent !== text) log.textContent = text;
   if (atBottom) log.scrollTop = log.scrollHeight;
-
-  // The placement report, rendered exactly as it arrives.
-  //
-  // This block used to build its own list of cells, and that list quietly
-  // disagreed with the one the CLI built: it showed the pit flag, which the
-  // measurements call a secondary guard, and never showed the sector write,
-  // which the same measurements call the fix. A driver placing from this page
-  // could not see whether the next lap would count.
-  //
-  // So it decides nothing now. Add a line in PlacementReport and it appears
-  // here with no change to this file, forever.
-  const o = s.outcome;
-  const results = document.getElementById('results');
-  if (!o) { results.innerHTML = ''; return; }
-
-  results.innerHTML = (o.lines || []).map(line =>
-    '<div class="result"><div class="rk">' + esc(line.label) + '</div>' +
-    '<div class="rv ' + severityClass(line.severity) + '">' + esc(line.value) + '</div>' +
-    (line.sentence ? '<div class="detail">' + esc(line.sentence) + '</div>' : '') +
-    '</div>'
-  ).join('');
 }
 
-// Three levels, because "this worked and you should be reassured" is a
-// different thing from "this is merely a number".
-function severityClass(severity) {
-  if (severity === 'good') return 'good';
-  if (severity === 'warning') return 'bad';
-  return '';
-}
-
+let latestRefresh = 0;
 async function refresh() {
+  const request = ++latestRefresh;
   let s;
   try { s = await api('/api/state'); }
   catch (e) {
     document.getElementById('status').innerHTML = badge('server unreachable', false);
     return;
   }
+  if (request !== latestRefresh) return;
   renderStatus(s);
-  renderGame(s);
+
   renderSession(s);
+
   renderPenalties(s);
   renderCheckpoints(s);
   renderActivity(s);
 
-  document.getElementById('placeBtn').disabled = !!s.busy || !s.connected;
-  document.getElementById('capBtn').disabled = !s.session;
+  const garage = s.inGarage ?? s.tyreRules?.inGarage;
+  document.getElementById('placeBtn').disabled = !!s.busy || !s.connected || !s.session || garage !== true || !document.getElementById('cp').value;
+  document.getElementById('placeHint').textContent = s.busy ? 'Follow the next action above. You can cancel the pending operation.' :
+    !s.session ? 'Load a Practice session to use a checkpoint.' : garage !== true ? 'Return to the garage to prepare placement.' :
+    !document.getElementById('cp').value ? 'Save a position on this track to create a destination.' : 'Prepare here, then press Drive in LMU when prompted.';
+  document.getElementById('capBtn').disabled = !!s.busy || !s.session || !s.session.capturable;
+  document.getElementById('cancelBtn').disabled = !s.busy;
+  document.getElementById('tyreSetup').disabled = !!s.busy;
+  document.getElementById('freshOnPlace').disabled = !!s.busy || !s.tyreRules;
+  if (!s.tyreRules) document.getElementById('freshOnPlace').checked = false;
+  updateTyreSettings();
+  document.getElementById('tyreResetHint').textContent = s.tyreRulesError ? s.tyreRulesError : garage === true ? 'Press Drive when prompted. Temperature changes naturally afterward.' : 'Return to the garage to prepare four tyres.';
+  document.getElementById('tyreResetBtn').disabled = !!s.busy || !s.connected || !s.session || garage !== true || !s.tyreRules;
 
   // Both launches are refused while the game is up, so say so with the control
   // rather than only in the error after it is pressed.
@@ -587,11 +233,12 @@ async function refresh() {
 }
 
 async function toggle(which, enable) {
-  await api('/api/rules', {
+  const res = await api('/api/rules', {
     enable: enable,
     pitSpeeding: false,
     trackLimits: which === 'trackLimits'
   });
+  if (res.error) showNotice(res.error);
   refresh();
 }
 
@@ -601,7 +248,7 @@ async function capture() {
   if (!name) { input.focus(); return; }
   const res = await api('/api/capture', {name: name});
   if (res.error) {
-    alert(res.error + (res.failures ? '\n\n' + res.failures.join('\n') : ''));
+    showNotice(res.error + (res.failures ? '\n\n' + res.failures.join('\n') : ''));
   } else {
     input.value = '';
   }
@@ -611,8 +258,53 @@ async function capture() {
 async function place() {
   const checkpoint = document.getElementById('cp').value;
   if (!checkpoint) return;
-  const res = await api('/api/place', {checkpoint: checkpoint});
-  if (res.error) alert(res.error);
+  const body = {checkpoint: checkpoint};
+  if (document.getElementById('freshOnPlace').checked) {
+    try { body.tyres = tyreOptions(); } catch (e) { showNotice(e.message); return; }
+  }
+  const res = await api('/api/place', body);
+  if (res.error) showNotice(res.error);
+  refresh();
+}
+
+async function cancelPlacement() {
+  const res = await api('/api/cancel', {});
+  if (res.error) showNotice(res.error);
+  refresh();
+}
+
+const TYRE_WHEELS = ['FL','FR','RL','RR'];
+function updateTyreSettings() {
+  for (const wheel of TYRE_WHEELS)
+    document.getElementById('tyreTemperature' + wheel).disabled = !document.getElementById('tyreTemperatureEnabled' + wheel).checked;
+  let description;
+  try {
+    const options = tyreOptions();
+    description = options.wheels.map((w,i) => TYRE_WHEELS[i] + ' ' + w.conditionPercent + '% / ' +
+      (w.temperatureCelsius === null ? 'game' : w.temperatureCelsius + '°C')).join(' · ');
+  } catch (e) { description = e.message; }
+  document.getElementById('tyreSummary').textContent = description;
+}
+
+function tyreOptions() {
+  return {wheels: TYRE_WHEELS.map(wheel => {
+    const condition = document.getElementById('tyreCondition' + wheel).value.trim();
+    const conditionPercent = Number(condition);
+    const temperature = document.getElementById('tyreTemperature' + wheel).value.trim();
+    const temperatureCelsius = document.getElementById('tyreTemperatureEnabled' + wheel).checked ? Number(temperature) : null;
+    if (!condition || !Number.isFinite(conditionPercent) || conditionPercent < 0 || conditionPercent > 100)
+      throw new Error(wheel + ' condition must be between 0 and 100 percent.');
+    if (temperatureCelsius !== null && (!temperature || !Number.isFinite(temperatureCelsius) || temperatureCelsius < 0 || temperatureCelsius > 150))
+      throw new Error(wheel + ' temperature must be between 0 and 150 °C.');
+    return {conditionPercent, temperatureCelsius};
+  })};
+}
+
+async function resetTyres() {
+  let tyres;
+  try { tyres = tyreOptions(); } catch (e) { showNotice(e.message); return; }
+  const res = await api('/api/tyres', {tyres});
+  if (res.error) showNotice(res.error);
   refresh();
 }
 
@@ -633,10 +325,10 @@ function schedule(ms) {
   timer = setInterval(refresh, ms);
 }
 
+updateTyreSettings();
 refresh();
 schedule(700);
-</script>
-</body>
-</html>
+
+</script></body></html>
 """;
 }

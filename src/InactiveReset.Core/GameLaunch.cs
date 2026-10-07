@@ -25,8 +25,8 @@ public enum LaunchMode
     /// process is a normal, fully readable one -- this is the only launch this
     /// tool can attach to.
     ///
-    /// <para>NOT "offline": nothing here stops the game reaching the network.
-    /// The word that distinguishes it is UNPROTECTED.</para>
+    /// <para>The game allows local sessions only on this launch path, as
+    /// confirmed by the project owner. Use single-player Practice.</para>
     /// </summary>
     Direct,
 
@@ -75,16 +75,15 @@ public sealed record LaunchResult(
 /// <summary>
 /// Whether the game is up, and if so which way it was started.
 ///
-/// <para><see cref="Protected"/> is decided by the presence of the anticheat in
-/// the process tree, which is the same evidence <see cref="GameSession.Attach"/>
-/// gates on. That is deliberate: this must never say a session is attachable
-/// when the gate would refuse it.</para>
+    /// <para><see cref="Protected"/> uses a machine-wide anticheat process
+    /// check, as does <see cref="GameSession.Attach"/>. It does not inspect
+    /// parent-child relationships.</para>
 /// </summary>
 public sealed record GameRunState(bool Running, bool Protected, int? ProcessId)
 {
     /// <summary>
-    /// True only when a placement could actually run against this process. The
-    /// one question a front end wants answered.
+    /// The process is running and no protected-launch process was detected.
+    /// Build, placement, and session conditions still need checking.
     /// </summary>
     public bool Attachable => Running && !Protected;
 }

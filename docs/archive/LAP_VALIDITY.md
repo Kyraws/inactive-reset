@@ -1,3 +1,5 @@
+> Archived on 2026-10-07. Historical evidence and superseded guidance; not current operating instructions. Build-specific addresses, measurements, and conclusions apply only to the recorded experiments. See the [current architecture](../ARCHITECTURE.md) and [status](../STATUS.md) before using this material.
+
 # Lap validity
 
 Why the first lap after a placement used to be thrown away, and what the tool

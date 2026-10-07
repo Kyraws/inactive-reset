@@ -189,7 +189,7 @@ public static class AutomaticOffsets
         if (targets.Count > 0) throw new GateException("automatic offset discovery: engine tuning readers do not agree");
         return (uint)start;
     }
-    private static IReadOnlyList<(int Start, int End)> ExecutableRanges(byte[] image)
+    internal static IReadOnlyList<(int Start, int End)> ExecutableRanges(byte[] image)
     {
         // Raw byte buffers are useful for testing the masked matcher itself.
         if (image.Length < 0x1000 || image[0] != 'M' || image[1] != 'Z')

@@ -338,7 +338,7 @@ public sealed class RestGateSpec
 {
     public required string BaseUrl { get; init; }
 
-    /// <summary>Read-only endpoints that together prove offline single-player Practice.</summary>
+    /// <summary>Legacy session-check configuration; not called by the current application.</summary>
     public required string[] Endpoints { get; init; }
 
     public required string SessionsRead { get; init; }

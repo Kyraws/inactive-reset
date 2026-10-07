@@ -265,6 +265,17 @@ public sealed class RestLearningTests
         var indexedMiss = daytona with { Achieved = new Vec3(0.004f, 0.028f, 0) };
         Assert.Equal(0.544f, RestLearning.Evaluate(indexed, indexedMiss).ImpliedLateral, 5);
         Assert.Equal(0, RestLearning.ImpliedSearchCandidate(indexed, indexedMiss));
+        var otherCar = indexed with { Calibration = CalibrationProfile.Placeholder("Daytona", "BMW") };
+        var data = Directory.CreateTempSubdirectory("inactive-reset-cross-car-").FullName;
+        try
+        {
+            var store = new LearnedRestStore(data);
+            var build = new string('A', 64);
+            Assert.True(RestLearning.Apply(otherCar, daytona, store, build).Accepted);
+            Assert.NotNull(store.Load(build, "Daytona", "BMW", otherCar.LearningKey));
+            Assert.Null(store.Load(build, "Daytona", "Genesis", otherCar.Checkpoint.Name));
+        }
+        finally { Directory.Delete(data, recursive: true); }
         Assert.Null(RestLearning.Evaluate(plan, daytona with
             { Achieved = new Vec3(0.06f, 0.028f, 0) }).ImpliedVertical);
         Assert.Null(RestLearning.Evaluate(plan, daytona with

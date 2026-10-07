@@ -30,6 +30,21 @@ internal static class Program
             var serving = Task.Run(() => server.RunAsync(cancellation.Token), cancellation.Token);
 
             using var window = new MainWindow(server.Url);
+            var closing = false;
+            var canClose = false;
+            window.FormClosing += async (_, e) =>
+            {
+                if (canClose) return;
+                e.Cancel = true;
+                if (closing) return;
+                closing = true;
+                window.Text = "Inactive Reset - cleaning up; return to the garage if placement is active";
+                var cleanup = server.StopAsync();
+                await Task.Yield(); // Let the cancelled close event finish before closing again.
+                await cleanup;
+                canClose = true;
+                window.Close();
+            };
             window.FormClosed += (_, _) => cancellation.Cancel();
 
             serving.ContinueWith(
@@ -87,4 +102,3 @@ internal static class Program
         return Path.Combine(AppContext.BaseDirectory, folder);
     }
 }
-

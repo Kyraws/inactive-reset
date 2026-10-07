@@ -149,6 +149,13 @@ public sealed partial class ProcessMemory : IDisposable
     /// not already committed and writable, and never changes page protection.
     /// </summary>
     public void WriteVerified(ulong address, ReadOnlySpan<byte> payload)
+        => WriteVerifiedCore(address, payload, null);
+
+    /// <summary>Verify evolving double-valued physics data with a bounded numeric tolerance.</summary>
+    internal void WriteThermalValues(ulong address, ReadOnlySpan<byte> payload)
+        => WriteVerifiedCore(address, payload, 2);
+
+    private void WriteVerifiedCore(ulong address, ReadOnlySpan<byte> payload, double? tolerance)
     {
         if (!CanWrite)
         {
@@ -170,11 +177,24 @@ public sealed partial class ProcessMemory : IDisposable
         Span<byte> readback = payload.Length <= 64 ? stackalloc byte[payload.Length]
                                                    : new byte[payload.Length];
         ReadExact(address, readback);
-        if (!readback.SequenceEqual(payload))
+        if (!readback.SequenceEqual(payload) &&
+            !(tolerance is { } limit && ThermalReadbackMatches(payload, readback, limit)))
         {
             throw new MemoryAccessException(
                 $"write at 0x{address:X} did not verify by readback");
         }
+    }
+
+    internal static bool ThermalReadbackMatches(ReadOnlySpan<byte> expected, ReadOnlySpan<byte> actual, double tolerance)
+    {
+        if (expected.Length != actual.Length || expected.Length % 8 != 0) return false;
+        for (var i = 0; i < expected.Length; i += 8)
+        {
+            var value = BitConverter.ToDouble(actual.Slice(i, 8));
+            var target = BitConverter.ToDouble(expected.Slice(i, 8));
+            if (!double.IsFinite(value) || !double.IsFinite(target) || Math.Abs(value - target) > tolerance) return false;
+        }
+        return true;
     }
 
     /// <summary>

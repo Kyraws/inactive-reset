@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Checkpoint selector checks</title>
+<pre id="report">Running...</pre>
+<script>
+// Dependency-free checks of the production page script with a small DOM stub.
+// This checks selection behaviour, not browser rendering or layout.
+function runCheckpointTests(script, html) {
+  if (html) {
+    const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
+    if (ids.length!==new Set(ids).size) throw new Error('duplicate element ID in production HTML');
+    const declared=new Set(ids);
+    for (const match of script.matchAll(/getElementById\('([^']+)'\)/g))
+      if (!declared.has(match[1])) throw new Error('missing production element: '+match[1]);
+    if (html.includes('id="tyres"') || html.includes('tyre-wheel')) throw new Error('unrequested live tyre viewer');
+    if (!html.includes('grid-template-rows:28px minmax(0,1fr)') || !html.includes('html,body{height:100%;margin:0;overflow:hidden}')) throw new Error('fixed window layout missing');
+  }
+  const elements = new Map();
+  function element(id) {
+    if (!elements.has(id)) elements.set(id, {
+      dataset:{}, value:'', textContent:'', disabled:false, options:[], writes:0, scrollTop:0, scrollHeight:100, clientHeight:100,
+      addEventListener(){}, querySelector(){return null;},
+      set innerHTML(html) {
+        this.html=html; this.writes++;
+        if(id==='cp') {
+          this.options=[...html.matchAll(/<option value="([^"]*)"/g)].map(m=>m[1]);
+          this.value=this.options[0] || '';
+        }
+      },
+      get innerHTML(){return this.html || '';}
+    });
+    return elements.get(id);
+  }
+  let response={};
+  const ui = new Function('document','fetch','setInterval','clearInterval','alert',
+    script + '\nreturn {renderCheckpoints,renderActivity,place,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh};')(
+      {getElementById:element},
+      async (path,options) => {
+        if(options?.method==='POST') {posted=JSON.parse(options.body);postedPath=path;}
+        return {json:async()=>response};
+      }, () => 1, () => {}, () => {});
+  let posted, postedPath;
+  const state={session:{track:'Daytona',vehicle:'McLaren'},checkpoints:[
+    {id:'Barcelona/Ferrari/End of Lap.json',name:'End of Lap',track:'Barcelona',vehicle:'Ferrari',lapDistance:4500},
+    {id:'Daytona/McLaren/eND OF LAP.json',name:'eND OF LAP',track:'DAYTONA',vehicle:'McLaren',lapDistance:5500},
+    {id:'Daytona/Genesis/eND OF LAP.json',name:'eND OF LAP',track:'Daytona',vehicle:'Genesis',lapDistance:5400}
+  ],calibrations:[{track:'Barcelona',vehicle:'Ferrari',advisory:'OLD HISTORY'}]};
+  let checks=0;
+  function check(condition,message) {if(!condition) throw new Error(message);checks++;}
+  const select=element('cp');
+  ui.renderCheckpoints(state);
+  check(select.options.length===2 && !select.innerHTML.includes('Barcelona/'), 'filter to loaded track, all cars');
+  check(new Set(select.options).size===2, 'same names have distinct IDs');
+  check(!select.innerHTML.includes('captured in') && !select.innerHTML.includes(' m '), 'destination rows show names only');
+  select.value=state.checkpoints[2].id;
+  const writes=select.writes;
+  ui.renderCheckpoints(state);
+  check(select.value===state.checkpoints[2].id && select.writes===writes, 'poll preserves selection without rebuilding');
+  state.busy=true; ui.renderCheckpoints(state);
+  check(select.disabled, 'disable selection while busy');
+  state.busy=false; state.session={track:'Barcelona',vehicle:'Ferrari'};
+  ui.renderCheckpoints(state);
+  check(select.options.length===1 && select.value===state.checkpoints[0].id, 'track change clears old selection');
+  state.session=null; ui.renderCheckpoints(state);
+  check(!select.value && select.disabled, 'menus show no usable captures');
+  state.session={track:'Daytona',vehicle:'McLaren'}; ui.renderCheckpoints(state);
+  select.value=state.checkpoints[2].id;
+  for(const wheel of ['FL','FR','RL','RR']) {element('tyreCondition'+wheel).value='100';element('tyreTemperature'+wheel).value='70';}
+  check(ui.tyreOptions().wheels.every(w=>w.temperatureCelsius===null), 'default temperature stays game controlled');
+  element('tyreTemperatureEnabledFL').checked=true;
+  check(ui.tyreOptions().wheels[0].temperatureCelsius===70 && ui.tyreOptions().wheels[1].temperatureCelsius===null, 'temperature option uses Celsius');
+  element('tyreConditionFL').value='101';
+  let rejected=false; try {ui.tyreOptions();} catch {rejected=true;}
+  check(rejected,'reject out-of-range condition before posting');
+  element('tyreConditionFL').value='100';
+  element('freshOnPlace').checked=true;
+  return ui.place().then(()=>{
+    check(posted.checkpoint===state.checkpoints[2].id, 'place posts exact cross-car capture ID');
+    check(posted.tyres.wheels[0].conditionPercent===100 && posted.tyres.wheels[0].temperatureCelsius===70 && posted.tyres.wheels[1].temperatureCelsius===null,'placement carries requested tyre settings');
+    return ui.resetTyres();
+  }).then(()=>{
+    check(postedPath==='/api/tyres' && posted.tyres.wheels[0].conditionPercent===100,'standalone reset posts four-wheel settings');
+    return ui.cancelPlacement();
+  }).then(()=>{
+    check(postedPath==='/api/cancel', 'cancel posts the cleanup request');
+    response={...state,connected:true,inGarage:true,busy:false,phase:'Idle',
+      session:{track:'Daytona',vehicle:'McLaren',lapDistance:5500,gear:0,x:0,y:0,z:0,yaw:0,capturable:true},
+      tyreRules:{inGarage:true}};
+    return ui.refresh();
+  }).then(()=>{
+    check(!element('placeBtn').disabled && !element('tyreResetBtn').disabled,'garage permits preparation');
+    check(element('session').innerHTML.includes('In garage'),'show garage state prominently');
+    element('freshOnPlace').checked=true; ui.updateTyreSettings();
+    check(element('tyreSummary').textContent.includes('70\u00b0C') && !element('tyreSummary').textContent.includes('\\u00'),'tyre summary shows actual initial temperature');
+    response={...response,busy:true,phase:'Armed',phaseMessage:'TYRES PREPARED - press Drive'};
+    return ui.refresh();
+  }).then(()=>{
+    check(element('tyreSetup').disabled && element('placeBtn').disabled && element('freshOnPlace').disabled,'lock changing preparation settings while busy');
+    check(!element('cancelBtn').disabled && element('phase').textContent==='PRESS DRIVE','make Drive cue and cancel available while armed');
+    response={...response,busy:false,phase:'Idle',phaseMessage:'',inGarage:false,tyreRules:{inGarage:false}};
+    return ui.refresh();
+  }).then(()=>{
+    check(element('placeBtn').disabled && element('tyreResetBtn').disabled && !element('capBtn').disabled,'on track permits capture but blocks preparation');
+    check(element('placeHint').textContent.includes('Return to the garage'),'explain why placement is disabled');
+    response={...response,inGarage:true,tyreRules:null,tyreRulesError:'Unsupported tyre code'};
+    return ui.refresh();
+  }).then(()=>{
+    check(element('tyreResetBtn').disabled && !element('placeBtn').disabled && !element('freshOnPlace').checked,'unsupported tyre discovery does not block normal placement');
+    check(element('log').textContent.includes('Tyre discovery: Unsupported tyre code'),'explain unavailable tyre reset in Activity');
+    element('tyreConditionFL').value=''; let rejected=false; try{ui.tyreOptions();}catch{rejected=true;}
+    check(rejected,'empty condition is not silently interpreted as zero');
+    const loggedState={...response,log:['Keep the pit limiter on until CLEAR.'],outcome:{lines:[{label:'Arrival',value:'Verified',sentence:'Horizontal error 0.001 m.'}]}};
+    element('log').scrollTop=7; element('log').scrollHeight=500; element('log').clientHeight=100;
+    ui.renderActivity(loggedState);
+    check(element('log').scrollTop===7,'poll preserves earlier Activity scroll position');
+    check(element('log').textContent.includes('Arrival: Verified') && element('log').textContent.includes('Horizontal error 0.001 m.'),'server result details remain in Activity');
+    check(element('log').textContent.includes('Keep the pit limiter on until CLEAR.'),'backend cleanup guidance retained');
+    const diagnosticText=element('log').textContent; ui.renderActivity(loggedState);
+    check(element('log').textContent===diagnosticText,'unchanged diagnostics do not duplicate on each poll');
+    select.scrollTop=120; ui.renderCheckpoints(response);
+    check(select.scrollTop===120,'poll preserves destination scroll position');
+    response={...response,game:{running:false,canLaunchDirect:true,canLaunchProtected:true}};
+    return ui.refresh();
+  }).then(()=>{
+    check(!element('launchDirect').disabled && !element('launchEac').disabled,'both launch buttons enabled when the game is closed');
+    response={...response,game:{running:true,canLaunchDirect:true,canLaunchProtected:true}};
+    return ui.refresh();
+  }).then(()=>{
+    check(element('launchDirect').disabled && element('launchEac').disabled,'both launches blocked while game runs');
+    element('tyreConditionFL').value='100';element('tyreConditionFR').value='85';element('tyreConditionRL').value='40';element('tyreConditionRR').value='15';
+    element('tyreTemperatureEnabledRL').checked=true;element('tyreTemperatureRL').value='55';
+    const individual=ui.tyreOptions().wheels;
+    check(individual.map(w=>w.conditionPercent).join(',')==='100,85,40,15','condition values stay in FL FR RL RR order');
+    check(individual.map(w=>w.temperatureCelsius).join(',')==='70,,55,','each wheel has an independent heat option');
+    element('freshOnPlace').checked=true;
+    return ui.place();
+  }).then(()=>{
+    check(postedPath==='/api/place' && posted.tyres.wheels[1].conditionPercent===85 && posted.tyres.wheels[2].temperatureCelsius===55 && posted.tyres.wheels[3].temperatureCelsius===null,'placement request preserves independent values');
+    return ui.resetTyres();
+  }).then(()=>{
+    check(posted.tyres.wheels[1].conditionPercent===85 && posted.tyres.wheels[2].temperatureCelsius===55 && posted.tyres.wheels[3].temperatureCelsius===null,'standalone request preserves independent values');
+    element('tyreTemperatureEnabledRR').checked=true;element('tyreTemperatureRR').value='';
+    let rejected=false;try{ui.tyreOptions();}catch{rejected=true;}
+    check(rejected,'enabled wheel heat cannot be blank');
+    return checks;
+  });
+}
+// Browser entry point. Serve the repository root, then open this file over HTTP.
+fetch('../src/InactiveReset.Ui/Page.cs').then(r=>r.text()).then(source=>
+  runCheckpointTests(source.match(/<script>([\s\S]*?)<\/script>/)[1], source)
+).then(count=>document.getElementById('report').textContent=count+' checks passed',
+  error=>document.getElementById('report').textContent='FAILED: '+error.message);
+</script>
+</html>

@@ -1,11 +1,11 @@
-﻿{
+{
   "$comment": [
     "Byte offsets into LMU's shared memory, emitted by the compiler from",
     "SharedMemoryInterface.hpp. Do not hand-edit: re-run tools/dump-sdk-offsets."
   ],
-  "sdkHeaderSha256": "194FF1AB39030BC811540931C8B9817258727252C9A4B35FA4734BBAA16D4DDC",
+  "sdkHeaderSha256": "A82833D5E9E277A7C3AF8802518E35EA62F4EC7C7C7C9083650282E4EDF1F8BF",
   "mapName": "LMU_Data",
-  "eventName": "LMU_Data_Event",
+  "eventName": "",
   "layoutSize": 324824,
   "telemetry": {
     "base": 128464,
@@ -23,8 +23,24 @@
     "mLocalVel": 184,
     "mOri": 232,
     "mGear": 352,
+    "mVehicleClass": 826,
+    "mFrontTireCompoundName": 620,
+    "mRearTireCompoundName": 638,
+    "compoundNameSize": 18,
+    "mWheel": 848,
+    "wheelStride": 260,
     "vect3Stride": 24,
     "vect3ComponentSize": 8
+  },
+  "wheel": {
+    "mTemperature": 128,
+    "mWear": 152,
+    "mFlat": 177,
+    "mDetached": 178,
+    "mTireCarcassTemperature": 204,
+    "mTireInnerLayerTemperature": 212,
+    "mCompoundIndex": 240,
+    "mCompoundType": 241
   },
   "scoring": {
     "base": 1632,
@@ -52,4 +68,3 @@
     "gameVersion": 64
   }
 }
-

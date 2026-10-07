@@ -48,6 +48,7 @@ public sealed class CaptureService(SharedMemoryReader reader)
                 CapturedUtc = DateTimeOffset.UtcNow,
                 LapDistance = snapshot.LapDistance,
                 Gear = snapshot.Gear,
+                Tyres = snapshot.Tyres,
             },
             Target = target,
             Snapshot = snapshot,
@@ -89,6 +90,9 @@ public sealed class CaptureService(SharedMemoryReader reader)
                     Vec(checkpoint.Pose.Row0), Vec(checkpoint.Pose.Row1), Vec(checkpoint.Pose.Row2)),
             },
         };
+
+        if (checkpoint.Tyres is { } tyres)
+            json["tyres"] = JsonSerializer.SerializeToNode(tyres, TyreState.JsonOptions);
 
         File.WriteAllText(path, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         return path;

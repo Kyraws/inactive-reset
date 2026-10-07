@@ -8,10 +8,9 @@ public sealed class CheckpointException(string message) : Exception(message);
 /// A recorded point on the racing line, captured from LMU's official shared
 /// memory.
 ///
-/// The pose is world geometry. It depends on track and car CONTENT, not on code
-/// layout — so a game patch that only moves code cannot invalidate it. What can
-/// invalidate it is the track or the car changing, or the engine changing how it
-/// places cars.
+/// The pose is world geometry on one track. Its capture vehicle is provenance;
+/// another vehicle can use the pose with its own placement offsets. Changes to
+/// track geometry can invalidate it independently of executable code layout.
 /// </summary>
 public sealed class Checkpoint
 {
@@ -23,6 +22,7 @@ public sealed class Checkpoint
     public DateTimeOffset? CapturedUtc { get; init; }
     public float LapDistance { get; init; }
     public int Gear { get; init; }
+    public TyreState? Tyres { get; init; }
     public string? SourcePath { get; init; }
 
     /// <summary>Build this was captured against, for provenance only.</summary>
@@ -65,6 +65,8 @@ public sealed class Checkpoint
             ExecutableSha256 = root.TryGetProperty("game", out var game)
                 && game.TryGetProperty("executable_sha256", out var h) ? h.GetString() : null,
             SourcePath = path,
+            Tyres = root.TryGetProperty("tyres", out var tyres)
+                ? tyres.Deserialize<TyreState>(TyreState.JsonOptions) : null,
         };
 
         static Vec3 ReadVec(JsonElement element) => new(
@@ -91,18 +93,42 @@ public sealed class Checkpoint
         return found;
     }
 
-    public static Checkpoint Require(string directory, string name)
+    /// <summary>Stable selection ID relative to the checkpoint directory.</summary>
+    public string SelectionId(string directory) => Path.GetRelativePath(directory,
+        SourcePath ?? throw new CheckpointException("checkpoint has no source path")).Replace('\\', '/');
+
+    // Preserve existing same-car learning files; cross-car captures get their
+    // own key so two source cars' identically named targets cannot share a fit.
+    public string LearningKey(string placedVehicle) =>
+        string.Equals(VehicleName, placedVehicle, StringComparison.OrdinalIgnoreCase)
+            ? Name : $"{VehicleName}__{Name}";
+
+    public static Checkpoint Require(string directory, string name, SessionIdentity? session = null)
     {
         var all = LoadAll(directory);
-        var match = all.FirstOrDefault(c =>
-            string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+        var byId = all.Where(c => string.Equals(c.SelectionId(directory),
+            name.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (byId.Length == 1) return byId[0];
+        var matches = all.Where(c =>
+            string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (session is { } identity && matches.Length > 1)
+        {
+            matches = matches.Where(c => string.Equals(c.TrackName, identity.TrackName,
+                StringComparison.OrdinalIgnoreCase)).ToArray();
+            var sameCar = matches.Where(c => string.Equals(c.VehicleName, identity.VehicleName,
+                StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (sameCar.Length > 0) matches = sameCar;
+        }
 
-        if (match is null)
+        if (matches.Length == 0)
         {
             var known = all.Count == 0 ? "  (none)"
                 : string.Join('\n', all.Select(c => $"  {c.Name,-16} {c.TrackName} / {c.VehicleName}"));
             throw new CheckpointException($"no checkpoint named '{name}'.\nKnown:\n{known}");
         }
-        return match;
+        if (matches.Length > 1)
+            throw new CheckpointException($"checkpoint name '{name}' is ambiguous; use its selection ID:\n" +
+                string.Join('\n', matches.Select(c => $"  {c.SelectionId(directory)}")));
+        return matches[0];
     }
 }

@@ -192,6 +192,94 @@ public sealed class SpotTableResolverTests
         Assert.Equal(0x90B0u, SpotTableResolver.FindDestinationMode(image)?.Offset);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void Indexed_placement_is_independent_of_normal_slot_override(int normalOverride)
+    {
+        var image = IndexedPlacementImage();
+        Put32(image, 0x3100, normalOverride);
+        Assert.NotNull(SpotTableResolver.FindNormalSlotSelection(image));
+        PlacementService.RequireIndexedDestinationSelection(image, IndexedSpec(), IndexedLive(),
+            offset => offset switch
+            {
+                0x90B0 => 0,
+                0x471E8 => 27,
+                _ => throw new InvalidOperationException("unrelated container read")
+            },
+            rva => rva == 0x3300 ? 0x100000ul :
+                throw new InvalidOperationException("unrelated table or override read"));
+    }
+
+    [Theory]
+    [InlineData("mode", "destination mode changed")]
+    [InlineData("pit", "pit index changed")]
+    [InlineData("table", "table changed")]
+    [InlineData("entry", "entry does not match")]
+    [InlineData("reader", "reader no longer matches")]
+    [InlineData("profile", "reader no longer matches")]
+    [InlineData("mode-profile", "reader no longer matches")]
+    [InlineData("ordinary-plan", "reader no longer matches")]
+    public void Indexed_placement_rejects_actual_selection_changes(string change, string message)
+    {
+        var image = IndexedPlacementImage();
+        if (change == "reader") image[0x1500 + 27]++;
+        var live = IndexedLive();
+        if (change == "entry") live = live with { EntryAddress = live.EntryAddress + 32 };
+        if (change == "ordinary-plan") live = live with { IndexedDestination = false };
+        var failure = Assert.Throws<GateException>(() =>
+            PlacementService.RequireIndexedDestinationSelection(image,
+                IndexedSpec(change == "profile" ? 0x3400ul : 0x3300ul,
+                    change == "mode-profile" ? 0x9098ul : 0x90B0ul), live,
+                offset => offset == 0x90B0 ? (change == "mode" ? 2 : 0) :
+                    offset == 0x471E8 ? (change == "pit" ? 28 : 27) :
+                    throw new InvalidOperationException("unrelated container read"),
+                rva => rva == 0x3300 ? (change == "table" ? 0x200000ul : 0x100000ul) :
+                    throw new InvalidOperationException("unrelated global read")));
+        Assert.Contains(message, failure.Message);
+    }
+
+    private static byte[] IndexedPlacementImage()
+    {
+        var image = MappedImage();
+        IndexSite(image, 0x1000, 0x471D4, 0x471E8);
+        IndexSite(image, 0x2300, 0x471D4, 0x471E8);
+        GarageReader(image, 0x1100, 0x3200, 0x3104, 0x3108);
+        GarageWriter(image, 0x2400, 0x3200, 0x3104, 0x3108);
+        IndexedDestination(image, 0x1A00, 0x3300, 0x471E8, 0x3104);
+        IndexedSpotFallback(image, 0x2B00, 0x3300);
+        IndexedAssignmentLoop(image, 0x2700, 0x3300, 0x471E8);
+        Mode2Reader(image, 0x1500, 0x90B0);
+        ModeWriter(image, 0x2500, 0x90B0);
+        Mode2IndexedCall(image, 0x1500, 0x1980);
+        NormalReader(image, 0x1200, 0x3000);
+        NormalWriter(image, 0x2600, 0x3000, 0);
+        NormalWriter(image, 0x2900, 0x3000, 12);
+        Selection(image, 0x1800, 0x3100, 0x3110, 0x3118, 0x3000);
+        return image;
+    }
+
+    private static SpotTableSpec IndexedSpec(ulong table = 0x3300, ulong mode = 0x90B0) => new()
+    {
+        IndexedDestination = new Rva(table, Confidence.Established),
+        DestinationModeOffset = mode,
+        PitPosTable = new Rva(0x3000, Confidence.Established),
+        GarPosTable = new Rva(0x3200, Confidence.Established),
+        Mult = new Rva(0x3104, Confidence.Established),
+        Count = new Rva(0x3108, Confidence.Established),
+        EntryBytes = 32, WriteBytes = 24
+    };
+
+    private static LiveState IndexedLive() => new()
+    {
+        Globals = new SpotTableGlobals(0x100000, 0x200000, 104, 1),
+        Container = new ContainerState(0, 27, 0, 1, 4.7f, 2.1f, -1),
+        EntryAddress = IndexedPlacementMath.EntryAddress(0x100000, 27),
+        EntryBytes = new byte[32], CurrentEntry = default,
+        Preconditions = new GateResult(true, Array.Empty<string>()),
+        IndexedDestination = true
+    };
+
     [Fact]
     public void Pit_state_requires_reset_pair_and_separated_consumers()
     {

@@ -140,8 +140,8 @@ public static class RestLearning
         {
             TimestampUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             BuildSha256 = buildSha256,
-            TrackName = plan.Checkpoint.TrackName,
-            VehicleName = plan.Checkpoint.VehicleName,
+            TrackName = plan.PlacementIdentity.TrackName,
+            VehicleName = plan.PlacementIdentity.VehicleName,
             CheckpointName = plan.Checkpoint.Name,
             VehicleLength = container.VehicleLength,
             VehicleWidth = container.VehicleWidth,
@@ -168,13 +168,13 @@ public static class RestLearning
         }
 
         var existing = store.Load(
-            buildSha256, plan.Checkpoint.TrackName,
-            plan.Checkpoint.VehicleName, plan.Checkpoint.Name);
+            buildSha256, plan.PlacementIdentity.TrackName,
+            plan.PlacementIdentity.VehicleName, plan.LearningKey);
 
         store.Save(existing is null
             ? LearnedRest.First(
-                buildSha256, plan.Checkpoint.TrackName, plan.Checkpoint.VehicleName,
-                plan.Checkpoint.Name, result.ImpliedForward, result.ImpliedLateral,
+                buildSha256, plan.PlacementIdentity.TrackName, plan.PlacementIdentity.VehicleName,
+                plan.LearningKey, result.ImpliedForward, result.ImpliedLateral,
                 result.ImpliedVertical)
             : existing.With(result.ImpliedForward, result.ImpliedLateral,
                 result.ImpliedVertical));

@@ -22,11 +22,10 @@ internal sealed class MainWindow : Form
         _url = url;
 
         Text = "Inactive Reset";
-        Width = 1180;
-        Height = 860;
-        MinimumSize = new Size(720, 560);
+        ClientSize = new Size(900, 540);
+        MinimumSize = SizeFromClientSize(new Size(900, 540));
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(20, 23, 26);
+        BackColor = Color.FromArgb(23, 25, 29);
 
         _status.Dock = DockStyle.Fill;
         _status.TextAlign = ContentAlignment.MiddleCenter;
@@ -37,7 +36,7 @@ internal sealed class MainWindow : Form
 
         _view.Dock = DockStyle.Fill;
         _view.Visible = false;
-        _view.DefaultBackgroundColor = Color.FromArgb(20, 23, 26);
+        _view.DefaultBackgroundColor = Color.FromArgb(23, 25, 29);
         Controls.Add(_view);
 
         Load += async (_, _) => await StartAsync();
@@ -107,7 +106,7 @@ internal sealed class MainWindow : Form
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         base.OnFormClosing(e);
-        _view.Dispose();
+        if (!e.Cancel) _view.Dispose();
     }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]

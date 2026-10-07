@@ -13,6 +13,15 @@ namespace InactiveReset.Tests;
 /// </summary>
 public sealed class PlacementReportTests
 {
+    [Theory]
+    [InlineData(true, OutcomeSeverity.Good)]
+    [InlineData(false, OutcomeSeverity.Warning)]
+    public void Tyre_verification_is_reported_independently_of_placement(bool verified, OutcomeSeverity severity)
+    {
+        var outcome=Placed() with { TyreReset=new(verified,"four tyre result") };
+        Assert.Equal(severity,Line(outcome,"Tyres").Severity);
+        Assert.Equal("four tyre result",Line(outcome,"Tyres").Value);
+    }
     /// <summary>A placement that succeeded and did everything it was asked to.</summary>
     private static PlacementOutcome Placed() => new()
     {
@@ -205,6 +214,27 @@ public sealed class PlacementReportTests
         Assert.NotNull(line);
         Assert.Equal(OutcomeSeverity.Warning, line.Severity);
         Assert.Contains("limiter", line.Sentence);
+    }
+
+    [Fact]
+    public void GarageCleanupDoesNotClaimPitStateCleared()
+    {
+        var outcome = Placed() with { ReturnedToGarage = true, PitWaitSkipped = false,
+            PitSpeedingPenalty = new RuleWriteResult("Flag Rules", 0x1234, 3, 0, true) };
+        var line = PlacementReport.ForPenalty(outcome)!;
+        Assert.Equal(OutcomeSeverity.Good, line.Severity);
+        Assert.Contains("garage", line.Sentence);
+        Assert.Equal("returned to garage", PlacementReport.For(outcome).Single(l => l.Label == "pit state").Value);
+    }
+
+    [Fact]
+    public void SessionChangeDoesNotClaimSavedRulesWereRestored()
+    {
+        var outcome = Placed() with { SessionEnded = true,
+            PitSpeedingPenalty = new RuleWriteResult("Flag Rules", 0x1234, 3, 0, true) };
+        var line = PlacementReport.ForPenalty(outcome)!;
+        Assert.Equal("session ended", line.Value);
+        Assert.Contains("not applied", line.Sentence);
     }
 
     /// <summary>

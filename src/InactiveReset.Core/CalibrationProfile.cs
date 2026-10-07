@@ -13,10 +13,8 @@ public sealed class CalibrationException(string message) : Exception(message);
 /// whether a game patch invalidates them: a code-only patch cannot move a car
 /// body, but it CAN change how the engine places one.
 ///
-/// There is deliberately no default. Every <see cref="PlacementModel"/> must be
-/// built from a real calibration, so that a preview and the placement it
-/// previews cannot silently use different constants. When they diverged, a dry
-/// run predicted a landing point ~3 mm from the one a real placement targeted.
+/// When no eligible measurement exists, a placeholder supplies the default
+/// vertical offset and planning derives horizontal offsets from the loaded car.
 /// </summary>
 public sealed class CalibrationProfile
 {
@@ -54,19 +52,8 @@ public sealed class CalibrationProfile
     public bool Locked { get; init; }
 
     /// <summary>
-    /// Advisory attached to the calibration — typically a characterised
-    /// inaccuracy, or a warning about how NOT to fix one.
-    ///
-    /// This is deliberately NOT a refusal. A calibration can be usable and
-    /// imprecise at the same time: the current Barcelona profile places with a
-    /// known heading error (~0.57 m on 1AC2F605, ~0.71 m on 0F6DCAC1) but
-    /// sub-millimetre repeatability, which is wrong for
-    /// hot-lap work and perfectly fine for getting back to a corner. Treating
-    /// the note as a lock conflates "here is what is wrong with this" with
-    /// "you may not use this", and would have made a working tool refuse.
-    ///
-    /// It is shown every time the calibration is used, so it cannot be
-    /// forgotten without also being ignored.
+    /// Calibration provenance or limitations shown by the front ends.
+    /// An advisory is not a lock and does not block placement.
     /// </summary>
     public string? Advisory { get; init; }
 

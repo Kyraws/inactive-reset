@@ -196,17 +196,36 @@ public sealed class RulesController(GameSession session)
             return new RuleWriteResult(name, address, before, value, Changed: false);
         }
 
-        ReadOnlySpan<byte> payload = field.Type == FieldType.Byte
-            ? stackalloc byte[] { (byte)value }
-            : BitConverter.GetBytes(value);
-
-        _session.Memory.WriteVerified(address, payload);
-
-        var after = field.Type == FieldType.Byte
-            ? _session.Memory.ReadByte(address)
-            : _session.Memory.ReadInt32(address);
-
+        var after = WriteWithRollback(before, value,
+            requested => _session.Memory.WriteVerified(address, field.Type == FieldType.Byte
+                ? new byte[] { (byte)requested } : BitConverter.GetBytes(requested)),
+            () => field.Type == FieldType.Byte ? _session.Memory.ReadByte(address) : _session.Memory.ReadInt32(address));
         return new RuleWriteResult(name, address, before, after, Changed: true);
+    }
+
+    internal static int WriteWithRollback(int before, int value, Action<int> write, Func<int> read)
+    {
+        try
+        {
+            write(value);
+            var after = read();
+            if (after != value) throw new MemoryAccessException("rule changed during write verification");
+            return after;
+        }
+        catch (Exception failure)
+        {
+            try
+            {
+                write(before);
+                if (read() != before) throw new MemoryAccessException("original rule did not restore");
+            }
+            catch (Exception restoreFailure)
+            {
+                throw new AggregateException("rule write failed and the original value could not be restored; restart the practice session",
+                    failure, restoreFailure);
+            }
+            throw;
+        }
     }
 }
 

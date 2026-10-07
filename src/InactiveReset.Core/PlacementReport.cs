@@ -1,4 +1,4 @@
-﻿namespace InactiveReset.Core;
+namespace InactiveReset.Core;
 
 /// <summary>
 /// How alarming a line is. Three levels, not two: <see cref="Good"/> exists
@@ -137,7 +137,7 @@ public static class PlacementReport
 
     /// <summary>
     /// Below this, the placement landed where it was aimed. Above it something
-    /// is wrong -- see docs/HEADING_BUG.md. This used to be where the documented
+    /// is wrong -- see docs/archive/HEADING_BUG.md. This used to be where the documented
     /// heading error was explained away as expected, which is precisely how a
     /// 1.07 m miss from an unsigned L survived a full session of placements
     /// without being read as a defect. The threshold is not a tolerance on the
@@ -159,6 +159,8 @@ public static class PlacementReport
         string? runningBuildSha256 = null)
     {
         var lines = new List<OutcomeLine>();
+        if (outcome.TyreReset is { } tyres)
+            lines.Add(new("Tyres", tyres.Message, tyres.Verified ? OutcomeSeverity.Good : OutcomeSeverity.Warning));
 
         if (!outcome.Completed)
         {
@@ -166,7 +168,8 @@ public static class PlacementReport
             // attempted and, crucially, that the bytes went back -- which is the
             // fact a driver most needs after a failure.
             lines.Add(new OutcomeLine(
-                "result", "FAILED", OutcomeSeverity.Warning, outcome.Message));
+                "result", outcome.Cancelled ? "CANCELLED" : "FAILED",
+                outcome.Cancelled ? OutcomeSeverity.Normal : OutcomeSeverity.Warning, outcome.Message));
             return lines;
         }
 
@@ -245,6 +248,13 @@ public static class PlacementReport
     /// </summary>
     private static void AddPitState(List<OutcomeLine> lines, PlacementOutcome outcome)
     {
+        if (outcome.ReturnedToGarage || outcome.SessionEnded)
+        {
+            lines.Add(new OutcomeLine("pit state",
+                outcome.ReturnedToGarage ? "returned to garage" : "session ended",
+                OutcomeSeverity.Normal, "pit state was not reported as cleared"));
+            return;
+        }
         if (outcome.PitWaitSkipped)
         {
             lines.Add(new OutcomeLine(
@@ -324,12 +334,17 @@ public static class PlacementReport
         {
             if (write.Changed)
             {
+                if (outcome.SessionEnded)
+                    return new OutcomeLine("Flag Rules", "session ended", OutcomeSeverity.Normal,
+                        "the saved value was not applied to the replacement session");
+                var safelyRestored = outcome.PitStateCleared || outcome.ReturnedToGarage;
                 return new OutcomeLine(
                     "Flag Rules",
                     $"{write.Before} -> {write.After} -> {write.Before}",
-                    outcome.PitStateCleared ? OutcomeSeverity.Good : OutcomeSeverity.Warning,
-                    outcome.PitStateCleared
-                        ? "temporarily disabled for placement; restored after pit state cleared"
+                    safelyRestored ? OutcomeSeverity.Good : OutcomeSeverity.Warning,
+                    safelyRestored
+                        ? outcome.ReturnedToGarage ? "original value restored on return to the garage"
+                            : "temporarily disabled for placement; restored after pit state cleared"
                         : "restored before pit state cleared; keep the pit limiter on or a stop/go may follow");
             }
             return new OutcomeLine(

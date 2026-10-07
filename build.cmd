@@ -10,6 +10,7 @@ REM Usage:  build            build (Debug)
 REM         build test       build and run the tests
 REM         build ship       Release build, tests, then dist\
 REM         build clean      delete artifacts\ and dist\
+REM In PowerShell, use .\build.cmd explicitly to avoid selecting build.ps1.
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1" %*
 exit /b %ERRORLEVEL%

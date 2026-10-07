@@ -1,122 +1,35 @@
-# Inactive Reset
+﻿# Project glossary
 
-An external practice tool for Le Mans Ultimate. It puts the car back on a
-recorded point of the racing line, and switches off the penalties that make
-practising from there tedious.
+Terms used by the current implementation. See [Architecture](docs/ARCHITECTURE.md)
+and [Placement and rules](docs/PLACEMENT.md) for behaviour and limitations.
 
-This glossary exists because several concepts in this project share spoken
-names with things they are not. Where two terms have been confused in practice,
-both are defined here and the wrong one is marked.
+| Term | Meaning |
+| --- | --- |
+| Placement | Plan a checkpoint target, temporarily write the selected spot entry, let LMU place the car on Drive, and restore the entry. Rule and lap-state changes are separate parts of the sequence. |
+| Checkpoint | A recorded pose on one track, with the capture vehicle recorded as provenance. Other vehicles can use the pose with their own offsets. It does not restore captured speed, fuel, tyres, or damage. |
+| Calibration | Measured resting-offset constants for a track/vehicle combination, with build provenance when available. |
+| Learned rest | Corrections derived from accepted placement outcomes, keyed by build, track, vehicle, and checkpoint. |
+| Spot table | An engine table of placement positions and orientations. The selected ordinary or indexed destination entry is the temporary write target. |
+| Slot | The engine's car index, resolved from live container fields. |
+| Arrival | The sampled vehicle state when control changes from AI to player, before the settle delay. |
+| Rest position | The vehicle position measured after settling; currently sampled 400 ms after player control begins. |
+| Pit-speeding penalty | The game penalty for exceeding the pit-lane speed limit. Flag Rules gates its evaluation. |
+| Pit limiter | The car's driver-operated speed limiter. Inactive Reset does not control it. |
+| Flag Rules | A broader rule gate temporarily disabled during placement. It affects pit-speeding and track-limit enforcement. |
+| Track limits | Off-track enforcement and lap invalidation, including runtime derived flags that may re-arm during session transitions. |
+| Pit state | Engine pit-procedure state. Production placement waits for it to clear; it does not write it to zero. |
+| Pit flag | A separate field involved in out-lap demotion. Placement can clear it. It is not the pit-state field. |
+| Out-lap demotion | Accepting a lap crossing without awarding a timed lap because of pit-related state. |
+| Sector | The engine's current lap sector. The default placement repair forces the final sector so a start/finish crossing can be accepted. |
+| Read-live rule | A setting evaluated during runtime, such as Flag Rules. |
+| Expanded-once rule | A setting turned into derived runtime flags at session initialisation; changing the setting alone does not change those flags. |
+| Game build | One executable identified by its full SHA-256. A version string alone is insufficient. |
+| Offset profile | Executable addresses, container offsets, model metadata, and probe bytes for one build. |
+| Automatic discovery | Local resolution from the mapped game image using structural patterns and embedded instruction anchors. |
+| Direct launch | Starting `Le Mans Ultimate.exe` without EAC. The game allows local sessions only; use single-player Practice with this tool. |
+| Protected launch | Starting `start_protected_game.exe` through EAC. Inactive Reset refuses attachment when EAC or the protected launcher is detected. |
+| Gate | An implemented check that must pass for the operation it protects. A declared field or documented intention is not itself an enforced check. |
 
-## Placing the car
-
-**Placement**:
-One complete run of plan, arm, write, Drive, restore. The engine does the
-placing; the tool only changes where the engine thinks the pit spot is.
-_Avoid_: teleport, reset, respawn
-
-**Checkpoint**:
-A recorded point on the racing line that a placement can target, captured for
-one track and one vehicle.
-_Avoid_: waypoint, marker, save point
-
-**Calibration**:
-The measured constants describing where a vehicle comes to rest relative to its
-spot entry. Specific to a track and a vehicle together, never to one alone.
-_Avoid_: profile, config, tuning
-
-**Spot table**:
-The engine's table of pit and garage positions. A placement overwrites one
-entry, lets the engine read it, and puts the original bytes back.
-_Avoid_: pit table, position table
-
-**Slot**:
-The engine's index for one car in a session. The player's slot is whichever the
-engine reports about itself, not necessarily the first.
-_Avoid_: car index, vehicle id, seat
-
-**Arrival**:
-The state of the vehicle at the instant control passes to the player. Sampled
-before the car can move, so it describes what the engine produced rather than
-what the driver did.
-_Avoid_: landing, result, final position
-
-## Penalties and lap timing
-
-**Pit-speeding penalty**:
-The stop/go the game issues for exceeding the pit-lane speed limit. This is what
-the tool switches off. It is a game rule, not a car control.
-_Avoid_: pit limiter, pit limiter penalty, speeding flag
-
-**Pit limiter**:
-The car's own speed limiter, which the driver engages from the cockpit. **This
-tool never touches it.** Listed here only because it has been confused with the
-pit-speeding penalty, which the tool does change.
-
-**Track limits**:
-The rule that penalises leaving the track and invalidates the lap. Re-arms
-itself whenever a session initialises, including on a return to the garage.
-_Avoid_: off-track penalty, cut rule
-
-**Pit state**:
-The condition in which the engine treats the car as engaged in pit-lane
-procedure. Clears with distance travelled, not with time.
-_Avoid_: pit flag, in pits
-
-**Out-lap demotion**:
-The rule that lets a lap be counted but not timed. A placement clears the field
-that feeds it, so the first lap after a placement is timed.
-_Avoid_: pit flag, lap invalidation
-
-**Sector**:
-Which part of the lap the engine believes the car is in. A start/finish crossing
-is only accepted as a lap completion from the final sector, so a placement
-restores it.
-_Avoid_: split, segment
-
-**Rule consumption**:
-How the engine reads a rule, and therefore whether writing it does anything.
-The single most important distinction in this project.
-
-- **Read-live** — read on every evaluation, so a write applies at once.
-- **Expanded-once** — read at session start and exploded into derived flags. A
-  write to the setting does nothing mid-session; the derived flags must be
-  written instead.
-
-_Avoid_: rule type, setting kind
-
-## Connecting to the game
-
-**Build**:
-One released version of the game executable, identified by the hash of that
-executable. Never by its version number, which does not always change when the
-build does.
-_Avoid_: version, patch, release
-
-**Offset profile**:
-The addresses for one build, held as data rather than code. An address the
-profile cannot vouch for refuses to be used rather than reading plausible
-nonsense.
-_Avoid_: address map, offsets file, symbols
-
-**Direct launch**:
-Starting `Le Mans Ultimate.exe` itself, with no anticheat in the process tree.
-The only kind of session this tool can attach to. Steamstub still decrypts the
-image in memory, so the running process is an ordinary readable one.
-_Avoid_: offline launch, unprotected mode, cracked
-
-**Protected launch**:
-Starting `start_protected_game.exe`, which is what Steam launches. It starts the
-EasyAntiCheat bootstrapper, which starts the game. The tool refuses to attach to
-a session started this way, on purpose.
-_Avoid_: online launch, normal launch, EAC mode
-
-> "Offline" is **not** the word for a direct launch. Nothing about launching
-> directly stops the game reaching the network, and the tool is separately
-> restricted to offline single-player Practice. The distinction these two names
-> carry is whether the **anticheat** is present, and nothing else.
-
-**Gate**:
-A check that must pass before the tool touches the game. A failed gate stops the
-operation; it never downgrades it to a guess.
-_Avoid_: guard, precondition, validation
+Use “pit state”, “pit flag”, “pit-speeding penalty”, and “pit limiter” precisely:
+they refer to different things. Build-specific numeric addresses belong in
+offset resources or dated research evidence, not in this glossary.

@@ -1,10 +1,10 @@
 namespace InactiveReset.Core;
 
 /// <summary>
-/// The 24-byte spot-entry write, and its guaranteed restore.
+/// The 24-byte spot-entry write and verified restoration attempt.
 ///
-/// This is the entire write surface of the placement feature. Everything about
-/// it is deliberately narrow:
+/// This transaction covers spot-entry bytes only. Placement also writes rule
+/// and lap-state fields separately. The spot write is deliberately narrow:
 ///
 ///   * exactly 24 bytes, so the 8-byte padding tail at +0x18 cannot be touched;
 ///   * the target page must ALREADY be committed and writable — page protection
@@ -18,20 +18,25 @@ namespace InactiveReset.Core;
 /// </summary>
 public sealed class SpotWriteTransaction : IDisposable
 {
-    private readonly ProcessMemory _memory;
+    internal delegate void VerifiedWrite(ulong address, ReadOnlySpan<byte> payload);
+
+    private readonly VerifiedWrite _writeVerified;
     private readonly ulong _address;
     private readonly byte[] _original;
+    private readonly Func<bool> _sameSession;
     private bool _modified;
 
     public ulong Address => _address;
     public IReadOnlyList<byte> Original => _original;
     public bool Active => _modified;
 
-    private SpotWriteTransaction(ProcessMemory memory, ulong address, byte[] original)
+    internal SpotWriteTransaction(VerifiedWrite writeVerified, ulong address, byte[] original,
+        Func<bool>? sameSession = null)
     {
-        _memory = memory;
+        _writeVerified = writeVerified;
         _address = address;
         _original = original;
+        _sameSession = sameSession ?? (() => true);
     }
 
     /// <summary>
@@ -43,7 +48,8 @@ public sealed class SpotWriteTransaction : IDisposable
     /// refuse rather than overwrite an entry we do not understand.
     /// </param>
     internal static SpotWriteTransaction Begin(
-        GameSession session, ulong address, ReadOnlySpan<byte> expectedOriginal)
+        GameSession session, ulong address, ReadOnlySpan<byte> expectedOriginal,
+        Func<bool>? sameSession = null)
     {
         if (!session.Memory.CanWrite)
         {
@@ -81,7 +87,7 @@ public sealed class SpotWriteTransaction : IDisposable
                 "reallocated or another writer is active; refusing");
         }
 
-        return new SpotWriteTransaction(session.Memory, address, live);
+        return new SpotWriteTransaction(session.Memory.WriteVerified, address, live, sameSession);
     }
 
     /// <summary>Write the payload, verified by read-back. Rolls back on mismatch.</summary>
@@ -92,10 +98,11 @@ public sealed class SpotWriteTransaction : IDisposable
             throw new MemoryAccessException(
                 $"payload must be exactly {_original.Length} bytes");
         }
+        if (!_sameSession()) throw new GateException("the placement session changed before arming");
 
         try
         {
-            _memory.WriteVerified(_address, payload);
+            _writeVerified(_address, payload);
             _modified = true;
         }
         catch
@@ -117,7 +124,7 @@ public sealed class SpotWriteTransaction : IDisposable
         {
             return;
         }
-        _memory.WriteVerified(_address, _original);
+        if (_sameSession()) _writeVerified(_address, _original);
         _modified = false;
     }
 

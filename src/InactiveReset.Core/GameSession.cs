@@ -11,9 +11,9 @@ public sealed record GateCheck(string Name, bool Passed, string Detail);
 /// <summary>
 /// A verified connection to a running Le Mans Ultimate.
 ///
-/// Nothing else in this project may touch the game without going through here.
-/// The gates exist because a stale address does not fail loudly -- it lands on
-/// plausible unrelated bytes and silently reports nonsense.
+/// Production process-memory operations use this attachment path. Telemetry
+/// capture uses shared memory separately; maintainer probes have their own
+/// checks. Session type is not independently verified here.
 /// </summary>
 public sealed class GameSession : IDisposable
 {

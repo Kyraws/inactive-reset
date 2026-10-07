@@ -1,218 +1,136 @@
 # Inactive Reset
 
-An external practice tool for **Le Mans Ultimate**. Puts your car back on a
-recorded point of the racing line, and turns off the penalties that make
-practising from there annoying.
+Inactive Reset is an unofficial practice tool for **Le Mans Ultimate**. Save a
+checkpoint on the racing line and return to it from the garage to practise a
+corner or section of track.
 
-The name is a joke about iRacing's *Active Reset*. This one is less active.
+**For offline, single-player Practice only.** The tool verifies the game build
+and refuses attachment when EasyAntiCheat is detected. It does not independently
+check the session type; choose Practice before using it.
 
-> Offline single-player Practice only. The tool proves that over LMU's own
-> local API before it touches anything, and refuses otherwise.
+## Getting started
 
----
+1. Download the release ZIP from [Releases](https://github.com/Kyraws/inactive-reset/releases).
+2. Extract it to a folder and keep its contents together.
+3. Open `inactive-reset-ui.exe`. Steam must be running before you launch LMU.
+4. Select **Launch game**, then start an offline, single-player Practice session.
 
-## What it does
+The release runs on Windows x64 and includes its own .NET runtime. The windowed
+app also needs Microsoft WebView2. If the window is blank, check that the
+WebView2 runtime is installed. A console version, `inactive-reset.exe`, is
+included; run it with `--help` for commands.
 
-**Teleport.** LMU keeps a *spot table* — the pit and garage positions it places
-cars at. Press Drive from the garage and the engine reads your pit-spot entry
-and puts the car there. So: overwrite that entry with a computed position, let
-the engine do the placing, then put the original bytes back. **The engine
-places the car; the tool only changes where the engine thinks your pit spot
-is.** The write is 24 bytes, verified, and always restored.
+Release executables are unsigned, so Windows may show a SmartScreen warning.
+Download from this repository's Releases page and check the source before
+choosing to run them.
 
-**Rules.** Turn off the penalties that get in the way of practice:
+## Using checkpoints
 
-- *Pit-speeding stop/go* — the engine reads this setting on every evaluation,
-  so changing it applies immediately.
-- *Track limits / lap invalidation* — this one is read **once at session start**
-  and expanded into derived flags, so the setting itself does nothing
-  mid-session; the derived flags have to be written instead.
+1. Drive to the position you want to practise from.
+2. Enter a checkpoint name, such as `turn-1-entry`, and select **Capture**.
+3. Return to the garage, select the checkpoint, and select **Place**.
+4. Wait for **PRESS DRIVE** in Activity, then press **Drive** in LMU.
+5. Follow the Activity messages as placement completes. Repeat from the garage
+   whenever you want another attempt.
 
-That distinction is the single most important thing in this codebase. It is why
-earlier attempts to change rules through the settings menu or the REST API had
-no effect on a running session.
+The capture list shows only the loaded track. Captures can be reused with
+another vehicle on that track; placement uses the loaded car's calibration or
+live engine offsets. It can derive starting values without manual calibration.
+CLI placements save learned corrections; the windowed app currently uses
+existing corrections but does not save new ones.
 
-**Lap validity.** Not a rule, and not read from settings at all. The engine
-accepts a start/finish crossing as a lap only when it thinks you are in the
-final sector, and `Slot_Reset` zeroes the sector index — correct when you leave
-the pits, wrong when the tool has just put you mid-lap. A car placed past the
-last sector line therefore crosses the line and the engine ignores it
-completely: no lap, no time. Placement restores the sector index, which costs a
-whole lap otherwise. See `docs/LAP_VALIDITY.md`, which also records the
-diagnosis this replaced and why it was wrong.
+Placement restores a position, not captured speed, fuel, tyres, or damage.
+New captures also store four-wheel tyre temperatures in Celsius, raw SDK wear,
+vehicle class and fitted compounds. This records tyre state; placement does not
+apply it.
+The compact Tyres panel prepares all four fitted tyres in the garage, with
+separate condition and optional initial temperature settings for FL, FR, RL and RR. Placement can include the
+same reset. It keeps the loaded car's compounds. Live readings remain in the game;
+discovery, protection and calibration messages appear in Activity. See [Tyres](docs/TYRES.md) for
+the workflow, live evidence and build support.
 
-**Launching.** The game has two entry points and they are not interchangeable.
-`Le Mans Ultimate.exe` starts it with no anticheat in the process tree, which is
-the only kind of session this tool can attach to; `start_protected_game.exe` is
-what Steam launches, and starts EasyAntiCheat first. The tool can start either
-one — `launch direct` and `launch eac`, or the two buttons on the page — so
-switching between practising and racing does not mean going back to Steam. The
-install is found through Steam's own library configuration, so a second library
-or a renamed folder is handled; `--game-dir` overrides it for one run and
-`--set-game-dir` saves it.
+Placement verifies Flag Rules are off before arming, so you can drive normally
+after teleport. It restores the original rules when pit state clears or you
+return to the garage. There is no pit-clear timeout. The tool does not control
+the car's pit limiter.
 
-Note that *direct* does not mean *offline*. Launching directly does not stop the
-game reaching the network; what the word distinguishes is the anticheat, and
-nothing else.
+Cancel or close restores an armed placement immediately. After teleport,
+cleanup waits for pit state to clear or a garage return; the app stays open
+until that cleanup finishes.
 
----
+Track limits have a separate toggle. Check its displayed state after returning
+to the garage or starting a session, since LMU can re-enable them. Placement
+also attempts sector and out-lap repairs immediately after settling. See
+[Placement and rules](docs/PLACEMENT.md) for the sequence and
+[known limitations](docs/STATUS.md) before relying on lap timing.
 
-## Why offsets are data
+## Launching and game updates
 
-Every LMU patch moves every address. When those addresses are compiled-in
-constants, patch day means editing and rebuilding code.
+**Local practice** starts LMU without EasyAntiCheat and only allows local
+sessions. Use a single-player Practice session with Inactive Reset. For online
+racing, close the game and use **With EAC**. Inactive Reset refuses to
+attach to that session.
 
-When LMU updates, Inactive Reset detects the changed executable hash and
-discovers its offsets locally from the running game's decrypted code. It saves
-the result in `offsets/<full-hash>.auto.json` and reuses it on later launches.
-There is no GitHub profile download or manual reanchor step. Missing or
-ambiguous matches report the unresolved field and prevent a placement.
+The tool finds LMU through Steam's library configuration. If detection fails,
+the CLI accepts `--game-dir` for a one-time override or `--set-game-dir` to save
+the location.
 
-Constants the engine can retune without moving anything -- the pit-spot yaw
-offset and clearance search factors -- are read live out of the running game
-instead of being stored, so most game updates need no new profile at all.
+When the game executable changes, Inactive Reset automatically discovers the
+required memory offsets locally and caches them. If discovery cannot resolve a
+required field unambiguously, placement stops and reports the problem. A game
+update can still require changes to the tool.
 
----
+## Saved data
 
-## Layout
+Keep the `offsets/` and `data/` folders with the executables.
+`offsets/shared-memory.json` is required and is included in the release.
 
-    src/InactiveReset.Core   offsets, memory access, gates, placement math, capture
-    src/InactiveReset.Ui     local HTTP server and the single HTML page
-    src/InactiveReset.Cli    command-line front end, and `serve` for the UI
-    src/InactiveReset.App    windowed app: WebView2 around that same page
-    tests/                   the test suite
-    offsets/                 SDK layout and locally discovered build offsets
-    data/profiles-default/   calibrations shipped with a release
-    docs/                    how the machinery actually works
+| Folder | Contents |
+| --- | --- |
+| `data/checkpoints/` | Your saved checkpoints |
+| `data/learned-rest/` | Placement corrections learned for each game build |
+| `data/observations/` | Placement logs, including rejected observations |
+| `data/profiles/` | Your manual calibrations, if any |
+| `data/profiles-default/` | Calibrations included with the release |
 
-The windowed app is the front end in normal use; the CLI is for diagnosis and
-patch day. Both call the same command layer, so they cannot drift apart.
+Back up your data before upgrading. Releases replace the shipped calibrations
+in `data/profiles-default/`; your manual calibrations in `data/profiles/` take
+priority over those defaults.
 
-Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): how both mechanisms
-work, the known defects, and the mistakes already made here. Then
-[`CONTEXT.md`](CONTEXT.md) for the vocabulary.
+## Reporting problems and contributing
 
----
+For a useful bug report, include the Inactive Reset version, LMU version, track,
+vehicle, steps to reproduce, and the relevant Activity message or placement log.
+Describe what you expected and what happened. Please keep discussion respectful
+and focused on information others can use to reproduce the problem.
 
-## Build
+For code contributions, start with [Contributing](CONTRIBUTING.md) and the
+[documentation index](docs/README.md). Dated investigations and superseded
+guidance are kept in the [archive](docs/archive/README.md).
 
-Needs the .NET 8 SDK. Everything goes through one script:
+### Building from source
 
-    .\build                  build (Debug)
-    .\build test             build and run the tests
-    .\build ship             Release build, tests, then dist\
-    .\build clean            delete artifacts\ and dist\
+Install the .NET 8 SDK, then run these commands from the repository root in
+PowerShell:
 
-Run `.\build`, not `.\build.ps1`. Windows blocks unsigned `.ps1` files by
-default; `build.cmd` is a wrapper that runs the script with that restriction
-bypassed for its own process only, so it works on a fresh machine with no
-setup and no administrator rights.
+```powershell
+.\build.cmd          # Debug build
+.\build.cmd test     # Build and run tests
+.\build.cmd ship     # Test and publish Release executables to dist/
+.\build.cmd package  # Create a self-contained release ZIP
+```
 
-The leading `.\` is required in PowerShell, which does not run commands from
-the current directory. From `cmd.exe`, plain `build` works.
+Use `.\build.cmd` explicitly; PowerShell can select `build.ps1` for `.\build`.
+The wrapper runs the script without a machine-wide execution-policy change.
+Build the solution rather
+than individual projects so its x64 configuration is applied. Build output goes
+to `artifacts/`; published releases go to `dist/`.
 
-To run without publishing:
+## Licence and credits
 
-    dotnet run --project src/InactiveReset.Cli -- status
-    dotnet run --project src/InactiveReset.App
+The source code is licensed under [MIT](LICENSE). See [NOTICE](NOTICE) for
+third-party terms. Studio 397 Plugin SDK headers are not redistributed; they
+are supplied with LMU. See [tools/README.md](tools/README.md) for SDK tooling.
 
-Two things worth knowing:
-
-- **Build the solution, not a project.** Every project is `x64` only, and the
-  `.sln` is what maps `Any CPU` to `x64`. `dotnet build src\InactiveReset.Cli`
-  fails where `dotnet build InactiveReset.sln` succeeds.
-- **Ship is Release, always.** Debug disables inlining and changes
-  floating-point codegen, and the placement math is measured against Release.
-
-All build output goes to `artifacts/`, not a `bin/` and `obj/` beside every
-project. `dist/` holds only the two shipping executables.
-
----
-
-## Status
-
-**Placement is accurate to sub-millimetre** on a calibrated combination. The
-long-standing "11.633 degree heading error" is fixed: it was never a heading
-error that calibration could not reach. The engine's displacement from a written
-destination is a constant vector in the vehicle frame, and the model had terms
-for only two of its three components, so half a metre of lateral miss had
-nowhere to go. `docs/HEADING_BUG.md` has the measurement and why rotation and
-translation are indistinguishable from outside the engine.
-
-Verified by driving on LMU 1.4.1.3 (build `0F6DCAC1`): 0.000500 m horizontal,
-0.000883 m vertical, down from 0.710 m.
-
-### Calibration takes care of itself
-
-`D` and `L` are **derived from the running engine**, not measured by hand:
-`ApplyVehicleTransform` stores the placement distance per vehicle, and the rest
-is a settle proportional to vehicle length. So placement works in any car
-immediately, to a few millimetres, with nothing to configure.
-
-Then it **learns**. Every placement measures its own miss, and because the
-relationship is exactly linear the miss IS the correction — so the constants for
-that checkpoint refine themselves automatically. Measured on a car nobody had
-ever calibrated: 3.2 mm on the first placement, 0.27 mm on the next.
-
-You do not need to know any of this happens. There is no calibrate step.
-
-Learned values live in `data/learned-rest/`, keyed by game build, and every
-placement is logged to `data/observations/<build>.jsonl` — accepted or rejected,
-with the reason. Delete a learned file to re-learn it.
-
-A hand-measured calibration in `data/profiles/`, if you have one, still wins over
-the derived constants; a learned one wins over both.
-
-`H`, the vertical offset, is **not** derived — it is a single borrowed constant
-that happens to hold to about a millimetre on every car tested. That one is not
-understood, and `docs/HEADING_BUG.md` says so.
-
----
-
-## Install
-
-Download the zip from [Releases](https://github.com/Kyraws/inactive-reset/releases)
-and unzip it anywhere. Nothing to install: both executables are self-contained
-and need no .NET runtime.
-
-    inactive-reset-ui.exe    double-click; the windowed app
-    inactive-reset.exe       console; run --help
-    offsets\                 SDK layout and local offset cache
-    data\profiles-default\   calibrations shipped with the release
-
-Keep the folder together. Both executables find `offsets\` and `data\` by
-searching upwards from their own location, and `offsets\shared-memory.json` is
-required and is never downloaded.
-
-Three things to expect on a first run:
-
-- **Windows SmartScreen** will say "Windows protected your PC", because the
-  executables are not code-signed. More info -> Run anyway. For a tool that
-  writes into another process's memory that warning is not unreasonable, and
-  you should be more suspicious of one that does not appear. The source is here
-  and `.\build package` reproduces the zip.
-- **The windowed app needs the WebView2 runtime.** Present on Windows 11 and
-  most Windows 10 installs; if the window comes up blank, install the Evergreen
-  runtime from Microsoft. The CLI does not need it.
-- **A new LMU build** triggers local offset discovery automatically.
-
-### Your calibrations versus the shipped ones
-
-`data\profiles\` is yours and a release never writes to it.
-`data\profiles-default\` is overwritten wholesale on upgrade. When both describe
-the same track and vehicle, yours wins.
-
----
-
-## Licence
-
-MIT — see [`LICENSE`](LICENSE). Scope and third-party terms are in
-[`NOTICE`](NOTICE).
-
-The Studio 397 Plugin SDK headers that `tools/dump-sdk-offsets` compiles
-against are **not** included: their own terms forbid redistribution. They ship
-with the game under `Support\SharedMemoryInterface\`, so every user already has
-them. See `tools/README.md`.
-
-Unofficial tool. Not affiliated with or endorsed by Studio 397, Motorsport
-Games, or the ACO.
+Inactive Reset is not affiliated with or endorsed by Studio 397, Motorsport
+Games, or the Automobile Club de l'Ouest.

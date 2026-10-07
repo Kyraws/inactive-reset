@@ -35,7 +35,11 @@ int main() {
     std::printf("  ],\n");
 
     std::printf("  \"mapName\": \"%s\",\n", LMU_SHARED_MEMORY_FILE);
+#ifdef LMU_SHARED_MEMORY_EVENT
     std::printf("  \"eventName\": \"%s\",\n", LMU_SHARED_MEMORY_EVENT);
+#else
+    std::printf("  \"eventName\": \"\",\n"); // Current SDK has separate update gates; the reader does not use them.
+#endif
     std::printf("  \"layoutSize\": %zu,\n", sizeof(SharedMemoryLayout));
 
     // data -> telemetry
@@ -63,8 +67,26 @@ int main() {
     std::printf("    \"mLocalVel\": %zu,\n", OFF(TelemInfoV01, mLocalVel));
     std::printf("    \"mOri\": %zu,\n", OFF(TelemInfoV01, mOri));
     std::printf("    \"mGear\": %zu,\n", OFF(TelemInfoV01, mGear));
+    std::printf("    \"mVehicleClass\": %zu,\n", OFF(TelemInfoV01, mVehicleClass));
+    std::printf("    \"mFrontTireCompoundName\": %zu,\n", OFF(TelemInfoV01, mFrontTireCompoundName));
+    std::printf("    \"mRearTireCompoundName\": %zu,\n", OFF(TelemInfoV01, mRearTireCompoundName));
+    std::printf("    \"compoundNameSize\": %zu,\n", sizeof(((TelemInfoV01*)nullptr)->mFrontTireCompoundName));
+    std::printf("    \"mWheel\": %zu,\n", OFF(TelemInfoV01, mWheel));
+    std::printf("    \"wheelStride\": %zu,\n", sizeof(TelemWheelV01));
     std::printf("    \"vect3Stride\": %zu,\n", sizeof(TelemVect3));
     std::printf("    \"vect3ComponentSize\": %zu\n", sizeof(((TelemVect3*)nullptr)->x));
+    std::printf("  },\n");
+
+    // Fields within one wheel, relative to that wheel's entry.
+    std::printf("  \"wheel\": {\n");
+    std::printf("    \"mTemperature\": %zu,\n", OFF(TelemWheelV01, mTemperature));
+    std::printf("    \"mWear\": %zu,\n", OFF(TelemWheelV01, mWear));
+    std::printf("    \"mFlat\": %zu,\n", OFF(TelemWheelV01, mFlat));
+    std::printf("    \"mDetached\": %zu,\n", OFF(TelemWheelV01, mDetached));
+    std::printf("    \"mTireCarcassTemperature\": %zu,\n", OFF(TelemWheelV01, mTireCarcassTemperature));
+    std::printf("    \"mTireInnerLayerTemperature\": %zu,\n", OFF(TelemWheelV01, mTireInnerLayerTemperature));
+    std::printf("    \"mCompoundIndex\": %zu,\n", OFF(TelemWheelV01, mCompoundIndex));
+    std::printf("    \"mCompoundType\": %zu\n", OFF(TelemWheelV01, mCompoundType));
     std::printf("  },\n");
 
     // data -> scoring

@@ -1,4 +1,4 @@
-﻿namespace InactiveReset.Core;
+namespace InactiveReset.Core;
 
 /// <summary>
 /// Constants describing what the engine does with a spot-table entry.
@@ -26,7 +26,7 @@ public sealed record PlacementModel
     /// off-axis component -- see <see cref="RestLateralOffset"/>. Correcting D
     /// alone was indeed wrong; correcting D and L together is not. The miss is
     /// per build, so both must be re-measured when the game patches.
-    /// See docs/HEADING_BUG.md.
+    /// See docs/archive/HEADING_BUG.md.
     /// </summary>
     public required float YawOffsetMode2 { get; init; }
 

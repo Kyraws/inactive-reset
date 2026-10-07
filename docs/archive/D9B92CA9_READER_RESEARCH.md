@@ -1,3 +1,5 @@
+> Archived on 2026-10-07. Historical evidence and superseded guidance; not current operating instructions. Build-specific addresses, measurements, and conclusions apply only to the recorded experiments. See the [current architecture](../ARCHITECTURE.md) and [status](../STATUS.md) before using this material.
+
 # Reader sites in LMU build D9B92CA9
 
 Static, read-only research on the mapped runtime dump at

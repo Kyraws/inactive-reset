@@ -1,37 +1,17 @@
-# Domain Docs
+﻿# Domain documentation
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+This repository has one glossary, [CONTEXT.md](../../CONTEXT.md), and one current
+[documentation index](../README.md).
 
-This repo is **single-context**: one `CONTEXT.md` and one `docs/adr/` at the repo root.
+Before exploring an area, read the glossary and the relevant current guide.
+Read relevant decisions in `docs/adr/` if that directory exists. Historical
+investigations in `docs/archive/` are evidence with a recorded scope, not current
+requirements.
 
-## Before exploring, read these
+Use the glossary's terms, particularly the distinctions between pit state, pit
+flag, pit-speeding penalty, and pit limiter. If a proposed change conflicts with
+a recorded decision, identify the conflict and explain why it should be revisited.
 
-- **`CONTEXT.md`** at the repo root — the glossary / ubiquitous language.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in.
-
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill creates them lazily when terms or decisions actually get resolved.
-
-## File structure
-
-```
-/
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-....md
-│   └── 0002-....md
-└── src/
-```
-
-If this repo ever grows into genuinely separate contexts, a root `CONTEXT-MAP.md` pointing at per-context `CONTEXT.md` files (plus `src/<context>/docs/adr/`) is the escape hatch — re-run `/setup-matt-pocock-skills` to switch layouts.
-
-## Use the glossary's vocabulary
-
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
-
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
-
-## Flag ADR conflicts
-
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
-
-> _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+When documenting a result, distinguish current code, live measurements,
+owner-confirmed game behaviour, and proposed changes. Do not turn an assumption
+or an archived conclusion into a current guarantee.

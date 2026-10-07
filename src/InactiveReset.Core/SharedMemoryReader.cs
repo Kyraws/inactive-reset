@@ -12,6 +12,7 @@ public sealed class SharedMemoryException(string message) : Exception(message);
 /// </summary>
 public sealed class SharedMemoryOffsets
 {
+    internal TyreTelemetryOffsets? Tyres { get; init; }
     public required string MapName { get; init; }
     public required string EventName { get; init; }
     public required int LayoutSize { get; init; }
@@ -65,6 +66,7 @@ public sealed class SharedMemoryOffsets
 
         var offsets = new SharedMemoryOffsets
         {
+            Tyres = TyreTelemetryOffsets.Load(root, telem),
             MapName = root.GetProperty("mapName").GetString()!,
             EventName = root.GetProperty("eventName").GetString()!,
             LayoutSize = root.GetProperty("layoutSize").GetInt32(),
@@ -112,7 +114,8 @@ public sealed record TelemetrySnapshot(
     RecordedPose Pose,
     float LapDistance,
     int Gear,
-    double ElapsedTime);
+    double ElapsedTime,
+    TyreState? Tyres = null);
 
 /// <summary>
 /// Reads LMU's official shared memory, read-only.
@@ -180,7 +183,39 @@ public sealed partial class SharedMemoryReader : IDisposable
             Pose: pose,
             LapDistance: lapDistance,
             Gear: ReadInt32(telem + _offsets.TelemGear),
-            ElapsedTime: ReadDouble(telem + _offsets.TelemElapsedTime));
+            ElapsedTime: ReadDouble(telem + _offsets.TelemElapsedTime),
+            Tyres: ReadTyres(telem));
+    }
+
+    private TyreState? ReadTyres(int telem)
+    {
+        if (_offsets.Tyres is not { } layout) return null;
+        return DecodeTyres(telem, layout, ReadDouble, ReadByte, ReadAscii);
+    }
+
+    internal static TyreState DecodeTyres(int telem, TyreTelemetryOffsets layout,
+        Func<int, double> readDouble, Func<int, byte> readByte, Func<int, int, string> readAscii)
+    {
+        TyreTemperatures Temperatures(int address) => new(
+            readDouble(address) - 273.15,
+            readDouble(address + 8) - 273.15,
+            readDouble(address + 16) - 273.15);
+        WheelTyreState Wheel(int index)
+        {
+            var address = telem + layout.Wheels + index * layout.WheelStride;
+            return new(Temperatures(address + layout.Temperature),
+                readDouble(address + layout.Carcass) - 273.15,
+                Temperatures(address + layout.InnerLayer),
+                readDouble(address + layout.Wear),
+                readByte(address + layout.CompoundIndex),
+                readByte(address + layout.CompoundType),
+                layout.Flat is { } flat && readByte(address + flat) != 0,
+                layout.Detached is { } detached && readByte(address + detached) != 0);
+        }
+        return new(readByte(telem + layout.VehicleClass),
+            readAscii(telem + layout.FrontCompound, layout.CompoundNameSize),
+            readAscii(telem + layout.RearCompound, layout.CompoundNameSize),
+            Wheel(0), Wheel(1), Wheel(2), Wheel(3));
     }
 
     /// <summary>

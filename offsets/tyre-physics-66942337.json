@@ -1,0 +1,50 @@
+{
+  "executableSha256": "66942337813B301B87D12EDFA330F33354A2A4B8CD9B048885CBF77EB6F940CF",
+  "probeRva": "0xEE86B1",
+  "probeBytes": "0FB605B0ACF20088813D010000",
+  "physicsPointerOffset": "0x159A0",
+  "invulnerabilityOffset": "0x13D",
+  "invulnerabilitySettingRva": "0x1E13368",
+  "wearMultiplierSettingRva": "0x1E188A8",
+  "damageMultiplierSettingRva": "0x1E17480",
+  "reset": {
+    "inventoryRva": "0x3B93EB8",
+    "selectedIndicesRva": "0x3B93F18",
+    "recordStride": "0x1548",
+    "compoundOffset": "0xC",
+    "freshFlagsOffset": "0x10",
+    "heatWearOffset": "0xF0",
+    "wheelStride": "0x6B0",
+    "tyrePointerOffset": "0xA00",
+    "thermalNodesCountOffset": "0xA20",
+    "thermalNodesTableOffset": "0xA28",
+    "tyreBulkTemperatureOffset": "0xFB0",
+    "temperatureOffsets": [
+      "0x988",
+      "0x998",
+      "0x9A0",
+      "0x9A8",
+      "0x9B0",
+      "0x9B8",
+      "0x9C0"
+    ],
+    "probes": [
+      {
+        "rva": "0xed2eb2",
+        "bytes": "4869CFB0060000F20F11B419E0090000488B8C19000A00004885C9740B0F28D70F28CEE836FC0300"
+      },
+      {
+        "rva": "0xeeb0c2",
+        "bytes": "F2410F10B6F8000000F20F5935D5A792004869F3B00600004889B424C0160000F2420F11B426E009000045387E11744F"
+      },
+      {
+        "rva": "0xed2cde",
+        "bytes": "4F8B8C2F000A0000F2430F10842F80090000660F14C0F2410F1181B00F00004533C0453981200A00"
+      },
+      {
+        "rva": "0xed2d10",
+        "bytes": "498B81280A00004A8B14C00F11020F114210F20F11422041FFC0453B81200A000072DD"
+      }
+    ]
+  }
+}

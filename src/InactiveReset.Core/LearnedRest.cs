@@ -57,7 +57,7 @@ public sealed record LearnedRest
         PlacementOutcome outcome, ContainerState container,
         float errorForward, float errorLateral, double impliedCandidate)
     {
-        if (!outcome.Completed)
+        if (!outcome.Completed || outcome.Cancelled || outcome.ReturnedToGarage || outcome.SessionEnded)
         {
             return "the placement did not complete";
         }

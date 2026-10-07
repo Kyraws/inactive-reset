@@ -32,18 +32,27 @@ public sealed class AutomaticOffsetsTests
         Assert.Throws<GateException>(() => AutomaticOffsets.ResolveField(image, seed, "pose"));
     }
 
-    [LocalDumpTheory("D9B92CA9", "29CE422A", "66942337", "0F6DCAC1")]
-    [InlineData("D9B92CA9", 0x15A04, 0x1CED8, 0x471D4)]
-    [InlineData("29CE422A", 0x15A04, 0x1CED8, 0x471D4)]
-    [InlineData("66942337", 0x15A0C, 0x1CEE0, 0x471E4)]
-    [InlineData("0F6DCAC1", 0x159DC, 0x1CEA8, 0x47194)]
-    public void Saved_builds_resolve_without_profiles_or_previous_dumps(string build, int pose, int sector, int slot)
+    [LocalDumpFact("D9B92CA9")]
+    public void D9B92CA9_resolves_without_an_existing_profile() =>
+        CheckSavedBuild("D9B92CA9", 0x15A04, 0x1CED8, 0x471D4);
+
+    [LocalDumpFact("29CE422A")]
+    public void Build_29CE422A_resolves_without_an_existing_profile() =>
+        CheckSavedBuild("29CE422A", 0x15A04, 0x1CED8, 0x471D4);
+
+    [LocalDumpFact("66942337")]
+    public void Build_66942337_resolves_without_an_existing_profile() =>
+        CheckSavedBuild("66942337", 0x15A0C, 0x1CEE0, 0x471E4);
+
+    [LocalDumpFact("0F6DCAC1")]
+    public void Build_0F6DCAC1_resolves_without_an_existing_profile() =>
+        CheckSavedBuild("0F6DCAC1", 0x159DC, 0x1CEA8, 0x47194);
+
+    private static void CheckSavedBuild(string build, int pose, int sector, int slot)
     {
         // Local research fixtures are intentionally not distributed with the app.
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
-        var dump = Path.Combine(root, "artifacts", $"LMU_runtime_{build}.bin");
-        if (build == "0F6DCAC1") dump = Environment.GetEnvironmentVariable("INACTIVE_RESET_BASELINE_DUMP") ?? dump;
-        var json = AutomaticOffsets.Discover(File.ReadAllBytes(dump), new string('A', 64), "test");
+        var json = AutomaticOffsets.Discover(File.ReadAllBytes(LocalDumpFactAttribute.PathFor(build)),
+            new string('A', 64), "test");
         var profile = OffsetProfile.Parse(json.ToJsonString(), "local");
         Assert.Equal((ulong)pose, profile.Containers.Field("vehCachedPose").Offset);
         Assert.Equal((ulong)sector, profile.Containers.Field("sector").Offset);
@@ -55,9 +64,7 @@ public sealed class AutomaticOffsetsTests
     [LocalDumpFact("66942337")]
     public void Cache_reuses_the_exact_build_and_rediscovers_after_build_or_probe_changes()
     {
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
-        var dump = Path.Combine(root, "artifacts", "LMU_runtime_66942337.bin");
-        var image = File.ReadAllBytes(dump);
+        var image = File.ReadAllBytes(LocalDumpFactAttribute.PathFor("66942337"));
         var directory = Path.Combine(Path.GetTempPath(), "inactive-reset-offsets-" + Guid.NewGuid().ToString("N"));
         var captures = 0;
         byte[] Capture() { captures++; return image; }
@@ -81,21 +88,12 @@ public sealed class AutomaticOffsetsTests
     }
 }
 
-public sealed class LocalDumpTheoryAttribute : TheoryAttribute
-{
-    public LocalDumpTheoryAttribute(params string[] builds)
-    {
-        if (builds.Any(build => !File.Exists(LocalDumpFactAttribute.PathFor(build))))
-            Skip = "Requires local mapped-game research dumps; these fixtures are not distributed.";
-    }
-}
-
 public sealed class LocalDumpFactAttribute : FactAttribute
 {
     public LocalDumpFactAttribute(string build)
     {
         if (!File.Exists(PathFor(build)))
-            Skip = "Requires a local mapped-game research dump; this fixture is not distributed.";
+            Skip = $"Missing local mapped-game dump for build {build}: {PathFor(build)}. Captures are not distributed.";
     }
 
     public static string PathFor(string build) => build == "0F6DCAC1" &&
