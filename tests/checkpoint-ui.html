@@ -14,7 +14,7 @@ function runCheckpointTests(script, html) {
     for (const match of script.matchAll(/getElementById\('([^']+)'\)/g))
       if (!declared.has(match[1])) throw new Error('missing production element: '+match[1]);
     if (html.includes('id="tyres"') || html.includes('tyre-wheel')) throw new Error('unrequested live tyre viewer');
-    if (!html.includes('grid-template-rows:28px minmax(0,1fr)') || !html.includes('html,body{height:100%;margin:0;overflow:hidden}')) throw new Error('fixed window layout missing');
+    if (!html.includes('href="/app.css"') || !html.includes('class="workspace-grid practice-workspace"') || !html.includes('aria-label="Workspaces"')) throw new Error('shared application shell missing');
   }
   const elements = new Map();
   function element(id) {
@@ -33,13 +33,15 @@ function runCheckpointTests(script, html) {
     return elements.get(id);
   }
   let response={};
-  const ui = new Function('document','fetch','setInterval','clearInterval','alert',
-    script + '\nreturn {renderCheckpoints,renderActivity,place,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh};')(
+  const storedPreferences={};
+  const storage={getItem:k=>storedPreferences[k] || null,setItem:(k,v)=>storedPreferences[k]=v};
+  const ui = new Function('document','fetch','setInterval','clearInterval','alert','sessionStorage',
+    script + '\nreturn {renderCheckpoints,renderActivity,updateDestination,place,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh};')(
       {getElementById:element},
       async (path,options) => {
         if(options?.method==='POST') {posted=JSON.parse(options.body);postedPath=path;}
         return {json:async()=>response};
-      }, () => 1, () => {}, () => {});
+      }, () => 1, () => {}, () => {}, storage);
   let posted, postedPath;
   const state={session:{track:'Daytona',vehicle:'McLaren'},checkpoints:[
     {id:'Barcelona/Ferrari/End of Lap.json',name:'End of Lap',track:'Barcelona',vehicle:'Ferrari',lapDistance:4500},
@@ -130,6 +132,11 @@ function runCheckpointTests(script, html) {
     check(element('launchDirect').disabled && element('launchEac').disabled,'both launches blocked while game runs');
     element('tyreConditionFL').value='100';element('tyreConditionFR').value='85';element('tyreConditionRL').value='40';element('tyreConditionRR').value='15';
     element('tyreTemperatureEnabledRL').checked=true;element('tyreTemperatureRL').value='55';
+    ui.updateTyreSettings();
+    const saved=JSON.parse(storedPreferences['practice-preferences']);
+    check(saved.wheels.FR.condition==='85' && saved.wheels.RL.heat==='55' && saved.wheels.RL.enabled,'tyre choices saved across workspace navigation');
+    ui.updateDestination();
+    check(JSON.parse(storedPreferences['practice-preferences']).checkpoint===element('cp').value,'selected checkpoint saved across workspace navigation');
     const individual=ui.tyreOptions().wheels;
     check(individual.map(w=>w.conditionPercent).join(',')==='100,85,40,15','condition values stay in FL FR RL RR order');
     check(individual.map(w=>w.temperatureCelsius).join(',')==='70,,55,','each wheel has an independent heat option');

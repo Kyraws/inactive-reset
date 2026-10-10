@@ -7,8 +7,8 @@ between intended behaviour and the current implementation.
 
 | Component | Responsibility |
 | --- | --- |
-| `src/InactiveReset.Core` | Process access, offset discovery, placement maths, transactions, rules, telemetry, and learning |
-| `src/InactiveReset.Ui` | Loopback HTTP server, embedded page, and background placement runner |
+| `src/InactiveReset.Core` | Process access, offset discovery, placement maths, transactions, rules, telemetry, learning and LMU menu API |
+| `src/InactiveReset.Ui` | Loopback HTTP server, embedded session/practice workspaces and background operation runner |
 | `src/InactiveReset.App` | Windows Forms window hosting the page through WebView2 |
 | `src/InactiveReset.Cli` | Console commands and an optional browser UI server |
 | `src/InactiveReset.Reanchor` | Maintainer-only dump analysis and experimental probes |
@@ -34,17 +34,31 @@ machine-wide process check, not a process-tree inspection. It hashes the
 installed executable and compares its PE identity with the mapped image before
 using discovered offsets and checking the live probe bytes.
 
-Single-player Practice is the supported scope. The offset format still contains
-REST gate configuration, but the application does not call those endpoints or
-independently verify session type. Do not describe the absence of EAC as proof
-that the game is in Practice.
+Single-player Practice is the supported scope for checkpoint and tyre writes.
+The windowed runner additionally checks LMU's navigation API for an active local
+Practice session before placement, tyres or rule toggles. The CLI still lacks
+this independent check. Do not describe the absence of EAC as proof that the
+game is in Practice.
+
+The window opens `/lab`; `--classic` opens `/session`, and `/` retains the original practice workspace. Session actions
+share the runner's operation lock and cancellation with practice transactions.
+Both pages use the embedded `App.css` and the same header, navigation and
+three-column shell. Practice progress remains in the fixed summary panel.
+`LmuSessionClient` reads and edits the current local menu setup, then starts it
+through preset/apply/generate-save/load-save calls. It requires a local main
+menu and explicit startup-prompt confirmation; it does not attach to game
+memory. See [Local sessions](SESSIONS.md) for controls and launch limitations.
 
 ## Automatic offset discovery
 
 `AutomaticOffsets.LoadOrDiscover` uses
-`offsets/<full-executable-sha256>.auto.json`. A cache is reused when its full
-hash, resolver version, and live probe agree. Otherwise discovery reads the
-running game's mapped module.
+`offsets/<full-executable-sha256>.auto.json`. Every attachment captures the mapped
+module and fingerprints its PE header and executable sections. Discovery derives
+the complete expected profile; an identical build/version/code fingerprint can
+reuse that immutable derivation in memory. Disk caches are reused only when the
+entire JSON profile equals the verified derivation and the live probe matches.
+Altered fields or model metadata are repaired. Capture/discovery/probe failures
+preserve the previous cache and refuse attachment.
 
 Structural resolvers identify tables, indices, stride, ownership, dimensions,
 pit state, and rule fields. Embedded instruction anchors resolve remaining
@@ -52,8 +66,13 @@ vehicle and lap fields. Missing, ambiguous, or disagreeing matches abort
 discovery. The cache is written through a temporary file and replaced locally.
 The application does not download profiles from GitHub.
 
-Discovery is constrained by the implemented instruction patterns and a tuning
-block value anchor. It is not a guarantee of compatibility with future patches.
+Discovery is constrained by the implemented instruction shapes and field
+relationships. Tuning discovery follows the search and yaw consumers without
+matching stored float values. The pit-speed rule resolver decodes both branch
+destinations and requires the speed read and reset to use the same field;
+field and branch displacements can change. Missing or ambiguous relationships
+still refuse discovery. Resolver version 4 invalidates earlier placement caches.
+This is not a guarantee of compatibility with future patches.
 Automatic profiles record `placementValidated=false`; the current production
 path does not use that field as a live-validation gate.
 

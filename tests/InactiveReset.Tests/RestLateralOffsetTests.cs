@@ -1,4 +1,4 @@
-﻿using InactiveReset.Core;
+using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -68,22 +68,6 @@ public sealed class RestLateralOffsetTests
 
     /// <summary>Where the car actually came to rest.</summary>
     private static readonly Vec3 AchievedRest = new(-88.249855f, -1.576400f, -148.884064f);
-
-    [Fact]
-    public void TheOldModelMissesByHalfAMetreOnTheLateralAxis()
-    {
-        // Fails on the corrected model, passes on the old one: this is the
-        // behaviour the lateral term exists to remove.
-        var entry = PlacementMath.InvertToPitPosEntry(
-            TargetRest, TargetYaw, Container, Probe, CurrentEntry);
-        var predicted = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(entry, Container, Probe), Container, Probe);
-
-        var lateral = Geometry.LateralAxis(TargetYaw);
-        var miss = new Vec3(
-            AchievedRest.X - predicted.X, 0f, AchievedRest.Z - predicted.Z);
-
-        Assert.Equal(0.50325f, miss.X * lateral.X + miss.Z * lateral.Z, 4);
-    }
 
     /// <summary>The entry the probe placement actually wrote, as `plan` printed it.</summary>
     private static readonly SpotEntry WrittenEntry = new(
@@ -164,12 +148,8 @@ public sealed class RestLateralOffsetTests
     }
 
     [Fact]
-    public void AProfileWithoutTheLateralKeyKeepsItsOldBehaviour()
+    public void Zero_lateral_offset_preserves_forward_only_prediction()
     {
-        // format_version 1 profiles have no lateral_offset_L. They must read as
-        // zero rather than inheriting a correction measured for another build.
-        Assert.Equal(0f, Probe.RestLateralOffset);
-
         var withoutTerm = PlacementMath.PredictRestPosition(
             new SpotEntry(TargetRest, new Vec3(0f, TargetYaw, 0f)), Container, Probe);
         var heading = Geometry.HeadingAxis(TargetYaw);

@@ -1,4 +1,4 @@
-﻿using InactiveReset.Core;
+using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -75,23 +75,17 @@ public sealed class PlacementReportTests
 
     // ---- the pit-state wait ------------------------------------------------
 
-    /// <summary>
-    /// Giving up is not the same as clearing. Reporting a timeout as CLEAR would
-    /// tell a driver it is safe to accelerate when the tool merely stopped
-    /// looking -- and the difference is a stop/go.
-    /// </summary>
     [Fact]
-    public void NeverCallsATimedOutPitWaitCleared()
+    public void Never_calls_an_uncleared_pit_state_clear()
     {
-        var timedOut = Placed() with
+        var uncleared = Placed() with
         {
             PitWaitSkipped = false,
             PitStateCleared = false,
-            TimeToClear = TimeSpan.FromSeconds(120),
             DistanceToClearMetres = 0f,
         };
 
-        var line = Line(timedOut, "pit state");
+        var line = Line(uncleared, "pit state");
 
         Assert.Equal("STILL SET", line.Value);
         Assert.Equal(OutcomeSeverity.Warning, line.Severity);

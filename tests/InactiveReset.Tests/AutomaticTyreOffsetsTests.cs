@@ -4,12 +4,6 @@ using Xunit;
 namespace InactiveReset.Tests;
 public sealed class AutomaticTyreOffsetsTests
 {
-    private static string RepositoryRoot()
-    {
-        var directory=AppContext.BaseDirectory;
-        while(directory is not null && !Directory.Exists(Path.Combine(directory,"offsets"))) directory=Path.GetDirectoryName(directory);
-        return directory ?? throw new DirectoryNotFoundException("repository root missing");
-    }
     [Fact]
     public void Anchors_follow_moved_code_and_operands_and_reject_missing_or_duplicate_code()
     {
@@ -34,6 +28,7 @@ public sealed class AutomaticTyreOffsetsTests
         Assert.Throws<GateException>(()=>AutomaticTyreOffsets.ResolveAnchor(image,anchor,"selectedIndicesRva"));
     }
 
+    [Trait("Category", "LocalGame")]
     [LocalDumpFact("66942337")]
     public void Discovery_follows_changed_globals_and_structure_operands_without_reusing_old_addresses()
     {
@@ -68,13 +63,14 @@ public sealed class AutomaticTyreOffsetsTests
         Assert.Throws<GateException>(()=>AutomaticTyreOffsets.Discover(image,new string('D',64)));
     }
 
+    [Trait("Category", "LocalGame")]
     [LocalDumpFact("66942337")]
     public void All_discovered_fields_match_the_live_verified_profile_and_cache_rechecks_code()
     {
         var image=File.ReadAllBytes(LocalDumpFactAttribute.PathFor("66942337"));
         var hash=new string('A',64);
         var resolved=AutomaticTyreOffsets.Discover(image,hash);
-        var expected=JsonNode.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(),"offsets","tyre-physics-66942337.json")))!.AsObject();
+        var expected=ProfileFixture.Read("tyre-physics-66942337");
         foreach(var field in expected)
         {
             if(field.Key is "executableSha256" or "probeRva" or "probeBytes" or "reset") continue;

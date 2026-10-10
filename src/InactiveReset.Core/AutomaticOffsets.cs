@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace InactiveReset.Core;
@@ -6,20 +8,51 @@ namespace InactiveReset.Core;
 /// <summary>Derive a build's addresses locally from its decrypted mapped code.</summary>
 public static class AutomaticOffsets
 {
-    public const int ResolverVersion = 2;
+    public const int ResolverVersion = 4;
+    private static readonly object CacheGate = new();
+    private static (string Hash, string Version, string Code, string Json)? _verified;
 
     public static OffsetProfile LoadOrDiscover(string directory, string hash, string version,
                                                Func<byte[]> capture, Func<ulong, int, byte[]> readProbe,
                                                out bool discovered)
+        => LoadOrDiscover(directory, hash, version, capture, readProbe, out discovered, null);
+
+    internal static OffsetProfile LoadOrDiscover(string directory, string hash, string version,
+        Func<byte[]> capture, Func<ulong, int, byte[]> readProbe, out bool discovered,
+        Func<byte[], string, string, JsonObject>? derive)
     {
+        if (hash.Length != 64 || !hash.All(Uri.IsHexDigit))
+            throw new ArgumentException("expected a full executable SHA-256", nameof(hash));
+        var image = capture();
+        string verifiedJson;
+        using (var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+        {
+            digest.AppendData(BitConverter.GetBytes(image.Length));
+            digest.AppendData(image.AsSpan(0, Math.Min(image.Length, 0x1000)));
+            foreach (var range in ExecutableRanges(image))
+                digest.AppendData(image.AsSpan(range.Start, range.End - range.Start));
+            var code = Convert.ToHexString(digest.GetHashAndReset());
+            lock (CacheGate)
+            {
+                if (derive is not null) verifiedJson = derive(image, hash, version).ToJsonString();
+                else if (_verified is not { } prior || prior.Hash != hash || prior.Version != version || prior.Code != code)
+                {
+                    verifiedJson = Discover(image, hash, version).ToJsonString();
+                    _verified = (hash, version, code, verifiedJson);
+                }
+                else verifiedJson = prior.Json;
+            }
+        }
         var path = Path.Combine(directory, $"{hash}.auto.json");
         if (File.Exists(path))
         {
             try
             {
-                var cached = OffsetProfile.Load(path);
-                if (cached.AutomaticResolverVersion == ResolverVersion &&
-                    cached.ExecutableSha256.Equals(hash, StringComparison.OrdinalIgnoreCase) &&
+                var cachedJson = JsonNode.Parse(File.ReadAllText(path), documentOptions: new JsonDocumentOptions
+                    { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                if (cachedJson is not JsonObject) throw new OffsetProfileException("cached profile must be an object");
+                var cached = OffsetProfile.Parse(cachedJson.ToJsonString(), path);
+                if (JsonNode.DeepEquals(cachedJson, JsonNode.Parse(verifiedJson)) &&
                     readProbe(cached.Probe.Rva.Require("cached probe"), cached.Probe.Bytes.Length).AsSpan()
                          .SequenceEqual(cached.Probe.Bytes))
                 {
@@ -32,8 +65,11 @@ public static class AutomaticOffsets
                 or KeyNotFoundException or InvalidOperationException or FormatException) { }
         }
 
-        var json = Discover(capture(), hash, version);
+        var json = JsonNode.Parse(verifiedJson)!.AsObject();
         var profile = OffsetProfile.Parse(json.ToJsonString(), path);
+        if (!readProbe(profile.Probe.Rva.Require("discovered probe"), profile.Probe.Bytes.Length).AsSpan()
+            .SequenceEqual(profile.Probe.Bytes))
+            throw new GateException("automatic offset discovery: live probe changed during capture");
         Directory.CreateDirectory(directory);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -63,7 +99,8 @@ public static class AutomaticOffsets
         var flags = Need(SpotTableResolver.FindTrackLimitsFlags(image), "track limits flags");
         var result = Resource("discovery-template.json");
         var tunables = result["engineModel"]!["tunables"]!.AsObject();
-        var tuningStart = FindTuningBlock(image);
+        var tuningStart = SpotTableResolver.FindTuningBlock(image)
+            ?? throw new GateException("automatic offset discovery: cannot uniquely resolve engine tuning consumers");
         Address(tunables, "searchStartFactor", tuningStart);
         Address(tunables, "searchStepFactor", tuningStart + 4);
         Address(tunables, "searchMaxFactor", tuningStart + 8);
@@ -165,30 +202,6 @@ public static class AutomaticOffsets
 
     private static T Need<T>(T? value, string field) where T : class =>
         value ?? throw new GateException($"automatic offset discovery: cannot uniquely resolve {field}");
-    private static uint FindTuningBlock(byte[] image)
-    {
-        // The established constant run is a value anchor; code readers must
-        // independently reference each consumed member before it is accepted.
-        var pattern = new float[] { 0.55f, 0.1f, 1.5f, 25f, 45f }.SelectMany(BitConverter.GetBytes).ToArray();
-        var start = image.AsSpan().IndexOf(pattern);
-        if (start < 0 || image.AsSpan(start + pattern.Length).IndexOf(pattern) >= 0)
-            throw new GateException("automatic offset discovery: engine tuning block is absent or ambiguous");
-        var targets = new HashSet<int> { start, start + 4, start + 8, start + 16 };
-        foreach (var range in ExecutableRanges(image))
-        for (var at = range.Start; at < range.End - 9 && targets.Count > 0; at++)
-        {
-            if (image[at] != 0xF3) continue;
-            var op = at + 1;
-            if (image[op] is >= 0x40 and <= 0x4F) op++;
-            if (image[op] != 0x0F || image[op + 1] is not (0x10 or 0x59 or 0x58 or 0x5C or 0x5E) ||
-                (image[op + 2] & 0xC7) != 5) continue;
-            var end = op + 7;
-            var target = (long)end + BinaryPrimitives.ReadInt32LittleEndian(image.AsSpan(op + 3, 4));
-            if (target is >= 0 and <= int.MaxValue) targets.Remove((int)target);
-        }
-        if (targets.Count > 0) throw new GateException("automatic offset discovery: engine tuning readers do not agree");
-        return (uint)start;
-    }
     internal static IReadOnlyList<(int Start, int End)> ExecutableRanges(byte[] image)
     {
         // Raw byte buffers are useful for testing the masked matcher itself.

@@ -28,6 +28,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private Task? _running;
     private CancellationTokenSource? _placementCancellation;
     private bool _stopping;
+    private readonly LmuSessionClient _sessionMenu = new(dataDirectory: dataDirectory);
 
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
     // Both calibration directories are resolved from the data directory itself;
@@ -375,9 +376,90 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         return array;
     }
 
+
+    public Task<JsonObject> SessionSetupAsync() => _sessionMenu.SetupAsync();
+    public Task<JsonObject> SessionCatalogAsync() => _sessionMenu.CatalogAsync();
+    public async Task<JsonObject> SessionNavigationAsync()
+    {
+        var result = await _sessionMenu.NavigationAsync();
+        var game = GameLauncher.Running();
+        result["protected"] = game.Protected;
+        result["pid"] = game.ProcessId;
+        lock (_gate)
+        {
+            result["operationBusy"] = _running is { IsCompleted: false };
+            result["operationMessage"] = _phaseMessage;
+        }
+        return result;
+    }
+
+    public Task<JsonObject> SessionActionAsync(JsonObject body)
+    {
+        TaskCompletionSource<JsonObject> completion;
+        CancellationToken token;
+        lock (_gate)
+        {
+            if (_stopping) throw new GateException("The app is closing.");
+            if (_running is { IsCompleted: false }) throw new GateException("Wait for the current operation to finish before changing sessions.");
+            var game = GameLauncher.Running();
+            if (!game.Attachable) throw new GateException("Launch LMU for local play without EAC before setting up a session.");
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _running = completion.Task;
+            _placementCancellation?.Dispose();
+            _placementCancellation = new CancellationTokenSource();
+            token = _placementCancellation.Token;
+        }
+        _ = RunSessionActionAsync(body, completion, token);
+        return completion.Task;
+    }
+
+    private async Task RunSessionActionAsync(JsonObject body, TaskCompletionSource<JsonObject> completion, CancellationToken cancellation)
+    {
+        var starting = body["action"]?.GetValue<string>() == "start";
+        try
+        {
+            JsonObject result;
+            if (starting)
+            {
+                lock (_gate) { _log.Clear(); _lastOutcome = null; }
+                await _sessionMenu.StartAsync(body["menuConfirmed"]?.GetValue<bool>() == true,
+                    message => OnProgress(new(PlacementPhase.Gating, message)), cancellation);
+                OnProgress(new(PlacementPhase.Done, "Session loaded. Switch to LMU and press Drive."));
+                result = new() { ["ok"] = true };
+            }
+            else if (body["action"]?.GetValue<string>() == "menu")
+            {
+                await _sessionMenu.ReturnToMenuAsync(cancellation);
+                result = await _sessionMenu.SetupAsync(cancellation);
+            }
+            else result = await _sessionMenu.ChangeAsync(body, cancellation);
+            completion.SetResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            if (starting) OnProgress(new(PlacementPhase.Cancelled, "Monitoring stopped. A session already accepted by LMU may still load."));
+            completion.SetResult(new() { ["error"] = "Operation cancelled. Check LMU before starting again." });
+        }
+        catch (Exception ex)
+        {
+            if (starting) OnProgress(new(PlacementPhase.Failed, ex.Message));
+            completion.SetResult(new() { ["error"] = ex.Message });
+        }
+    }
+
     // ---- actions -----------------------------------------------------------
 
     public JsonObject SetRules(JsonObject body)
+    {
+        lock (_gate)
+        {
+            if (_stopping || _running is { IsCompleted: false }) throw new GateException("Wait for the current operation before changing rules.");
+            _sessionMenu.RequirePracticeAsync().GetAwaiter().GetResult();
+            return SetRulesCore(body);
+        }
+    }
+
+    private JsonObject SetRulesCore(JsonObject body)
     {
         var enable = body["enable"]?.GetValue<bool>() ?? false;
         var pit = body["pitSpeeding"]?.GetValue<bool>() ?? false;
@@ -504,6 +586,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     {
         try
         {
+            _sessionMenu.RequirePracticeAsync(cancellation).GetAwaiter().GetResult();
             using var session = GameSession.Attach(offsetDirectory, forWriting: true);
             using var tyres = new TyreResetPreparation(session, offsetDirectory, options);
             var reader = new LiveStateReader(session);
@@ -552,6 +635,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     {
         try
         {
+            _sessionMenu.RequirePracticeAsync(cancellation).GetAwaiter().GetResult();
             using var session = GameSession.Attach(offsetDirectory, forWriting: true);
             SessionIdentity? live = null;
             try

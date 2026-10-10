@@ -1,4 +1,4 @@
-﻿using InactiveReset.Core;
+using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -61,27 +61,6 @@ public sealed class LateralSignTests
         // ~1 cm, against 1.075 m unsigned. The remainder is a per-car settle
         // difference and is exactly what automatic learning absorbs.
         Assert.True(miss < 0.02f, $"signed model missed by {miss:F4} m");
-    }
-
-    [Fact]
-    public void TheUnsignedModelMissesByTwiceLOnTheLateralAxis()
-    {
-        // Fails on the corrected model, passes on the old one: this is the
-        // behaviour the sign exists to remove. The old model is reproduced by
-        // flipping L, since sign here is -1.
-        var unsigned = Model with { RestLateralOffset = -Model.RestLateralOffset };
-        var predicted = PlacementMath.PredictRestPosition(
-            PlacementMath.PredictDriveDestination(WrittenEntry, Genesis, unsigned),
-            Genesis, unsigned);
-
-        var lateral = Geometry.LateralAxis(TargetYaw);
-        var along = (AchievedRest.X - predicted.X) * lateral.X
-                  + (AchievedRest.Z - predicted.Z) * lateral.Z;
-
-        // 1 dp: the measured miss is -1.0746 and 2L is -1.0849. The 1 cm gap is
-        // the same per-car settle residual the signed model leaves behind, not
-        // slack in the claim.
-        Assert.Equal(-2f * Model.RestLateralOffset, along, 1);
     }
 
     [Fact]

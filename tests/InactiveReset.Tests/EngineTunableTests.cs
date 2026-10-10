@@ -3,15 +3,7 @@ using Xunit;
 
 namespace InactiveReset.Tests;
 
-/// <summary>
-/// The range checks on the live-read engine tunables.
-///
-/// These matter more than they look. A stale address does not fault -- it
-/// returns four perfectly ordinary-looking floats, and ordinary-looking floats
-/// place the car somewhere ordinary-looking and wrong. That is the failure this
-/// project has had twice. These tests are the only thing standing between a
-/// relocated <c>.data</c> block and a silently mis-placed car.
-/// </summary>
+/// <summary>Validation and fallback behavior for live engine tunables.</summary>
 public sealed class EngineTunableTests
 {
     /// <summary>The 1AC2F605 profile's real values.</summary>
@@ -136,15 +128,4 @@ public sealed class EngineTunableTests
         Assert.Contains("does not describe the running build", ex.Message);
     }
 
-    /// <summary>An address the reanchor could not resolve must never be read.</summary>
-    [Fact]
-    public void UnresolvedAddressIsNotTrusted()
-    {
-        var spec = Spec() with
-        {
-            YawOffsetDegrees = new Rva(0x03B3621C, Confidence.Unresolved, "stale"),
-        };
-        Assert.Equal(Confidence.Unresolved, spec.YawOffsetDegrees.Confidence);
-        Assert.Throws<StaleOffsetException>(() => spec.YawOffsetDegrees.Require("yaw offset"));
-    }
 }

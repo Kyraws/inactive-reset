@@ -1,136 +1,52 @@
 # Inactive Reset
 
-Inactive Reset is an unofficial practice tool for **Le Mans Ultimate**. Save a
-checkpoint on the racing line and return to it from the garage to practise a
-corner or section of track.
+A practice companion for **Le Mans Ultimate**. Save a checkpoint, return to it from the garage, and repeat the corner. Build local sessions and prepare your tyres from one window.
 
-**For offline, single-player Practice only.** The tool verifies the game build
-and refuses attachment when EasyAntiCheat is detected. It does not independently
-check the session type; choose Practice before using it.
+**[Download for Windows x64](https://github.com/Kyraws/inactive-reset/releases/latest)** · [Report a problem](https://github.com/Kyraws/inactive-reset/issues)
 
-## Getting started
+![Inactive Reset interface walkthrough](docs/media/interface.gif)
 
-1. Download the release ZIP from [Releases](https://github.com/Kyraws/inactive-reset/releases).
-2. Extract it to a folder and keep its contents together.
-3. Open `inactive-reset-ui.exe`. Steam must be running before you launch LMU.
-4. Select **Launch game**, then start an offline, single-player Practice session.
+*UI walkthrough: session setup, Practice tools and appearance settings.*
 
-The release runs on Windows x64 and includes its own .NET runtime. The windowed
-app also needs Microsoft WebView2. If the window is blank, check that the
-WebView2 runtime is installed. A console version, `inactive-reset.exe`, is
-included; run it with `--help` for commands.
+## Start here
 
-Release executables are unsigned, so Windows may show a SmartScreen warning.
-Download from this repository's Releases page and check the source before
-choosing to run them.
+1. Download and extract the release ZIP. Keep its files together.
+2. Open `inactive-reset-ui.exe` with Steam running.
+3. Select **Launch local play**, then dismiss LMU’s **Press any button** screen once.
+4. Choose your car, track, weekend, weather and opponents. Confirm LMU is at its main menu and select **Start session**.
+5. Once loaded, press **Drive** in LMU.
 
-## Using checkpoints
+Requires Windows x64 and [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). No .NET installation needed. The executables are unsigned; Windows may show a SmartScreen prompt.
 
-1. Drive to the position you want to practise from.
-2. Enter a checkpoint name, such as `turn-1-entry`, and select **Capture**.
-3. Return to the garage, select the checkpoint, and select **Place**.
-4. Wait for **PRESS DRIVE** in Activity, then press **Drive** in LMU.
-5. Follow the Activity messages as placement completes. Repeat from the garage
-   whenever you want another attempt.
+## Repeat a corner
 
-The capture list shows only the loaded track. Captures can be reused with
-another vehicle on that track; placement uses the loaded car's calibration or
-live engine offsets. It can derive starting values without manual calibration.
-CLI placements save learned corrections; the windowed app currently uses
-existing corrections but does not save new ones.
+1. Drive to your starting point and select **Capture** in **Practice tools**.
+2. Return to the garage and choose that checkpoint.
+3. Select **Place checkpoint**. Wait for **PRESS DRIVE**, then press **Drive** in LMU and follow Activity.
+4. Return to the garage whenever you want another attempt.
 
-Placement restores a position, not captured speed, fuel, tyres, or damage.
-New captures also store four-wheel tyre temperatures in Celsius, raw SDK wear,
-vehicle class and fitted compounds. This records tyre state; placement does not
-apply it.
-The compact Tyres panel prepares all four fitted tyres in the garage, with
-separate condition and optional initial temperature settings for FL, FR, RL and RR. Placement can include the
-same reset. It keeps the loaded car's compounds. Live readings remain in the game;
-discovery, protection and calibration messages appear in Activity. See [Tyres](docs/TYRES.md) for
-the workflow, live evidence and build support.
+Checkpoints restore position, not speed, fuel, damage or captured tyre state. They work with other cars on the same track.
 
-Placement verifies Flag Rules are off before arming, so you can drive normally
-after teleport. It restores the original rules when pit state clears or you
-return to the garage. There is no pit-clear timeout. The tool does not control
-the car's pit limiter.
+## Make it yours
 
-Cancel or close restores an armed placement immediately. After teleport,
-cleanup waits for pit state to clear or a garage return; the app stays open
-until that cleanup finishes.
+- **Session presets:** save and reuse a weekend’s car, track, weather, grid and rules.
+- **Tyres:** set condition and starting heat for all four tyres or each wheel. Heat slider **0 = Game default**. Select **Prepare tyres**, or enable **Apply on placement**.
+- **Appearance:** choose Original or the dark-only Redline style; Compact keeps more controls in view. Find these in **Lab settings**.
 
-Track limits have a separate toggle. Check its displayed state after returning
-to the garage or starting a session, since LMU can re-enable them. Placement
-also attempts sector and out-lap repairs immediately after settling. See
-[Placement and rules](docs/PLACEMENT.md) for the sequence and
-[known limitations](docs/STATUS.md) before relying on lap timing.
+Checkpoint and tyre tools require **offline, single-player Practice without EasyAntiCheat**. For online racing, close LMU and launch it normally through Steam with EAC. The app refuses to attach to protected sessions.
 
-## Launching and game updates
+## Updating or getting help
 
-**Local practice** starts LMU without EasyAntiCheat and only allows local
-sessions. Use a single-player Practice session with Inactive Reset. For online
-racing, close the game and use **With EAC**. Inactive Reset refuses to
-attach to that session.
+Back up your `data/` folder before upgrading. Keep `data/` and `offsets/` beside the executables; they contain your saved work and required files. Game updates can require a tool update too.
 
-The tool finds LMU through Steam's library configuration. If detection fails,
-the CLI accepts `--game-dir` for a one-time override or `--set-game-dir` to save
-the location.
+For a bug report, include the app and LMU versions, car, track, what happened and the relevant **Activity** message.
 
-When the game executable changes, Inactive Reset automatically discovers the
-required memory offsets locally and caches them. If discovery cannot resolve a
-required field unambiguously, placement stops and reports the problem. A game
-update can still require changes to the tool.
+[Session guide](docs/SESSIONS.md) · [Practice and rules](docs/PLACEMENT.md) · [Tyres](docs/TYRES.md) · [Known limitations](docs/STATUS.md)
 
-## Saved data
+For CLI commands, run `inactive-reset.exe --help`. To open the previous interface, run `inactive-reset-ui.exe --classic`.
 
-Keep the `offsets/` and `data/` folders with the executables.
-`offsets/shared-memory.json` is required and is included in the release.
+## Contributing
 
-| Folder | Contents |
-| --- | --- |
-| `data/checkpoints/` | Your saved checkpoints |
-| `data/learned-rest/` | Placement corrections learned for each game build |
-| `data/observations/` | Placement logs, including rejected observations |
-| `data/profiles/` | Your manual calibrations, if any |
-| `data/profiles-default/` | Calibrations included with the release |
+See [Contributing](CONTRIBUTING.md) for building and tests, and the [documentation index](docs/README.md) for technical details.
 
-Back up your data before upgrading. Releases replace the shipped calibrations
-in `data/profiles-default/`; your manual calibrations in `data/profiles/` take
-priority over those defaults.
-
-## Reporting problems and contributing
-
-For a useful bug report, include the Inactive Reset version, LMU version, track,
-vehicle, steps to reproduce, and the relevant Activity message or placement log.
-Describe what you expected and what happened. Please keep discussion respectful
-and focused on information others can use to reproduce the problem.
-
-For code contributions, start with [Contributing](CONTRIBUTING.md) and the
-[documentation index](docs/README.md). Dated investigations and superseded
-guidance are kept in the [archive](docs/archive/README.md).
-
-### Building from source
-
-Install the .NET 8 SDK, then run these commands from the repository root in
-PowerShell:
-
-```powershell
-.\build.cmd          # Debug build
-.\build.cmd test     # Build and run tests
-.\build.cmd ship     # Test and publish Release executables to dist/
-.\build.cmd package  # Create a self-contained release ZIP
-```
-
-Use `.\build.cmd` explicitly; PowerShell can select `build.ps1` for `.\build`.
-The wrapper runs the script without a machine-wide execution-policy change.
-Build the solution rather
-than individual projects so its x64 configuration is applied. Build output goes
-to `artifacts/`; published releases go to `dist/`.
-
-## Licence and credits
-
-The source code is licensed under [MIT](LICENSE). See [NOTICE](NOTICE) for
-third-party terms. Studio 397 Plugin SDK headers are not redistributed; they
-are supplied with LMU. See [tools/README.md](tools/README.md) for SDK tooling.
-
-Inactive Reset is not affiliated with or endorsed by Studio 397, Motorsport
-Games, or the Automobile Club de l'Ouest.
+[MIT licence](LICENSE) · [Third-party notices](NOTICE). Unofficial; not affiliated with Studio 397, Motorsport Games or the ACO.

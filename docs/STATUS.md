@@ -24,12 +24,11 @@ promise. [Architecture](ARCHITECTURE.md) describes the implementation;
 
 | Priority | Finding | Evidence and next step |
 | --- | --- | --- |
-| High | Practice-only use is stated but session type is not independently checked | `RestGates` is parsed but unused; define and enforce the session check before writes |
+| High | CLI practice writes do not independently check session type | The windowed app now checks local, active Practice before placement, tyres and rule toggles; extend that gate to CLI writes |
 | High | UI placements do not save learning or observations | `PlacementRunner.RunPlacement` loads learned values but never calls `RestLearning.Apply`; align orchestration with the CLI |
 | Medium | Live track/vehicle identity is optional | Both front ends continue after a shared-memory failure; decide whether placement must require identity |
 | Medium | Checkpoint names are used directly as file paths | `CaptureService.Save` appends the name to a path; validate names and containment at the shared save boundary |
 | Medium | Capture and measured rest can include motion | Shared-memory reads are not a single locked snapshot; rest is sampled after a 400 ms delay with player control; validate capture coherence and learning while moving |
-| Medium | Discovery depends on known tuning values | `FindTuningBlock` matches a specific float sequence; a retune can block discovery despite otherwise matching structure |
 | Medium | A manual ordinary-path calibration can be reused across builds | `PlacementService.Plan` only requires matching build for indexed placement; review staleness policy |
 | Low | Invalid CLI sector input silently falls back to the final sector | `Program.Place` uses the default on failed parsing; reject malformed or missing values |
 | Low | Rule identity depends on display text | `PlacementRunner.State` selects rules with label substrings; separate identity from presentation if changing this flow |
@@ -37,6 +36,20 @@ promise. [Architecture](ARCHITECTURE.md) describes the implementation;
 | Low | App build reports a WindowsBase reference conflict | Release solution build emits MSB3277 through WebView2's WPF assembly, although the app uses WinForms; review unused package references |
 
 ## Behaviour that still needs live checks
+
+The 2026-10-10 API/cache changes add installed-menu route and port recovery and
+whole-profile validation against current mapped code. The current installed menu
+passes read-only helper discovery; synthetic tests cover renamed routes, package
+replacement and cache alteration. No live session changes were performed for
+this update. Named helper/request shapes and response schemas remain support
+boundaries; a changed engine or launch sequence still needs explicit validation.
+
+The 2026-10-10 discovery changes resolve tuning addresses from search/yaw
+consumers and follow changed pit-speed field and branch displacements. Offline
+checks cover the three available mapped builds and a retuned/relocated 66942337
+copy. Instruction shapes and tuning-field relationships remain supported-layout
+assumptions; this is not evidence of compatibility with an unseen patch or live
+placement after an engine change.
 
 The new cancellation/close workflow through live garage and session transitions;
 lap timing near start/finish; sector splits after a forced sector

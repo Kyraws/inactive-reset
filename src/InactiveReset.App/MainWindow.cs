@@ -21,9 +21,10 @@ internal sealed class MainWindow : Form
     {
         _url = url;
 
-        Text = "Inactive Reset";
-        ClientSize = new Size(900, 540);
-        MinimumSize = SizeFromClientSize(new Size(900, 540));
+        var lab = url.EndsWith("/lab", StringComparison.Ordinal);
+        Text = lab ? "Inactive Reset — Lab 02" : "Inactive Reset";
+        ClientSize = lab ? new Size(1280, 800) : new Size(1100, 720);
+        MinimumSize = SizeFromClientSize(lab ? new Size(1040, 680) : new Size(900, 600));
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(23, 25, 29);
 

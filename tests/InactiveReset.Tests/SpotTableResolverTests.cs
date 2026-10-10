@@ -16,7 +16,10 @@ public sealed class SpotTableResolverTests
                          0x0F, 0x2F, 0xCA, 0x76, 0x33, 0x83, 0x3D }.CopyTo(image, at);
             Put32(image, at + 0x0F, 0x3100 - (at + 0x14));
             image[at + 0x14] = 0x74;
+            image[at + 0x15] = 0x2A;
             image[at + 0x3B] = 0xE8;
+            image[at + 0x40] = 0xC7; image[at + 0x41] = 0x83;
+            Put32(image, at + 0x42, 0x27218);
         }
         Assert.Null(SpotTableResolver.FindPitSpeedRule(image));
         Gate(0x1100);
@@ -26,6 +29,86 @@ public sealed class SpotTableResolverTests
         image[0x1500] = 0;
         image[0x1100 + 0x3B] = 0;
         Assert.Null(SpotTableResolver.FindPitSpeedRule(image));
+    }
+
+    [Theory]
+    [InlineData(0x27220, 0x48)]
+    [InlineData(0x27300, 0x60)]
+    public void Pit_speed_rule_follows_field_and_branch_changes_and_requires_agreeing_clear(int field, int clear)
+    {
+        var image = MappedImage();
+        const int at = 0x1200;
+        new byte[] { 0xF3, 0x0F, 0x10, 0x8B }.CopyTo(image, at);
+        Put32(image, at + 4, field);
+        new byte[] { 0x0F, 0x2F, 0xCA, 0x76 }.CopyTo(image, at + 8);
+        image[at + 12] = (byte)(clear - 13);
+        image[at + 13] = 0x83; image[at + 14] = 0x3D;
+        Put32(image, at + 15, 0x3200 - (at + 20));
+        image[at + 20] = 0x74; image[at + 21] = (byte)(clear - 22);
+        image[at + clear - 5] = 0xE8;
+        image[at + clear] = 0xC7; image[at + clear + 1] = 0x83;
+        Put32(image, at + clear + 2, field);
+        Assert.Equal(0x3200u, SpotTableResolver.FindPitSpeedRule(image)?.FlagRulesRva);
+        Put32(image, at + clear + 2, field + 8);
+        Assert.Null(SpotTableResolver.FindPitSpeedRule(image));
+        Put32(image, at + clear + 2, field);
+        image[at + 21]++;
+        Assert.Null(SpotTableResolver.FindPitSpeedRule(image));
+        image[at + 21] = 0x80;
+        Assert.Null(SpotTableResolver.FindPitSpeedRule(image));
+    }
+
+    [Theory]
+    [InlineData(0x1100, 0x1180, 0x3200)]
+    [InlineData(0x2100, 0x2150, 0x3800)]
+    public void Tuning_consumers_follow_code_and_data_relocation_without_matching_values(int yaw, int search, int block)
+    {
+        var image = MappedImage();
+        TuningReaders(image, yaw, search, block);
+        // All values deliberately differ from the old constant-run signature.
+        new float[] { 0.65f, 0.2f, 2f, 30f, 50f, 1f }.SelectMany(BitConverter.GetBytes)
+            .ToArray().CopyTo(image, block);
+        Assert.Equal((uint)block, SpotTableResolver.FindTuningBlock(image));
+        Put32(image, search + 21, block + 12 - (search + 25));
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+        TuningReaders(image, yaw, search, block);
+        Put32(image, yaw + 4, block + 12 - (yaw + 8));
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+    }
+
+    [Fact]
+    public void Tuning_consumers_refuse_missing_duplicate_non_data_and_out_of_section_matches()
+    {
+        var image = MappedImage();
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+        TuningReaders(image, 0x1100, 0x1180, 0x3200);
+        TuningReaders(image, 0x2100, 0x2180, 0x3200);
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+        image[0x2100] = 0;
+        Assert.Equal(0x3200u, SpotTableResolver.FindTuningBlock(image));
+        TuningReaders(image, 0x1100, 0x1180, 0x2200);
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+        TuningReaders(image, 0x1100, 0x1180, 0x4FF0);
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+        image = MappedImage();
+        TuningReaders(image, 0x2F80, 0x2FF0, 0x3200);
+        Assert.Null(SpotTableResolver.FindTuningBlock(image));
+    }
+
+    private static void TuningReaders(byte[] image, int yaw, int search, int block)
+    {
+        new byte[] { 0xF3, 0x0F, 0x10, 0x0D }.CopyTo(image, yaw);
+        Put32(image, yaw + 4, block + 16 - (yaw + 8));
+        new byte[] { 0x0F, 0x28, 0xC6, 0xF3, 0x0F, 0x59, 0x0D }.CopyTo(image, yaw + 8);
+        new byte[] { 0x45, 0x0F, 0x28, 0xDA, 0xF3, 0x44, 0x0F, 0x59, 0x1D }.CopyTo(image, yaw + 19);
+        Put32(image, yaw + 28, block + 20 - (yaw + 32));
+        new byte[] { 0xF3, 0x0F, 0x59, 0x3D }.CopyTo(image, search);
+        Put32(image, search + 4, block + 8 - (search + 8));
+        new byte[] { 0xF3, 0x0F, 0x59, 0x35 }.CopyTo(image, search + 8);
+        Put32(image, search + 12, block - (search + 16));
+        new byte[] { 0xF3, 0x44, 0x0F, 0x59, 0x0D }.CopyTo(image, search + 16);
+        Put32(image, search + 21, block + 4 - (search + 25));
+        new byte[] { 0x0F, 0x2F, 0xF7, 0x77, 0x69 }.CopyTo(image, search + 25);
     }
 
     [Theory]

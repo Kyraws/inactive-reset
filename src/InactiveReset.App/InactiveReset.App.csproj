@@ -6,6 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>InactiveReset.App</RootNamespace>
     <AssemblyName>inactive-reset-ui</AssemblyName>
+    <AssemblyName Condition="'$(ExperimentalUi)' == 'true'">inactive-reset-lab</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
     <!--
@@ -13,12 +14,14 @@
       These drive the Properties dialog and Task Manager, where users read it.
     -->
     <Product>Inactive Reset</Product>
+    <Product Condition="'$(ExperimentalUi)' == 'true'">Inactive Reset Lab 02</Product>
     <AssemblyTitle>Inactive Reset</AssemblyTitle>
 
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DefineConstants Condition="'$(ExperimentalUi)' == 'true'">$(DefineConstants);EXPERIMENTAL_UI</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

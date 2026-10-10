@@ -30,20 +30,70 @@ public static class SpotTableResolver
     {
         if (image.Length < 0x1000 || image.Length > 0x20000000 ||
             !TrySections(image, out var data, out var code)) return null;
-        ReadOnlySpan<byte> speedGate = [
-            0xF3, 0x0F, 0x10, 0x8B, 0x18, 0x72, 0x02, 0x00,
-            0x0F, 0x2F, 0xCA, 0x76, 0x33, 0x83, 0x3D ];
+        ReadOnlySpan<byte> speedLoad = [0xF3, 0x0F, 0x10, 0x8B];
+        ReadOnlySpan<byte> speedCompare = [0x0F, 0x2F, 0xCA, 0x76];
         PitSpeedRuleCandidate? found = null;
         foreach (var section in code)
-        for (var at = (int)section.Start; at + 0x40 <= section.End; at++)
+        for (var at = (int)section.Start; at + 22 <= section.End; at++)
         {
-            if (!image.Slice(at, speedGate.Length).SequenceEqual(speedGate) ||
-                image[at + 0x13] != 0 || image[at + 0x14] != 0x74 ||
-                image[at + 0x3B] != 0xE8 ||
+            if (!image.Slice(at, 4).SequenceEqual(speedLoad) ||
+                !image.Slice(at + 8, 4).SequenceEqual(speedCompare) ||
+                image[at + 13] != 0x83 || image[at + 14] != 0x3D ||
+                image[at + 19] != 0 || image[at + 20] != 0x74 ||
                 !TryRip(image, at + 0x0D, 2, 7, out var flag) ||
                 !InData(data, flag, 4)) continue;
+            // Both exits bypass the penalty call and clear the same field that was read.
+            var clear = at + 13 + (sbyte)image[at + 12];
+            var field = BinaryPrimitives.ReadUInt32LittleEndian(image.Slice(at + 4, 4));
+            if (clear != at + 22 + (sbyte)image[at + 21] || clear < at + 27 ||
+                clear + 10 > section.End || image[clear - 5] != 0xE8 ||
+                image[clear] != 0xC7 || image[clear + 1] != 0x83 ||
+                field is < 0x20 or > 0x50000 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(image.Slice(clear + 2, 4)) != field ||
+                BinaryPrimitives.ReadUInt32LittleEndian(image.Slice(clear + 6, 4)) != 0) continue;
             if (found is not null) return null;
             found = new PitSpeedRuleCandidate(flag, (uint)at);
+        }
+        return found;
+    }
+
+    /// <summary>Resolve the tuning block from its search and yaw consumers, independent of values.</summary>
+    public static uint? FindTuningBlock(ReadOnlySpan<byte> image)
+    {
+        if (image.Length < 0x1000 || image.Length > 0x20000000 ||
+            !TrySections(image, out var data, out var code)) return null;
+        ReadOnlySpan<byte> maxMultiply = [0xF3, 0x0F, 0x59, 0x3D];
+        ReadOnlySpan<byte> startMultiply = [0xF3, 0x0F, 0x59, 0x35];
+        ReadOnlySpan<byte> stepMultiply = [0xF3, 0x44, 0x0F, 0x59, 0x0D];
+        ReadOnlySpan<byte> searchCompare = [0x0F, 0x2F, 0xF7, 0x77];
+        ReadOnlySpan<byte> yawLoad = [0xF3, 0x0F, 0x10, 0x0D];
+        ReadOnlySpan<byte> yawConvert = [0x0F, 0x28, 0xC6, 0xF3, 0x0F, 0x59, 0x0D];
+        ReadOnlySpan<byte> yawScale = [0x45, 0x0F, 0x28, 0xDA, 0xF3, 0x44, 0x0F, 0x59, 0x1D];
+        uint? found = null;
+        foreach (var section in code)
+        for (var at = (int)section.Start; at + 30 <= section.End; at++)
+        {
+            if (!image.Slice(at, 4).SequenceEqual(maxMultiply) ||
+                !image.Slice(at + 8, 4).SequenceEqual(startMultiply) ||
+                !image.Slice(at + 16, 5).SequenceEqual(stepMultiply) ||
+                !image.Slice(at + 25, 4).SequenceEqual(searchCompare) ||
+                !TryRip(image, at, 4, 8, out var maximum) ||
+                !TryRip(image, at + 8, 4, 8, out var start) ||
+                !TryRip(image, at + 16, 5, 9, out var step) ||
+                !InData(data, start, 24) || maximum != start + 8 || step != start + 4) continue;
+            var yawReaders = 0;
+            for (var yaw = Math.Max((int)section.Start, at - 0x100); yaw + 32 <= at; yaw++)
+            {
+                if (!image.Slice(yaw, 4).SequenceEqual(yawLoad) ||
+                    !image.Slice(yaw + 8, 7).SequenceEqual(yawConvert) ||
+                    !image.Slice(yaw + 19, 9).SequenceEqual(yawScale) ||
+                    !TryRip(image, yaw, 4, 8, out var degrees) || degrees != start + 16 ||
+                    !TryRip(image, yaw + 23, 5, 9, out var scale) || scale != start + 20) continue;
+                yawReaders++;
+            }
+            if (yawReaders == 0) continue;
+            if (yawReaders != 1 || found is not null) return null;
+            found = start;
         }
         return found;
     }

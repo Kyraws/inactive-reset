@@ -1,51 +1,20 @@
 namespace InactiveReset.Ui;
 
-/// <summary>Self-contained local control panel, shared by the desktop host and CLI.</summary>
+/// <summary>Practice workspace inside the shared application shell.</summary>
 internal static class Page
 {
     public const string Html = """
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Inactive Reset</title><style>
-
-:root{color-scheme:dark;--bg:#17191d;--card:#202329;--field:#191c21;--ink:#eef0f3;--muted:#b3bbc6;--line:#414750;--accent:#dda177;--accent-ink:#2b1b12;--good:#99d8b4;--bad:#ff9da3;--warn:#f2c87a}
-*{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:12px/1.35 'Segoe UI',system-ui,sans-serif}
-button,input,select{font:inherit}button,select,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}[hidden]{display:none!important}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.banner{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);flex-shrink:0}.brand{font-weight:650;font-size:13px}.spacer{flex:1}.actions{display:flex;gap:6px}
-main{padding:10px 12px 12px;display:grid;grid-template-columns:210px minmax(0,1fr);grid-template-rows:28px minmax(0,1fr);gap:9px;flex:1;min-height:0;min-width:0}
-.session-card{grid-column:1/-1;display:flex;align-items:center;gap:8px;min-width:0}.session{display:flex;gap:10px;align-items:center;flex:1;min-width:0}.session strong,.session-car{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.session strong{max-width:48%;font-size:12px}.session-car{flex:1;font-size:11px;color:var(--muted)}.session-state,#status{white-space:nowrap;color:var(--muted);font-size:10px;flex-shrink:0}.session-state{border:1px solid var(--line);border-radius:3px;padding:3px 6px}
-.card{padding:9px;background:var(--card);border:1px solid var(--line);border-radius:4px;min-width:0;min-height:0}h2,p{margin:0}h2{font-size:12px;font-weight:650;margin-bottom:8px}
-.checkpoints-card{display:flex;flex-direction:column;grid-column:1;grid-row:2;overflow:hidden}
-input,select{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:3px;padding:5px 7px;min-width:0}input[type=text]{width:0;flex:1}input[type=number]{width:64px}input[type=checkbox]{accent-color:var(--accent);margin:0;flex-shrink:0}
-#cp{flex:1;min-height:0;width:100%;padding:3px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) var(--field);overscroll-behavior:contain}#cp option{padding:5px 6px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;line-height:18px;border-radius:2px}#cp option:checked{background:var(--accent);color:var(--accent-ink)}
-.capture-area{border-top:1px solid var(--line);margin-top:8px;padding-top:8px;flex-shrink:0}.field{display:flex;gap:5px;align-items:center;min-width:0}.capture-area .act{flex-shrink:0}.hint{margin-top:5px;font-size:10px;color:var(--muted);overflow-wrap:anywhere}.hint:empty{display:none}
-.work-area{grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;min-height:0}
-.placement-strip{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0}#destinationName{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act{padding:5px 10px;background:var(--field);border:1px solid var(--line);color:var(--ink);font-size:11px;border-radius:3px;white-space:nowrap}.act:hover:not(:disabled){border-color:var(--accent)}.act.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:650}
-.controls-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px;flex-shrink:0}
-#tyreSetup{padding:0;margin:0;border:0;min-width:0}#tyreSetup:disabled{opacity:.55}.tyre-settings{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}.tyre-settings th{font-weight:500;color:var(--muted);text-align:left;padding:0 3px 4px}.tyre-settings th:first-child{width:30px}.tyre-settings th:nth-child(2){width:38%}.tyre-settings td{padding:3px}.tyre-settings input[type=number]{width:100%;padding:4px 5px}.tyre-settings td:nth-child(3){width:22px;text-align:center}.tyre-settings tr>th[scope=row]{padding-top:5px;color:var(--ink)}
-.checkbox-row{display:flex;align-items:center;gap:6px;font-size:11px;margin:9px 0 7px}#tyreSummary{line-height:1.4}#tyreResetHint,#placeHint{display:none}
-.toggle,.rule-status{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;font-size:11px}.toggle{border:0;background:transparent;color:var(--ink);text-align:left}.state,.rule-status span{font-size:10px;color:var(--muted)}.rules-note{font-size:10px;color:var(--muted);margin-top:7px}
-.activity-card{display:flex;flex-direction:column;flex:1;margin-top:8px;overflow:hidden}.activity-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0}.activity-head h2{margin:0}.phasebar{display:flex;align-items:flex-start;gap:8px;margin:7px 0;flex-shrink:0;min-width:0}.phase{font-size:9px;white-space:nowrap;padding:3px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted)}.phase.armed{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.phase.bad{color:var(--bad)}.phase.live{color:var(--accent)}.phasemsg{font-size:11px;min-width:0;overflow-wrap:anywhere}
-#log{margin:0;padding-top:7px;border-top:1px solid var(--line);min-height:0;flex:1;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.6 Consolas,monospace;scrollbar-width:thin;scrollbar-color:var(--line) var(--card);overscroll-behavior:contain}
-.toast{position:fixed;right:12px;bottom:12px;max-width:min(460px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;white-space:pre-wrap;padding:12px 15px;border:1px solid var(--bad);background:#30272a;color:var(--ink);border-radius:4px;z-index:10;box-shadow:0 8px 30px #0008}
-@media(max-width:700px){main{grid-template-columns:175px minmax(0,1fr)}.session-car,#status{display:none}#tyreSetup{grid-template-columns:1fr}.controls-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
-
-</style></head><body>
-
-<header class="banner"><span class="brand">Inactive Reset</span><span class="spacer"></span><div class="actions"><button class="act" id="launchDirect" onclick="launch('direct')" title="Starts LMU without EAC for local sessions">Launch game</button><button class="act" id="launchEac" onclick="launch('eac')" title="Use EAC for online racing; Inactive Reset will not attach">Launch with EAC</button></div></header>
-<main>
-<section class="session-card" aria-label="Current session"><div class="session" id="session"><strong>Launch the game to begin</strong></div><span id="status"></span></section>
-<section class="card checkpoints-card"><h2 id="destinationsLabel">Destinations</h2><select id="cp" size="12" aria-labelledby="destinationsLabel" onchange="updateDestination()"></select><div class="capture-area"><div class="field"><input id="capName" type="text" placeholder="Checkpoint name" aria-label="Capture name" autocomplete="off" spellcheck="false"><button class="act" id="capBtn" onclick="capture()">Capture</button></div><p class="hint" id="capHint"></p></div></section>
-<div class="work-area">
-<div class="placement-strip"><span id="destinationName">Choose a destination</span><button class="act primary" id="placeBtn" onclick="place()">Place</button></div><p id="placeHint"></p>
-<div class="controls-grid">
-<section class="card tyres-card"><h2>Tyres</h2><fieldset id="tyreSetup"><table class="tyre-settings"><thead><tr><th>Tyre</th><th>Condition %</th><th colspan="2">Initial heat °C</th></tr></thead><tbody><tr><th scope="row">FL</th><td><input id="tyreConditionFL" aria-label="Front left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFL" aria-label="Set front left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFL" aria-label="Front left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">FR</th><td><input id="tyreConditionFR" aria-label="Front right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFR" aria-label="Set front right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFR" aria-label="Front right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RL</th><td><input id="tyreConditionRL" aria-label="Rear left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRL" aria-label="Set rear left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRL" aria-label="Rear left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RR</th><td><input id="tyreConditionRR" aria-label="Rear right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRR" aria-label="Set rear right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRR" aria-label="Rear right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr></tbody></table></fieldset><label class="checkbox-row"><input id="freshOnPlace" type="checkbox" onchange="updateTyreSettings()">Apply on placement</label><button class="act" id="tyreResetBtn" onclick="resetTyres()" disabled>Prepare tyres</button><p class="hint" id="tyreSummary"></p><p id="tyreResetHint"></p></section>
-<section class="card penalties-card"><h2>Rules</h2><div id="penalties"></div><div class="rule-status"><span>Flag Rules</span><span id="flagStatus">Unknown</span></div><p class="rules-note">Flag Rules are managed during pit cleanup. Keep the pit limiter on until CLEAR.</p></section>
-</div>
-<section class="card activity-card" aria-label="Activity and operation progress"><div class="activity-head"><h2>Activity</h2><button class="act" id="cancelBtn" onclick="cancelPlacement()" disabled>Cancel</button></div><div class="phasebar"><span class="phase" id="phase">IDLE</span><span class="phasemsg" id="phaseMsg" role="status" aria-live="polite" aria-atomic="true">Load a Practice session.</span></div><pre id="log" aria-label="Activity log"></pre></section>
-</div>
-</main><div id="notice" class="toast" role="alert" hidden></div>
-
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Practice tools · Inactive Reset</title><link rel="stylesheet" href="/app.css"></head><body>
+<header class="topbar"><a class="brand" href="/session"><span class="brand-mark">IR</span>Inactive Reset</a><nav aria-label="Workspaces"><a class="workspace" href="/session">Session setup</a><a class="workspace active" href="/" aria-current="page">Practice tools</a></nav><span class="connection" id="status">Connecting to LMU</span><button class="button" id="launchDirect" onclick="launch('direct')">Launch local play</button></header>
+<div class="workspace-grid practice-workspace">
+<aside class="sidebar checkpoints-card"><p class="eyebrow">PRACTICE LIBRARY</p><h2 id="destinationsLabel">Checkpoints</h2><select id="cp" size="12" aria-labelledby="destinationsLabel" onchange="updateDestination()"></select><div class="capture-area"><label class="input-label" for="capName">Save current position</label><input id="capName" type="text" placeholder="Checkpoint name" autocomplete="off" spellcheck="false"><button class="button" id="capBtn" onclick="capture()">Capture checkpoint</button><p class="hint" id="capHint"></p></div><details class="online-launch"><summary>Online launch</summary><p class="small-note">Practice tools are unavailable with EAC.</p><button class="button" id="launchEac" onclick="launch('eac')">Launch with EAC</button></details></aside>
+<main class="editor practice-editor"><div class="page-heading"><p class="eyebrow">MAKE EVERY LAP COUNT</p><h1>Practice tools</h1><p>Prepare your tyres and return to a saved point on this track.</p></div><div class="controls-grid"><section class="settings-card practice-card tyres-card"><h2>Tyres</h2><fieldset id="tyreSetup"><table class="tyre-settings"><thead><tr><th>Tyre</th><th>Condition %</th><th colspan="2">Initial heat °C</th></tr></thead><tbody><tr><th scope="row">FL</th><td><input id="tyreConditionFL" aria-label="Front left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFL" aria-label="Set front left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFL" aria-label="Front left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">FR</th><td><input id="tyreConditionFR" aria-label="Front right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFR" aria-label="Set front right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFR" aria-label="Front right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RL</th><td><input id="tyreConditionRL" aria-label="Rear left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRL" aria-label="Set rear left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRL" aria-label="Rear left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RR</th><td><input id="tyreConditionRR" aria-label="Rear right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRR" aria-label="Set rear right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRR" aria-label="Rear right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr></tbody></table></fieldset><label class="checkbox-row"><input id="freshOnPlace" type="checkbox" onchange="updateTyreSettings()">Apply on placement</label><button class="button" id="tyreResetBtn" onclick="resetTyres()" disabled>Prepare tyres</button><p class="hint" id="tyreSummary"></p><p id="tyreResetHint"></p></section>
+<section class="settings-card practice-card penalties-card"><h2>Rules</h2><div id="penalties"></div><div class="rule-status"><span>Flag Rules</span><span id="flagStatus">Unknown</span></div><p class="rules-note">Flag Rules are managed during pit cleanup. Keep the pit limiter on until CLEAR.</p></section>
+</div><section class="settings-card practice-card activity-card" aria-label="Activity and operation progress"><div class="activity-head"><h2>Activity</h2></div><pre id="log" aria-label="Activity log"></pre></section>
+</main>
+<aside class="summary" aria-label="Practice summary"><p class="eyebrow">CURRENT SESSION</p><h2>Your practice</h2><div class="selection-summary session" id="session"><strong>Launch local play to begin</strong></div><div class="destination-summary"><p class="eyebrow">SELECTED CHECKPOINT</p><h3 id="destinationName">Choose a destination</h3></div><div class="launch-area"><p class="eyebrow">NEXT STEP</p><div class="phasebar"><span class="phase" id="phase">IDLE</span><span class="phasemsg" id="phaseMsg" role="status" aria-live="polite" aria-atomic="true">Load a Practice session.</span></div><button class="button cancel-operation" id="cancelBtn" onclick="cancelPlacement()" disabled hidden>Cancel operation</button><button class="button primary start-button" id="placeBtn" onclick="place()" disabled>Place checkpoint <span aria-hidden="true">↗</span></button><p class="launch-hint" id="placeHint">Load a Practice session to use a checkpoint.</p><a class="practice-link" href="/session">Edit session setup <span aria-hidden="true">→</span></a><p class="scope-note">Placement and tyre preparation require an offline Practice session. Return to the garage before preparing.</p></div></aside>
+</div><div id="notice" class="error-bar" role="alert" hidden><span id="noticeText"></span><button aria-label="Dismiss error" onclick="document.getElementById('notice').hidden=true">×</button></div>
 <script>
 
 'use strict';
@@ -55,10 +24,23 @@ function esc(s) {
     .replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// Keep preparation choices when moving between the application's workspaces.
+let practicePreferences = {};
+try { practicePreferences = JSON.parse(sessionStorage.getItem('practice-preferences') || '{}'); } catch {}
+function savePracticePreferences() {
+  const wheels = {};
+  for (const wheel of TYRE_WHEELS) wheels[wheel] = {
+    condition:document.getElementById('tyreCondition'+wheel).value,
+    heat:document.getElementById('tyreTemperature'+wheel).value,
+    enabled:document.getElementById('tyreTemperatureEnabled'+wheel).checked
+  };
+  practicePreferences = {wheels,apply:document.getElementById('freshOnPlace').checked,checkpoint:document.getElementById('cp').value || practicePreferences.checkpoint};
+  try { sessionStorage.setItem('practice-preferences',JSON.stringify(practicePreferences)); } catch {}
+}
 let noticeTimer;
 function showNotice(message) {
   const el = document.getElementById('notice');
-  el.textContent = message;
+  document.getElementById('noticeText').textContent = message;
   el.hidden = false;
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => { el.hidden = true; }, 10000);
@@ -78,7 +60,9 @@ async function api(path, body) {
 }
 
 function renderStatus(s) {
-  document.getElementById('status').textContent = s.connected ? 'Local Practice' : 'Not connected';
+  const status = document.getElementById('status');
+  status.textContent = s.game?.protected ? 'EAC launch · tools unavailable' : s.connected ? 'Local play · ' + ((s.inGarage ?? s.tyreRules?.inGarage) === true ? 'garage' : 'session loaded') : s.game?.running ? 'Waiting for LMU' : 'LMU not running';
+  status.className = 'connection' + (s.connected ? ' ready' : '');
 }
 
 async function launch(mode) {
@@ -119,11 +103,12 @@ function renderPenalties(s) {
 function updateDestination() {
   const select = document.getElementById('cp');
   document.getElementById('destinationName').textContent = select.options[select.selectedIndex]?.textContent || 'Choose a destination';
+  savePracticePreferences();
 }
 
 function renderCheckpoints(s) {
   const select = document.getElementById('cp');
-  const chosen = select.value;
+  const chosen = select.value || practicePreferences.checkpoint;
   const scroll = select.scrollTop;
   const sameTrack = select.dataset.track === (s.session?.track || '').toLowerCase();
   const session = s.session;
@@ -211,11 +196,12 @@ async function refresh() {
 
   const garage = s.inGarage ?? s.tyreRules?.inGarage;
   document.getElementById('placeBtn').disabled = !!s.busy || !s.connected || !s.session || garage !== true || !document.getElementById('cp').value;
-  document.getElementById('placeHint').textContent = s.busy ? 'Follow the next action above. You can cancel the pending operation.' :
+  document.getElementById('placeHint').textContent = s.busy ? 'Follow the Activity instructions. You can cancel the pending operation.' :
     !s.session ? 'Load a Practice session to use a checkpoint.' : garage !== true ? 'Return to the garage to prepare placement.' :
     !document.getElementById('cp').value ? 'Save a position on this track to create a destination.' : 'Prepare here, then press Drive in LMU when prompted.';
   document.getElementById('capBtn').disabled = !!s.busy || !s.session || !s.session.capturable;
   document.getElementById('cancelBtn').disabled = !s.busy;
+  document.getElementById('cancelBtn').hidden = !s.busy;
   document.getElementById('tyreSetup').disabled = !!s.busy;
   document.getElementById('freshOnPlace').disabled = !!s.busy || !s.tyreRules;
   if (!s.tyreRules) document.getElementById('freshOnPlace').checked = false;
@@ -284,6 +270,7 @@ function updateTyreSettings() {
       (w.temperatureCelsius === null ? 'game' : w.temperatureCelsius + '°C')).join(' · ');
   } catch (e) { description = e.message; }
   document.getElementById('tyreSummary').textContent = description;
+  savePracticePreferences();
 }
 
 function tyreOptions() {
@@ -325,6 +312,14 @@ function schedule(ms) {
   timer = setInterval(refresh, ms);
 }
 
+for (const wheel of TYRE_WHEELS) {
+  const saved = practicePreferences.wheels?.[wheel];
+  if (!saved) continue;
+  document.getElementById('tyreCondition'+wheel).value = saved.condition;
+  document.getElementById('tyreTemperature'+wheel).value = saved.heat;
+  document.getElementById('tyreTemperatureEnabled'+wheel).checked = !!saved.enabled;
+}
+document.getElementById('freshOnPlace').checked = !!practicePreferences.apply;
 updateTyreSettings();
 refresh();
 schedule(700);

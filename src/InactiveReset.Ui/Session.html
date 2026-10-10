@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Session setup · Inactive Reset</title><link rel="stylesheet" href="/app.css"><script src="/session.js" defer></script></head>
+<body>
+<header class="topbar"><a class="brand" href="/session"><span class="brand-mark">IR</span>Inactive Reset</a><nav aria-label="Workspaces"><a class="workspace active" href="/session" aria-current="page">Session setup</a><a class="workspace" href="/">Practice tools</a></nav><span class="connection" id="connection">Connecting to LMU</span><button class="button" id="launchButton">Launch local play</button></header>
+<div class="workspace-grid">
+  <aside class="sidebar"><p class="eyebrow">SESSION BUILDER</p><nav id="sectionNav" aria-label="Session settings">
+    <button data-section="selection" class="section-link active" aria-current="true"><span>01</span>Car &amp; track</button>
+    <button data-section="sessions" class="section-link"><span>02</span>Sessions</button>
+    <button data-section="weather" class="section-link"><span>03</span>Weather</button>
+    <button data-section="grid" class="section-link"><span>04</span>Opponent grid</button>
+    <button data-section="rules" class="section-link"><span>05</span>Rules &amp; assists</button>
+  </nav><div class="sidebar-bottom"><span class="save-dot" id="saveDot"></span><span id="saveStatus" role="status" aria-live="polite">Waiting for LMU</span><p>Settings are saved directly to the game.</p><button class="text-button" id="reloadButton">Refresh from LMU</button></div></aside>
+  <main class="editor" id="editor"><div class="page-heading"><p class="eyebrow" id="sectionEyebrow">YOUR NEXT SESSION</p><h1 id="sectionTitle">Car &amp; track</h1><p id="sectionDescription">Choose where you drive and what you drive.</p></div>
+    <div class="banner" id="stateBanner" role="status" hidden></div>
+    <div class="empty-state" id="emptyState"><span class="empty-icon" aria-hidden="true">↗</span><h2>Bring LMU to the main menu</h2><p>Launch local play, then dismiss the “Press any button” prompt in LMU. Your cars, tracks and settings will appear here.</p><button class="button primary" id="emptyLaunch">Launch local play</button></div>
+    <fieldset id="editorFields" hidden><legend class="sr-only">Session settings</legend><div id="sectionContent"></div></fieldset>
+  </main>
+  <aside class="summary" aria-label="Session summary"><p class="eyebrow">READY WHEN YOU ARE</p><h2>Your session</h2><div id="selectionSummary" class="selection-summary"><p class="muted">Waiting for your selection</p></div><div id="sessionSummary"></div><div class="summary-meta" id="summaryMeta"></div><div class="launch-area"><label class="menu-confirm"><input type="checkbox" id="menuConfirmed"><span>I have dismissed the startup prompt and can see LMU’s main menu.</span></label><button class="button primary start-button" id="startButton" disabled>Start session <span aria-hidden="true">↗</span></button><p class="launch-hint" id="launchHint">Open LMU to set up a session.</p><div id="loadProgress" hidden><progress id="loadProgressBar" max="100"></progress><p id="loadProgressText" role="status" aria-live="polite"></p><button class="text-button" id="stopMonitoring">Stop monitoring</button></div><a class="practice-link" href="/">Open practice tools <span aria-hidden="true">→</span></a><p class="scope-note">Checkpoint placement and tyre preparation require an offline Practice session.</p></div></aside>
+</div>
+<div class="error-bar" id="errorBar" role="alert" hidden><span id="errorText"></span><button aria-label="Dismiss error" id="dismissError">×</button></div>
+<dialog id="menuDialog"><h2>Return to LMU’s main menu?</h2><p>This ends the loaded session. You can then change its setup and start a new one.</p><div class="dialog-actions"><button class="button" id="keepSession">Keep session</button><button class="button primary" id="returnMenu">Return to menu</button></div></dialog>
+<dialog id="defaultsDialog"><h2>Use this track’s defaults?</h2><p>This replaces the current session settings, weather and opponent grid with LMU’s defaults for this track.</p><div class="dialog-actions"><button class="button" id="keepSettings">Keep settings</button><button class="button primary" id="applyDefaults">Use track defaults</button></div></dialog>
+</body></html>

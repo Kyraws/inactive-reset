@@ -11,7 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Explicit tracked fixtures; never copy generated local *.auto.json caches. -->
+    <None Include="..\..\offsets\0F6DCAC1.json;..\..\offsets\1AC2F605.json;..\..\offsets\tyre-physics-66942337.json"
+          Link="offsets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\InactiveReset.Core\InactiveReset.Core.csproj" />
+    <ProjectReference Include="..\..\src\InactiveReset.Ui\InactiveReset.Ui.csproj" />
     <!--
       The maintainer tool is referenced for tests only. Its re-derivation
       techniques decide whether a published profile is right, which makes them

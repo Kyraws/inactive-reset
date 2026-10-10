@@ -8,6 +8,8 @@ an offline test does not establish live compatibility.
 | --- | --- |
 | [Project README](../README.md) | Installation and the practice workflow |
 | [Architecture](ARCHITECTURE.md) | Components, discovery, placement, and data flow |
+| [Local sessions](SESSIONS.md) | Session editor, launch workflow and startup prompt |
+| [Experimental Lab](LAB.md) | Alternative UI, preserved classic version and comparison workflow |
 | [Placement and rules](PLACEMENT.md) | Current sequence, restoration, and lap timing |
 | [Tyres](TYRES.md) | Live tyre view, physics rules and build-specific engine evidence |
 | [Status](STATUS.md) | Known implementation gaps and validation limits |

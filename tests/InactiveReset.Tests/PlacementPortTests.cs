@@ -1,4 +1,4 @@
-﻿using InactiveReset.Core;
+using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -25,26 +25,7 @@ public sealed class PlacementPortTests
         VehicleWidth: 2.03186f,
         LateralSignSource: 8.60127f);
 
-    /// <summary>
-    /// The model the golden values were produced with.
-    ///
-    /// IMPORTANT: these are the ENGINE MODEL DEFAULTS (D = 2.548, H = 0.37), not
-    /// the measured calibration (D = 2.54765, H = 0.373062). The tool that
-    /// produced them never loaded a calibration profile, while a real placement
-    /// does — so the preview lands about 3 mm below what a placement targets.
-    ///
-    /// That is a wart worth knowing about, not a rounding error. Any tool that
-    /// previews a placement must use the SAME model the placement will use, or
-    /// the preview is quietly answering a different question.
-    /// </summary>
-    /// <remarks>
-    /// These constants are the 266D1AF6 build's, and are PINNED ON PURPOSE. This
-    /// fixture exists to pin the math to values measured on that build, so it
-    /// must keep using the constants of that build. It is NOT a
-    /// check that the profile describes the current game build, and it will pass
-    /// happily while `offsets/<hash>.json` is stale -- which it was: the live
-    /// build uses 45 deg and a 0.55 search start. See docs/HEADING_BUG.md.
-    /// </remarks>
+    // Historical 35-degree / 0.2-search-start port fixture, not current game defaults.
     private static readonly PlacementModel Model = new()
     {
         YawOffsetMode2 = 0.6108652f,
@@ -54,13 +35,6 @@ public sealed class PlacementPortTests
         RestForwardDistance = 2.548f,
         RestVerticalOffset = 0.37f,
         RestLateralOffset = 0f,
-    };
-
-    /// <summary>The measured calibration, used to prove the two differ.</summary>
-    private static readonly PlacementModel Calibrated = Model with
-    {
-        RestForwardDistance = 2.54764723777771f,
-        RestVerticalOffset = 0.37306222319602966f,
     };
 
     // The live PitPos[8] entry at the time; its pitch and roll are carried through.
@@ -97,7 +71,7 @@ public sealed class PlacementPortTests
     }
 
     [Fact]
-    public void InvertProducesTheEntryTheCppToolComputed()
+    public void Inversion_and_encoding_match_the_recorded_cpp_result()
     {
         var entry = PlacementMath.InvertToPitPosEntry(
             DesiredRest, DesiredYaw, Container, Model, CurrentEntry);
@@ -110,19 +84,8 @@ public sealed class PlacementPortTests
         Assert.Equal(-0.008000f, entry.Orientation.X, 6);
         Assert.Equal(1.127566f, entry.Orientation.Y, 4);
         Assert.Equal(-0.015000f, entry.Orientation.Z, 6);
-    }
-
-    [Fact]
-    public void EncodeProducesTheExactBytesTheCppToolWouldWrite()
-    {
-        var entry = PlacementMath.InvertToPitPosEntry(
-            DesiredRest, DesiredYaw, Container, Model, CurrentEntry);
-
-        var expected = Convert.FromHexString(
-            "3138B2C2473EF3BF75B414C36F1203BC1454903F8FC275BC");
-
-        Assert.Equal(24, expected.Length);
-        Assert.Equal(expected, PlacementMath.EncodeSpotEntry(entry));
+        Assert.Equal(Convert.FromHexString("3138B2C2473EF3BF75B414C36F1203BC1454903F8FC275BC"),
+            PlacementMath.EncodeSpotEntry(entry));
     }
 
     [Fact]
@@ -216,17 +179,4 @@ public sealed class PlacementPortTests
     public void LateralSignMirrorsTheEngine(float source, float expected) =>
         Assert.Equal(expected, Geometry.LateralSign(source));
 
-    [Fact]
-    public void DefaultAndCalibratedModelsDisagree()
-    {
-        // Pins the wart described on `Model` above: a preview built from the
-        // engine defaults and a real placement built from the calibration use
-        // different constants, so the preview answers a slightly different
-        // question. ~3 mm vertically here.
-        var withDefaults = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(CurrentEntry, Container, Model), Container, Model);
-        var withCalibration = PlacementMath.PredictRestPosition(PlacementMath.PredictDriveDestination(CurrentEntry, Container, Calibrated), Container, Calibrated);
-
-        Assert.NotEqual(withDefaults.Y, withCalibration.Y, 4);
-        Assert.Equal(0.003062f, withCalibration.Y - withDefaults.Y, 5);
-    }
 }

@@ -14,4 +14,9 @@
     <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Session.*" LogicalName="InactiveReset.Ui.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="App.css" LogicalName="InactiveReset.Ui.App.css" />
+    <EmbeddedResource Include="Lab.*" LogicalName="InactiveReset.Ui.%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

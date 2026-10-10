@@ -178,6 +178,7 @@ switch ($Task) {
                 New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
                 Copy-Item -LiteralPath $guide.FullName -Destination $destination -Force
             }
+            Copy-Item -LiteralPath (Join-Path $root 'docs\media') -Destination (Join-Path $stage 'docs\media') -Recurse -Force
             foreach ($relative in 'tools\README.md', 'tools\observer\README.md',
                 'tools\reanchor-research\README.md', 'tools\reanchor-research\archive\README.md') {
                 $destination = Join-Path $stage $relative

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Session editor checks</title>
+<pre id="report">Running…</pre><iframe id="preview" style="width:1100px;height:720px;border:0"></iframe>
+<script>
+// Runs the production editor in a real DOM with a fake LMU API. No game writes.
+async function run() {
+  const [html,script,css]=await Promise.all(['Session.html','Session.js','App.css'].map(n=>fetch('../src/InactiveReset.Ui/'+n).then(r=>r.text())));
+  const frame=document.getElementById('preview');
+  const loaded=new Promise(resolve=>frame.onload=resolve);
+  frame.srcdoc=html.replace(/<script[^>]*><\/script>/,'').replace(/<link[^>]*>/,'<style>'+css+'</style>');
+  await loaded;
+  const d=frame.contentDocument,w=frame.contentWindow;
+  w.sessionStorage.removeItem('lmu-menu-confirmed-pid');
+  const setting=(value,text='')=>({currentValue:value,stringValue:text});
+  const initial={selection:{selectedCar:{id:'car',desc:'Team One',fullPathTree:'WEC 2026, GT3, BMW M4',isOwned:true},trackInfo:{id:'track',trackName:'Daytona',trackLength:'5.7',type:'Road Course'},classesSelection:['GT3'],fullGrid:false},settings:{SESSSET_Practice_Length:setting(60),SESSSET_Num_Opponents:setting(0),SESSSET_AI_Strength:setting(100,'100%'),SESSSET_AI_Aggression:setting(1,'Medium'),SESSSET_Finish_Criteria:setting(2,'Time'),SESSSET_race_time:setting(20),SESSSET_Race_Laps:setting(10),SESSSET_Grid_Position:setting(0,'Random'),SESSSET_weather:setting(4,'Scripted'),SESSSET_flag_rules:setting(2,'Full')},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:0,RACE:1},weather:{PRACTICE:{START:{WNV_SKY:setting(1,'Light clouds'),WNV_TEMPERATURE:setting(20,'20 °')}},QUALIFY:{},RACE:{}},assists:{DRIVEAIDS_auto_wipers:{...setting(1,'On'),minValue:0,maxValue:1,stepValue:1},DRIVEAIDS_steering_help:{...setting(0,'Off'),minValue:0,maxValue:3,stepValue:1}}};
+  const catalog={cars:[initial.selection.selectedCar,{id:'other',desc:'Team Two',fullPathTree:'WEC 2026, GT3, BMW M4',isOwned:true},{id:'locked',desc:'Locked',fullPathTree:'WEC 2026, Hypercar, Ferrari',isOwned:false}],tracks:[{id:'track',name:'Daytona',shortName:'Daytona',owned:true},{id:'locked-track',name:'Locked',shortName:'Locked',owned:false}]};
+  let state={state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_SETUP',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false},pid:123};
+  let posts=[],fail=false;
+  const fakeFetch=async(path,options)=>{
+    const body=options?.body?JSON.parse(options.body):null;
+    if(body){posts.push(body);if(fail)return {ok:false,json:async()=>({error:'Fixture rejected change'})};}
+    const result=path.endsWith('/catalog')?catalog:path.endsWith('/state')?state:structuredClone(initial);
+    return {ok:true,json:async()=>result};
+  };
+  const ui=new w.Function('fetch','setInterval',script+'\nreturn {request,loadSetup,poll,switchSection,change,row,stepper,raceLengthSummary,setState(v){navigation=v;gameRunning=true;serverBusy=!!v.operationBusy;renderNavigation();}};')(fakeFetch,()=>0);
+  await ui.request('/api/session/setup');await ui.loadSetup();await ui.poll();ui.setState(state);
+  let count=0;const check=(v,m)=>{if(!v)throw Error(m);count++;};
+  check(d.getElementById('startButton').disabled,'Startup confirmation required');
+  d.getElementById('menuConfirmed').checked=true;d.getElementById('menuConfirmed').dispatchEvent(new w.Event('change',{bubbles:true}));
+  check(!d.getElementById('startButton').disabled,'Confirmed main menu enables start');
+  check(d.querySelectorAll('#carSelect option').length===2,'Only owned cars in team selection');
+  check(d.querySelector('#trackSelect option[value="locked-track"]').disabled,'Unowned track disabled');
+  ui.switchSection('sessions');
+  check(d.querySelector('[aria-label="Decrease Race laps"]').closest('fieldset').disabled,'Time mode disables lap count');
+  const numeric=JSON.parse(d.querySelector('[aria-label="Decrease Practice duration"]').dataset.change);
+  check(numeric.steps===-1,'Numeric decrement uses signed step');
+  initial.settings.SESSSET_Finish_Criteria=setting(3,'% Track Time');await ui.loadSetup();
+  check(ui.raceLengthSummary()==='20% track time','Percentage mode summary has correct units');
+  ui.switchSection('weather');
+  check(JSON.parse(d.querySelector('[aria-label="Decrease Sky"]').dataset.change).steps===-1,'Weather enum decrement uses signed step');
+  ui.switchSection('rules');
+  check(JSON.parse(d.querySelector('[aria-label="Decrease Flag Rules"]').dataset.change).steps===0,'Session enum decrement uses direction zero');
+  check(JSON.parse(d.querySelector('[aria-label="Increase Steering help"]').dataset.change).value===1,'Assist changes use absolute value');
+  const search=d.getElementById('settingSearch');search.focus();search.value='steering';search.dispatchEvent(new w.Event('input',{bubbles:true}));
+  check(d.activeElement.id==='settingSearch','Search keeps keyboard focus while filtering');
+  check(d.querySelectorAll('[data-change]').length===2,'Rule search filters other controls');
+  ui.setState({...state,operationBusy:true});check(d.getElementById('editorFields').disabled && d.getElementById('startButton').disabled,'Practice operation locks editing and launching');
+  check(!d.getElementById('stateBanner').hidden,'Busy operation has visible explanation');
+  ui.setState({...state,state:{...state.state,settingMode:'SETTING_MULTIPLAYER'}});check(d.getElementById('startButton').disabled,'Online mode cannot launch');
+  ui.setState(state);ui.switchSection('sessions');
+  fail=true;d.getElementById('value-SESSSET_Practice_Length').value='999';await ui.change({action:'setting',key:'SESSSET_Practice_Length',steps:1});
+  check(d.getElementById('value-SESSSET_Practice_Length').value==='60','Failed edit restores confirmed value');
+  check(!d.getElementById('errorBar').hidden,'Failed save has visible error');
+  check(!d.getElementById('editorFields').disabled,'Failed save releases editing lock');
+  ui.setState(state);d.getElementById('menuConfirmed').checked=true;d.getElementById('menuConfirmed').dispatchEvent(new w.Event('change',{bubbles:true}));
+  check(w.sessionStorage.getItem('lmu-menu-confirmed-pid')==='123','Startup confirmation is tied to current game process');
+  await ui.poll();check(d.getElementById('menuConfirmed').checked,'Current launch keeps confirmation through polling');
+  state.pid=124;await ui.poll();check(!d.getElementById('menuConfirmed').checked,'New game process clears startup confirmation');
+  ui.setState({...state,state:{...state.state,gameState:'GSTATE_DYN',navigationState:'NAV_EVENT',gameSession:'PRACTICE1'}});
+  check(d.getElementById('editorFields').disabled,'Loaded session locks setup');
+  check(!!d.querySelector('[data-dialog="menuDialog"]'),'Loaded session offers explicit return to menu');
+  document.getElementById('report').textContent='PASS: '+count+' session editor checks';
+}
+run().catch(e=>{document.getElementById('report').textContent='FAIL: '+e.stack;});
+</script></html>

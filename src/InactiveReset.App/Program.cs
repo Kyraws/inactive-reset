@@ -29,7 +29,7 @@ internal static class Program
             // a silently dead server would just look like an empty UI.
             var serving = Task.Run(() => server.RunAsync(cancellation.Token), cancellation.Token);
 
-            using var window = new MainWindow(server.Url);
+            using var window = new MainWindow(server.Url + (args.Contains("--classic") ? "session" : "lab"));
             var closing = false;
             var canClose = false;
             window.FormClosing += async (_, e) =>

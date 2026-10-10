@@ -24,8 +24,8 @@ public enum TunableSource
 /// Addresses come from the discovered profile. Values are read per placement
 /// and range-checked, with a checked profile snapshot as fallback. Bounds reject
 /// implausible values; they do not prove an address or placement model correct.
-/// Automatic discovery also depends on a known tuning-block value anchor, so
-/// a retune can require resolver changes before these live reads are reached.
+/// Automatic discovery identifies the tuning block through its search and yaw
+/// consumers, so changing the values alone does not prevent discovery.
 /// </summary>
 public sealed record EngineTunables
 {

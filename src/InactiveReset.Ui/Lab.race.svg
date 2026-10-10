@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 190" fill="none">
+ <defs>
+  <linearGradient id="rubber" x1="50" y1="30" x2="250" y2="170" gradientUnits="userSpaceOnUse"><stop stop-color="#42423e"/><stop offset=".36" stop-color="#171716"/><stop offset=".7" stop-color="#090909"/><stop offset="1" stop-color="#373732"/></linearGradient>
+  <linearGradient id="alloy" x1="120" y1="50" x2="230" y2="150" gradientUnits="userSpaceOnUse"><stop stop-color="#eee8d9"/><stop offset=".5" stop-color="#7e817b"/><stop offset="1" stop-color="#ddd9cd"/></linearGradient>
+  <pattern id="checks" width="16" height="16" patternUnits="userSpaceOnUse"><path fill="#e5decc" d="M0 0h8v8H0zM8 8h8v8H8z"/></pattern>
+ </defs>
+ <path d="M8 149h100M27 161h66M0 173h136" stroke="#ff5337" stroke-width="4"/>
+ <path d="M45 39h70M22 49h83M8 59h89" stroke="#ff5337" stroke-width="2" opacity=".7"/>
+ <path d="M92 170h190" stroke="url(#checks)" stroke-width="16"/>
+ <g transform="translate(25 7) rotate(-14 130 96)">
+  <ellipse cx="114" cy="96" rx="65" ry="75" fill="url(#rubber)" stroke="#55554d" stroke-width="2"/>
+  <path d="m73 38 13 11m-23 5 15 11m-22 5 17 11m-20 5 17 9m-18 9 18 7m-16 10 18 5m-12 11 18 4m-8 12 16 3" stroke="#5a5a51" stroke-width="2" opacity=".7"/>
+  <ellipse cx="144" cy="96" rx="65" ry="75" fill="url(#rubber)" stroke="#68685d" stroke-width="2"/>
+  <ellipse cx="146" cy="96" rx="53" ry="63" stroke="#68685b" stroke-width="1"/>
+  <ellipse cx="146" cy="96" rx="43" ry="51" fill="#080909" stroke="#c5c2b6" stroke-width="3"/>
+  <g stroke="url(#alloy)" stroke-width="8"><path d="m146 96-29-36m29 36 32-35m-32 35 38 12m-38-12 2 45m-2-45-36 16"/></g>
+  <ellipse cx="146" cy="96" rx="12" ry="14" fill="#1b1b19" stroke="#d8d4c7" stroke-width="2"/>
+  <ellipse cx="146" cy="96" rx="4" ry="5" fill="#ff5337"/>
+  <path d="m189 71 5 17-4 13" stroke="#ff5337" stroke-width="7"/>
+  <path d="M112 40q33-20 61 1M120 153q28 12 49-2" stroke="#ece5cd" stroke-width="5" stroke-dasharray="5 3 12 3 4 3"/>
+  <path d="m202 120-8 15m1-4-4 7" stroke="#e1d787" stroke-width="2"/>
+ </g>
+ <path d="m226 15 13 0-7 19h-13z" fill="#ff5337"/><path d="m245 15 13 0-7 19h-13z" fill="#ff5337" opacity=".6"/>
+ <text x="258" y="61" fill="#efe9d9" font-family="Arial,sans-serif" font-size="10" font-weight="700" transform="rotate(90 258 61)" letter-spacing="3">ONE MORE LAP</text>
+</svg>

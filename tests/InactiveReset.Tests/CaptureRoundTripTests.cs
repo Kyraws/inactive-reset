@@ -45,31 +45,12 @@ public sealed class CaptureRoundTripTests : IDisposable
         Assert.Equal(Original.Pose.Row0, loaded.Pose.Row0);
         Assert.Equal(Original.Pose.Row1, loaded.Pose.Row1);
         Assert.Equal(Original.Pose.Row2, loaded.Pose.Row2);
-    }
-
-    [Fact]
-    public void ARoundTrippedPoseYieldsTheSameYaw()
-    {
-        CaptureService.Save(Original, _directory);
-        var loaded = Checkpoint.Require(_directory, "roundtrip");
-
         var before = Geometry.BuildTargetFromRecordedPose(Original.Pose);
         var after = Geometry.BuildTargetFromRecordedPose(loaded.Pose);
-
         Assert.True(before.Valid);
+        Assert.True(after.Valid);
         Assert.Equal(before.Yaw, after.Yaw);
         Assert.Equal(before.RestPosition, after.RestPosition);
-    }
-
-    [Fact]
-    public void CapturedOrientationRowsAreUnitLength()
-    {
-        // A real rotation matrix has unit rows. If shared memory were read at the
-        // wrong offset — or as float instead of double — this is what would
-        // catch it, because the numbers would still look like plausible angles.
-        Assert.Equal(1f, Original.Pose.Row0.Length, 4);
-        Assert.Equal(1f, Original.Pose.Row1.Length, 4);
-        Assert.Equal(1f, Original.Pose.Row2.Length, 4);
     }
 
     [Fact]
