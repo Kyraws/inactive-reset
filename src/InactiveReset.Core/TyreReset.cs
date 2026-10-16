@@ -122,7 +122,7 @@ public sealed class TyreResetPreparation : IDisposable
             var record = begin + (ulong)index * O("recordStride");
             var compound = session.Memory.ReadInt32(record + O("compoundOffset"));
             if (compound != wheels[i].CompoundIndex)
-                throw new GateException("fitted compound and tyre inventory disagree; reload the garage");
+                throw new GateException("Fitted compound and tyre inventory disagree. After loading a session, press Drive once, return to the garage, and retry tyre conditioning.");
             _tyres[i] = (vector, begin, indexAddress, index, record, compound);
             foreach (var (address, bytes) in InventoryPayloads(record, O("heatWearOffset"),
                 O("freshFlagsOffset"), _wheelOptions[i].ConditionPercent))

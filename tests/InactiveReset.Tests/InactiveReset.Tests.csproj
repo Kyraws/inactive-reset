@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <!-- Explicit tracked fixtures; never copy generated local *.auto.json caches. -->
-    <None Include="..\..\offsets\0F6DCAC1.json;..\..\offsets\1AC2F605.json;..\..\offsets\tyre-physics-66942337.json"
+    <None Include="..\..\offsets\0F6DCAC1.json;..\..\offsets\1AC2F605.json;..\..\offsets\tyre-physics-66942337.json;..\..\offsets\motion-layout-66942337.json;..\..\offsets\shared-memory.json"
           Link="offsets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\InactiveReset.Core\InactiveReset.Core.csproj" />
     <ProjectReference Include="..\..\src\InactiveReset.Ui\InactiveReset.Ui.csproj" />

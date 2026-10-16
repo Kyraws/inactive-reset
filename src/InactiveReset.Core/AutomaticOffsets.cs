@@ -8,7 +8,7 @@ namespace InactiveReset.Core;
 /// <summary>Derive a build's addresses locally from its decrypted mapped code.</summary>
 public static class AutomaticOffsets
 {
-    public const int ResolverVersion = 4;
+    public const int ResolverVersion = 5;
     private static readonly object CacheGate = new();
     private static (string Hash, string Version, string Code, string Json)? _verified;
 
@@ -56,11 +56,12 @@ public static class AutomaticOffsets
                     readProbe(cached.Probe.Rva.Require("cached probe"), cached.Probe.Bytes.Length).AsSpan()
                          .SequenceEqual(cached.Probe.Bytes))
                 {
+                    cached.Motion?.VerifyProbes(readProbe);
                     discovered = false;
                     return cached;
                 }
             }
-            catch (Exception ex) when (ex is System.Text.Json.JsonException or OffsetProfileException
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or OffsetProfileException or GateException
                 or StaleOffsetException or ArgumentException or OverflowException or MemoryAccessException
                 or KeyNotFoundException or InvalidOperationException or FormatException) { }
         }
@@ -70,6 +71,7 @@ public static class AutomaticOffsets
         if (!readProbe(profile.Probe.Rva.Require("discovered probe"), profile.Probe.Bytes.Length).AsSpan()
             .SequenceEqual(profile.Probe.Bytes))
             throw new GateException("automatic offset discovery: live probe changed during capture");
+        profile.Motion?.VerifyProbes(readProbe);
         Directory.CreateDirectory(directory);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -159,6 +161,8 @@ public static class AutomaticOffsets
             limits[i]!["rva"] = Hex(flags.FirstRva + (uint)i);
             limits[i]!["confidence"] = "E";
         }
+        try { result["motion"] = MotionLayout.Discover(image,hash).ToJson(); }
+        catch (GateException ex) { result["motion"] = null; result["motionUnavailableReason"] = ex.Message; }
         return result;
     }
 

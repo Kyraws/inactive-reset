@@ -22,7 +22,10 @@ as skips. Browser checks below run separately.
 | Area | What the checks establish |
 | --- | --- |
 | Placement maths | Inverse/forward consistency, indexed layout, and regression values from recorded measurements |
-| Capture files | Checkpoint serialization, tyre state round-trip, wheel order, temperature units and damage indicators |
+| Capture files | Checkpoint serialization, tyre state round-trip, wheel order, temperature units, damage indicators, SDK local velocity, speed conversion and older captures/layouts without speed |
+| Reset update compatibility | Recorded-layout comparison; code/global relocation and body-operand changes; duplicate/missing consumers; signed displacement decoding; full reset-cache repair/refusal; runtime engine setter validation. Synthetic images validate discovery, not live compatibility with an unseen patch |
+| Direct reset | Linked-body pose/inertia transforms, SDK-origin conversion, cached Euler convention, separate collision-body motion, bulk tyre-record flag extraction and truncated-layout rejection, on-track/garage gates, observed-travel checks including the recorded explosion/pit recovery, and hotkey dispatch; live long-distance reliability remains unverified |
+| Rolling restoration | Body/wheel payloads through 350 km/h without an upper ceiling, orientation conversion, loaded gear ratio/rev-limit calculations, pause ownership and partial-failure handling, handoff timing, assist preference cleanup, and matching capture-car gates; offline checks do not establish live compatibility |
 | Capture selection | Exact IDs, case-insensitive names on the loaded track, same-name captures from different cars, and ambiguity rejection |
 | Vehicle identity | Same-track pose reuse, loaded-car calibration checks, and separate cross-car learned corrections |
 | Learning | Correction calculations, build separation, and rejection of unsuitable samples |
@@ -33,7 +36,7 @@ as skips. Browser checks below run separately.
 | Cleanup | Cancellation waits for a safe rule-restore point; no pit-clear timeout; garage/session-end handling; stale spot writes skipped; failed suppression rolls back the exact original value |
 | Rules and reports | Profile fields, lap-state predictions, and outcome messages |
 | Launch detection | Install/manifests and launch-selection logic |
-| Local session API | Menu and Practice gates, owned-content selection, relative steps, assist ranges, generated save loading, preset preservation, recovered routes/ports after package changes, refusal of ambiguous/unsupported request helpers, and refusal without startup confirmation |
+| Local session API | Menu and Practice gates, owned-content selection, relative steps, assist ranges, generated save loading, preset preservation, recovered routes/ports after package changes, refusal of ambiguous/unsupported request helpers, and refusal outside the ready main-menu state |
 
 `OffsetProfileTests` owns profile parsing, confidence and placement-validation
 gates, plus the container-relative lap-field contract across both shipped
@@ -92,11 +95,11 @@ fixtures cover route/port changes, dynamic parameters, comments/strings/regex
 decoys, payload and method changes, and package replacement. These checks do not
 establish live compatibility of a new API contract or launch sequence.
 
-`tests/session-ui.html` runs 23 checks of the production editor in an iframe
+`tests/session-ui.html` checks the current production workspace in an iframe
 with a fake API. Serve the checkout root over HTTP and open the page. It covers
 startup and busy/online gates, owned content, step semantics, race units,
 dependent controls, search focus, section switching, failed-save readback and
-startup confirmation tied to the current game process.
+automatic main-menu readiness without a confirmation checkbox.
 It performs no game writes. Like the checkpoint browser checks below, it runs
 separately from xUnit. See [Local sessions](SESSIONS.md) for dated live evidence.
 
@@ -105,7 +108,7 @@ relative setting changes, cancellation and stopping after partial failure. It
 also runs separately in a browser and performs no game writes.
 
 From a source checkout, `tests/checkpoint-ui.html` provides dependency-free
-selector checks of the production page script with a small DOM stub. Serve the repository root over
+selector checks of `Practice.js` against the current HTML with a small DOM stub. Serve the repository root over
 HTTP and open `tests/checkpoint-ui.html` in a browser to run them. They cover
 track filtering, name-only rows with distinct IDs, cross-car selection, polling,
 track changes, menus, busy state, tyre requests, Activity diagnostics and result
@@ -121,3 +124,22 @@ outcome messages do not establish that the game produced those outcomes.
 Use the live verification procedure in [Contributing](../CONTRIBUTING.md) for
 process and engine behaviour. Record which dump cases ran and which were
 skipped when reporting results.
+
+Maintainer speed-probe tests cover forward/reverse wheel-spin sign, rotated
+axles and world angular momentum, finite/dimension/radius/inertia/orientation
+gates, and released-pedal/stopped-wheel requirements. They do not establish
+coherent application to running physics or successful rolling placement. Pause
+mode tests additionally reject advancing/non-finite SDK time, absent or changed
+pause/player/replay/pit fields and conflicting probe modes. A single paused live
+prototype and manual Resume are recorded in [Status](STATUS.md).
+
+Rolling-start sequence tests cover preparation failure cleanup, complete
+verification before Resume, keeping partial motion updates paused, capture/build/
+vehicle eligibility, and exclusion from stationary learning. Handoff checks
+cover the minimum delay, sustained readiness, readiness loss, timeout, cancelled
+waits and driving-control/replay/pit-state gates. Hold Brakes coverage checks
+original On/Off preservation, ambiguous write failures, rejected changes,
+restoration failures, cancellation cleanup, context changes and the exact
+Practice-only options payload. The checkpoint
+DOM-stub harness checks automatic speed/gear restoration, the standing shortcut, busy
+state and unsupported build/capture/car gates. These are not live placement tests.

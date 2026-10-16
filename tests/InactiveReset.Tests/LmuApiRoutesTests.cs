@@ -18,6 +18,7 @@ public sealed class LmuApiRoutesTests
         const raceRestUrl = `${restServiceUrl}race/`;
         function getState(config) { return getJson(`${navigationRestUrl}state`, config); }
         function navToMainMenu() { return postJson(`${navigationRestUrl}action/NAV_TO_MAIN_MENU`, null); }
+        function navBackToEvent() { return postJson(`${navigationRestUrl}action/NAV_BACK_TO_EVENT`, null); }
         function getSessionSetup() { return getJson(`${garageRestUrl}UIScreen/SessionSetup`); }
         function getSessionSettings() { return getJson(`${sessionsRestUrl}`); }
         function getSessionAmounts() { return getJson(`${sessionsRestUrl}amount`); }

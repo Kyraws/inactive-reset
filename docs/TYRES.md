@@ -8,22 +8,40 @@ in the garage. FL, FR, RL and RR each have condition (0–100%) and optional ini
 heat (0–150°C). Set 100% for a fresh tyre; lower values request that wheel's
 remaining condition. Unchecked heat uses the game's initial temperature for that
 wheel. Press Drive when Activity says tyres prepared.
-Select **Apply on placement** to include the same reset during placement.
+Select **Apply on garage teleport** to include the same reset during garage placement.
+On-track direct reset preserves the fitted tyres. If conditioning is checked,
+teleport stops with an explanation; return to the garage or uncheck it before
+resetting on track.
 
 This edits the four selected inventory records and lets the game's Drive loader
 rebuild the tyre models. It keeps the loaded car's fitted compounds and does not
 allocate new inventory slots or copy another car's compound IDs. Cancel before
 Drive to restore the pending records. Once Drive consumes them, cancellation
-does not undo the fitted tyres. Unsupported builds refuse the reset. Temperature
+does not undo the fitted tyres. Unsupported builds refuse the reset. If a newly loaded session reports a compound/inventory mismatch, press Drive once and return to the garage before retrying; the tool refuses to write stale inventory records. Temperature
 is an initial condition; the tyres continue heating and cooling normally.
 
 All four settings are validated and copied before preparation. Condition is
 written to each wheel's selected inventory record; thermal writes apply only to
 wheels with initial heat enabled. After Drive, each wheel is checked against its
 own condition and optional temperature. Uniform Core/API callers remain supported.
-Independent settings have automated parser, ordering and verification checks;
-the earlier live test below used equal settings on all four wheels. A live test
-with different values on each wheel is still needed.
+Independent settings have automated parser, ordering and verification checks.
+On 2026-10-16, build 14200 / executable SHA-256
+`66942337813B301B87D12EDFA330F33354A2A4B8CD9B048885CBF77EB6F940CF`,
+a standing garage teleport in United Autosports #23 at Barcelona verified
+FL 100%/60 C, FR 95%/65 C, RL 90%/70 C and RR 85%/75 C. A subsequent
+on-track standing reset preserved all four condition readings. An on-track
+conditioning request was refused. The pre-test condition and carcass-temperature
+targets were then restored through the garage and verified; this does not
+reconstruct the exact prior distributed tyre model or surface temperatures.
+
+The same date/build also verified rolling garage teleport in the solo Barcelona
+session with Team Qatar by Iron Lynx Mercedes #62 and **End-of-Lap-Speed**:
+126.68 km/h requested, 126.45 observed, second gear, and the same four individual
+condition/temperature targets above. Brake telemetry remained zero while moving.
+One earlier run failed condition verification; two subsequent combined runs
+passed. The cause of that isolated failure is unresolved. A failed tyre check now
+marks the overall placement failed after completing rule cleanup, instead of
+reporting overall success alongside a tyre warning.
 
 Activity diagnostics separate effective per-car invulnerability
 from the stored invulnerability, wear multiplier and damage multiplier settings.

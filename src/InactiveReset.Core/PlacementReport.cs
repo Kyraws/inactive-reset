@@ -159,6 +159,14 @@ public static class PlacementReport
         string? runningBuildSha256 = null)
     {
         var lines = new List<OutcomeLine>();
+        if (outcome.RollingMotion is { } rolling)
+        {
+            lines.Add(new("Rolling start", $"requested {rolling.RequestedSpeedKmh:F2} km/h; observed {rolling.ObservedSpeedKmh:F2} km/h", OutcomeSeverity.Good,
+                rolling.RequestedGear is null ? "Speed changes naturally while coasting; captured gear is not restored." : "Speed changes naturally while coasting."));
+            if (rolling.RequestedGear is { } gear)
+                lines.Add(new("Restored gear", $"requested {gear}; observed {rolling.ObservedGear}", OutcomeSeverity.Good,
+                    rolling.ObservedEngineRpm is { } rpm ? $"Engine observed at {rpm:F0} RPM after synchronized restoration." : null));
+        }
         if (outcome.TyreReset is { } tyres)
             lines.Add(new("Tyres", tyres.Message, tyres.Verified ? OutcomeSeverity.Good : OutcomeSeverity.Warning));
 
@@ -170,6 +178,13 @@ public static class PlacementReport
             lines.Add(new OutcomeLine(
                 "result", outcome.Cancelled ? "CANCELLED" : "FAILED",
                 outcome.Cancelled ? OutcomeSeverity.Normal : OutcomeSeverity.Warning, outcome.Message));
+            return lines;
+        }
+
+        if (outcome.DirectResetPauseMilliseconds is { } pauseMs)
+        {
+            lines.Add(new("result", "reset on track", OutcomeSeverity.Good));
+            lines.Add(new("Physics pause", $"{pauseMs:F0} ms", OutcomeSeverity.Normal));
             return lines;
         }
 

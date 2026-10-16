@@ -1,8 +1,21 @@
 # Lab 02 — experimental UI
 
-The Lab workspace is the default in v0.3.0. Open `inactive-reset-ui.exe` from the release ZIP. The previous session workspace remains available with `--classic`, and the original practice page remains in the comparison dialog.
+The Lab workspace is the application interface. Open `inactive-reset-ui.exe` from the release ZIP. The classic pages and comparison dialog have been removed.
 
 ## What to try
+
+With LMU focused, **Ctrl+Alt+C** saves and selects **Quick capture**. Each press
+replaces the previous quick capture for that track and car; named library
+checkpoints are kept. The Practice **Quick capture** button does the same thing.
+**Ctrl+Alt+R** teleports to the selected destination with captured facing, speed
+and gear; **Ctrl+Alt+Shift+R** makes a standing teleport. Speed restoration still
+requires the capture car and an eligible straight, approximately level capture.
+Quick capture is stored on disk and survives restarting the app.
+
+Live check on 2026-10-16, LMU build 14200, solo Barcelona Mercedes #62:
+Ctrl+Alt+C replaced the quick slot at 67.72 km/h in second gear; Ctrl+Alt+R
+used that automatically selected capture and completed at an observed
+66.51 km/h in second gear. Turning-state restoration was not added or tested.
 
 | Area | Experiment |
 | --- | --- |
@@ -18,9 +31,8 @@ The Lab workspace is the default in v0.3.0. Open `inactive-reset-ui.exe` from th
 | Library | All captured tracks, search, name/track/distance sorting, favourites and selection on the loaded track |
 | Activity | Operation ribbon, fixed next-step panel, issue filtering and report export |
 | Appearance | Midnight/Daylight themes; Compact reduces row heights, typography, navigation, cards and page spacing |
-| Comparison | Open the unchanged classic UI in a comparison dialog |
 
-Driving-assist editing and keyboard-shortcut navigation are removed from Lab. Presets never capture or apply driving assists, including old imported presets that contain them. The preserved classic interface retains its original controls.
+Driving-assist editing and keyboard-shortcut navigation are removed from Lab. Presets never capture or apply driving assists, including old imported presets that contain them.
 
 Blank tyre-temperature fields delegate to LMU’s starting temperature, including its warmer setting and selected compound. Enter a number to override that wheel, or use the all-wheel field to fill four temperatures. No fixed warm/cold temperature is presented as a universal default.
 
@@ -37,12 +49,53 @@ refused by the existing game API gates. Controls that need more than 64 individu
 steps must be adjusted manually. Undo covers a simple setting, or session
 count edit; it is not a rollback of a complete plan.
 
-Lab choices live in the fixed `data/ui-lab.json` file, independent of the classic
-UI. The store validates sizes and types and replaces the file atomically. It
+Lab choices live in the fixed `data/ui-lab.json` file. The store validates sizes and types and replaces the file atomically. It
 accepts at most 40 plans within a 512 KB preference file. Saving/importing a plan
 reports success after the file write is confirmed. Changing tyre choices only
 prepares the requested values; **Prepare tyres** or **Place checkpoint** applies
 them through the existing practice tools.
+
+## Keyboard and wheel assignments
+
+Open **Lab settings → Keyboard & wheel buttons** in the desktop app. Each action
+can have one keyboard shortcut and one controller button. Choose **Assign key**
+and press a shortcut, or **Assign button** and release/press the wheel button.
+Escape or **Cancel assignment** cancels; learning times out after 15 seconds.
+Clear either binding independently or restore defaults. Duplicate bindings and
+keyboard shortcuts reserved by another app are refused. Use a modifier with a
+key, or an unmodified F1–F24 key.
+
+| Action | Default shortcut |
+| --- | --- |
+| Quick capture | Ctrl+Alt+C |
+| Teleport with speed and gear | Ctrl+Alt+R |
+| Standing teleport | Ctrl+Alt+Shift+R |
+| Previous speed-ready checkpoint | Ctrl+Alt+Up |
+| Next speed-ready checkpoint | Ctrl+Alt+Down |
+
+Previous/Next includes Quick capture and other checkpoints on the loaded track,
+captured in the loaded car, with an eligible moving capture and forward gear.
+It sorts by lap distance, then name/ID, and wraps at either end. The Practice
+Previous/Next buttons use the same list. Cycling selects the teleport destination;
+it does not move the car. Other destinations remain available manually for
+standing teleport. Background input refreshes the list before cycling because
+WebView polling can be throttled while LMU is foreground.
+
+Bindings are saved atomically in `data/input-bindings.json`. Actions dispatch
+only with LMU focused, but Windows reserves keyboard shortcuts while the desktop
+app runs. Controller bindings use device path and button number. Disconnected
+bindings are retained and marked disconnected. Reconnecting with a button held
+does not trigger an action. An initial report establishes a baseline, so a button
+box that sends no neutral report may need a second press when first connected.
+Axes and hat switches are not assignable.
+
+Wheel input uses read-only [Windows Raw Input](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-raw-input)
+and HID button reports, including buttons above 32. It does not acquire the wheel
+exclusively or send force-feedback commands. On 2026-10-16 the owner confirmed
+the wheel was disconnected and explicitly deferred hardware verification.
+Native F8 rebinding, foreground gating and Next selection passed live checks;
+automated tests cover persistence/conflicts, held/reconnected buttons, independent
+reports, settings UI, list filtering/order/wraparound and teleport selection.
 
 ## Validation
 
@@ -81,3 +134,27 @@ The Practice rules block is removed. Both styles retain the compact controls. Re
 Validation: 282 .NET tests passed, 1 skipped; browser suites passed 52 Lab, 23 session and 38 checkpoint checks. Redline and restored Original Daylight were visually inspected in WebView2. No game session or tyre writes were performed.
 
 All-wheel initial heat uses a slider with numbered guides. Zero clears all four temperature overrides and selects Game default; explicit slider values use 1–150°C. Individual fields remain independent. The redundant Link condition values checkbox is removed.
+
+## Appearance loading and Practice cleanup (2026-10-16)
+
+Lab stays hidden until its saved appearance is ready. Clicking IR returns to
+Overview without reloading, preserving the theme and current controls. Theme
+changes hide the previous manufacturer logo until its replacement loads.
+Practice omits the session-settings summary and edit history; sidebar guidance
+is shorter and appears when needed. The experimental speed/gear detail is in
+the control tooltip.
+
+Validation: 65 Lab, 56 checkpoint and 23 session-editor browser checks passed
+in WebView2, including delayed preference loading, load failure recovery and IR
+navigation. The desktop build passed. No game-memory behavior changed.
+
+## Single interface (2026-10-16)
+
+The comparison button, dialog, classic HTML, old shell styles and classic launch
+option are removed. Both desktop and CLI browser entry points use the current
+workspace. Shared session and practice scripts remain; saved data is unchanged.
+
+Validation: 67 Lab, 56 checkpoint and 23 session-editor checks passed in WebView2.
+A localhost test verified the built root page, its assets and removal of the old
+session page. The Release solution build passed; both styles were inspected at
+the minimum window size. Live driving was not repeated.

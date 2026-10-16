@@ -39,6 +39,13 @@ public sealed class RestLearningTests
     };
 
     [Fact]
+    public void RollingStartsCannotBecomeStationaryLearningSamples()
+    {
+        var rejected = LearnedRest.RejectReason(Outcome() with { SpeedRestorationAttempted = true }, Bmw(), 0, 0, 0);
+        Assert.Contains("rolling starts", rejected);
+    }
+
+    [Fact]
     public void AGoodPlacementIsLearnedFrom()
     {
         // The clean BMW placement: 2.4 mm, in the open, arrival verified.

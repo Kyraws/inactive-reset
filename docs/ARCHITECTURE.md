@@ -40,10 +40,13 @@ Practice session before placement, tyres or rule toggles. The CLI still lacks
 this independent check. Do not describe the absence of EAC as proof that the
 game is in Practice.
 
-The window opens `/lab`; `--classic` opens `/session`, and `/` retains the original practice workspace. Session actions
-share the runner's operation lock and cancellation with practice transactions.
-Both pages use the embedded `App.css` and the same header, navigation and
-three-column shell. Practice progress remains in the fixed summary panel.
+The window and CLI browser server open the current workspace at `/`; `/lab`
+serves the same interface. The comparison dialog, classic pages and classic
+launch option have been removed. `Session.js` and `Practice.js` provide the
+session/checkpoint behavior used by `Lab.html` and `Lab.js`; both use the shared
+`App.css` controls. Session actions share the runner's operation lock and
+cancellation with practice transactions. Practice progress remains in the fixed
+summary panel.
 `LmuSessionClient` reads and edits the current local menu setup, then starts it
 through preset/apply/generate-save/load-save calls. It requires a local main
 menu and explicit startup-prompt confirmation; it does not attach to game
@@ -71,8 +74,25 @@ relationships. Tuning discovery follows the search and yaw consumers without
 matching stored float values. The pit-speed rule resolver decodes both branch
 destinations and requires the speed read and reset to use the same field;
 field and branch displacements can change. Missing or ambiguous relationships
-still refuse discovery. Resolver version 4 invalidates earlier placement caches.
+still refuse discovery. Resolver version 5 invalidates earlier placement caches.
 This is not a guarantee of compatibility with future patches.
+Reset and speed/gear restoration now use an optional immutable `MotionLayout` in
+the same verified profile. The resolver derives 79 native values from 102 operand
+references and checks two drivetrain code contracts. It follows unique code
+patterns, RIP-relative globals and structure displacements, checks agreeing
+consumers and supported layout relationships, and never copies values from the
+previous build. Missing, ambiguous or disagreeing reset code marks only this
+capability unavailable; placement discovery still succeeds independently.
+
+Every cache comparison covers the entire reset profile. Its live probes are
+checked before cache reuse/commit and again before a reset operation. The engine
+speed field is decoded from the actual vtable setter after verifying its code
+shape and module bounds. This removes the fixed reset hash/vtable/function
+whitelist. Runtime identity, ownership, membership, page, freeze and readback
+checks still apply. Discovery/initial validation runs before the physics pause.
+The SDK layout remains generated separately from its public header; ABI changes
+require a reviewed layout update.
+
 Automatic profiles record `placementValidated=false`; the current production
 path does not use that field as a live-validation gate.
 
@@ -83,7 +103,20 @@ not select them through the legacy `OffsetProfile.ForBuild` lookup.
 ## Placement planning
 
 A checkpoint contains track and vehicle names, a recorded position and
-orientation, lap distance, and gear. Capture reads LMU's shared-memory interface
+orientation, lap distance, and gear. New captures also store optional SDK local
+velocity in metres per second; speed in km/h is derived from its magnitude. Older
+captures and SDK layouts without velocity report unknown speed. The loader also
+accepts the earlier `motion.local_velocity` field; unrelated motion metadata
+without velocity does not prevent loading. This metadata
+does not change default placement, which starts stationary.
+
+The opt-in rolling start uses shared Core body/wheel plans and an owned physics
+pause. It runs after placement settles and lap repairs, before pit-state cleanup.
+It validates exact game code, capture eligibility and identity, neutral/rest/pedal
+state, and stable paused physics. It verifies all motion payloads before resuming.
+Partial motion failure leaves physics paused and still runs placement cleanup.
+Rolling outcomes are excluded from stationary calibration learning.
+Capture reads LMU's shared-memory interface
 without writing to the game. Its pose is validated before saving.
 
 The UI selects checkpoints by a relative file ID and shows only the loaded

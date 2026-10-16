@@ -2,28 +2,33 @@
 <script>
 async function run(){
   const base='../src/InactiveReset.Ui/';
-  const [html,css,labCss,session,practice,lab]=await Promise.all(['Lab.html','App.css','Lab.css','Session.js','Page.cs','Lab.js'].map(n=>fetch(base+n).then(r=>r.text())));
+  const [html,css,labCss,session,practice,lab]=await Promise.all(['Lab.html','App.css','Lab.css','Session.js','Practice.js','Lab.js'].map(n=>fetch(base+n).then(r=>r.text())));
   const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);if(ids.length!==new Set(ids).size)throw Error('Duplicate Lab element ID');
   const frame=document.getElementById('preview'),loaded=new Promise(r=>frame.onload=r);
-  frame.srcdoc=html.replace(/<script[^>]*><\/script>/g,'').replace(/<link[^>]*>/g,'') .replace('</head>','<style>'+css+labCss+'</style></head>');await loaded;
+  frame.srcdoc=html.replace(/<script[^>]*><\/script>/g,'').replace(/<link[^>]*>/g,'').replaceAll('src="/lab.race.svg"','src="'+base+'Lab.race.svg"').replace('</head>','<style>'+css+labCss+'</style></head>');await loaded;
   const w=frame.contentWindow,d=frame.contentDocument;w.sessionStorage.clear();
   const v=(n,text='')=>({currentValue:n,stringValue:text});
-  let prefs={schema:1,theme:'midnight',density:'comfortable',pins:['SESSSET_Num_Opponents'],cars:[],tracks:[],checkpoints:[],plans:[]};
+  let prefs={schema:1,theme:'daylight',density:'comfortable',pins:['SESSSET_Num_Opponents'],cars:[],tracks:[],checkpoints:[],plans:[]};
   let data={selection:{selectedCar:{id:'car',isOwned:true,desc:'Team One',fullPathTree:'WEC 2026, GT3, BMW M4'},trackInfo:{id:'track',isOwned:true,trackName:'Daytona',trackLength:'5.7',countryCode:'US',type:'Road Course'},classesSelection:['GT3'],fullGrid:false},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:0,RACE:0},settings:{SESSSET_Practice_Length:v(60),SESSSET_Num_Opponents:v(0),SESSSET_AI_Strength:v(100,'100%'),SESSSET_weather:v(4,'Scripted'),SESSSET_flag_rules:v(2,'Full')},assists:{DRIVEAIDS_auto_wipers:{...v(1,'On'),minValue:0,maxValue:1,stepValue:1}},weather:{PRACTICE:{START:{WNV_TEMPERATURE:v(20,'20°'),WNV_RAIN_CHANCE:v(0,'0%')},FINISH:{WNV_TEMPERATURE:v(25,'25°'),WNV_RAIN_CHANCE:v(0,'0%')}},QUALIFY:{},RACE:{}}};
   const catalog={cars:[data.selection.selectedCar,{id:'car2025',isOwned:true,desc:'Team Old',fullPathTree:'WEC 2025, GT3, BMW M4'},{id:'locked',isOwned:false,desc:'Locked',fullPathTree:'WEC 2026, Hypercar, Ferrari'}],tracks:[{id:'track',owned:true,name:'Daytona Road Course',shortName:'Daytona'},{id:'otherLayout',owned:true,name:'Daytona Short',shortName:'Daytona'}]};
-  const checkpoints=[{id:'one',name:'Turn One',track:'Daytona',vehicle:'BMW',lapDistance:400},{id:'other',name:'Other track',track:'Spa',vehicle:'Ferrari',lapDistance:200}];
-  const native={connected:true,game:{running:true},session:{track:'Daytona',vehicle:'BMW',capturable:true},inGarage:true,tyreRules:{inGarage:true},checkpoints,busy:false,phase:'Idle',log:[]};
-  let writes=[],failAfter=Infinity,storageWrites=0,stopAfterNext=false;
-  async function fake(path,opts){const b=opts?.body?JSON.parse(opts.body):null;if(path==='/api/lab/preferences'){if(b){prefs=b;storageWrites++;return {ok:true,json:async()=>({ok:true})};}return {ok:true,json:async()=>prefs};}
+  const checkpoints=[{id:'one',name:'Turn One',track:'Daytona',vehicle:'BMW',lapDistance:400,speedKmh:126.7,rollingEligible:true},{id:'other',name:'Other track',track:'Spa',vehicle:'Ferrari',lapDistance:200}];
+  const native={connected:true,game:{running:true},session:{track:'Daytona',vehicle:'BMW',capturable:true},inGarage:true,tyreRules:{inGarage:true},rollingStartSupported:true,checkpoints,busy:false,phase:'Idle',log:[]};
+  let writes=[],failAfter=Infinity,storageWrites=0,stopAfterNext=false,preferencesReads=0,failPreferences=false,releasePreferences;
+  const preferencesLoaded=new Promise(r=>releasePreferences=r);
+  async function fake(path,opts){const b=opts?.body?JSON.parse(opts.body):null;if(path==='/api/lab/preferences'){if(b){prefs=b;storageWrites++;return {ok:true,json:async()=>({ok:true})};}preferencesReads++;await preferencesLoaded;if(failPreferences)throw Error('Fixture could not read preferences');return {ok:true,json:async()=>prefs};}
     if(path==='/api/session/action'){writes.push(b);if(writes.length>failAfter)return {ok:false,json:async()=>({error:'Fixture refused change'})};if(stopAfterNext){stopAfterNext=false;ui.stopPlan();}if(b.action==='setting')data.settings[b.key].currentValue+=b.steps;if(b.action==='amount')data.amounts[b.session]=b.amount;if(b.action==='assist')data.assists[b.key].currentValue=b.value;if(b.action==='weather')data.weather[b.session][b.node][b.key].currentValue+=b.steps;}
     const result=path==='/api/state'?native:path==='/api/session/state'?{state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_SETUP',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false},pid:123}:path==='/api/session/catalog'?catalog:data;
     return {ok:true,json:async()=>structuredClone(result)};
   }
-  const code=session+'\n'+practice.match(/<script>([\s\S]*?)<\/script>/)[1]+'\n'+lab;
-  const ui=new w.Function('fetch','setInterval','clearInterval',code+'\nreturn {setPage,reviewPlan,applyPendingPlan,planIntents,snapshotPlan,validatePlan,tyrePreset,renderLibrary,applyAppearance,applyIntent,needed,updateLabControls,loadSetup,modelKey,circuitName,layoutName,tyreOptions,updateTyreSettings,editPreset,renderPlans,renderCheckpoints,showLibrary(){labState='+JSON.stringify(native)+';renderLibrary();},stopPlan(){cancelPlan=true;},setNavReady(v){menuReady=v;updateLabControls();},getPrefs(){return labPreferences;}};')(fake,()=>0,()=>{});
-  await new Promise(r=>setTimeout(r,20));await ui.loadSetup();
+  const code=session+'\n'+practice+'\n'+lab;
+  const ui=new w.Function('fetch','setInterval','clearInterval',code+'\nreturn {initLab,setPage,reviewPlan,applyPendingPlan,planIntents,snapshotPlan,validatePlan,tyrePreset,renderLibrary,applyAppearance,applyIntent,needed,updateLabControls,loadSetup,modelKey,circuitName,layoutName,tyreOptions,updateTyreSettings,editPreset,renderPlans,renderCheckpoints,showLibrary(){labState='+JSON.stringify(native)+';renderLibrary();},stopPlan(){cancelPlan=true;},setNavReady(v){menuReady=v;updateLabControls();},getPrefs(){return labPreferences;}};')(fake,()=>0,()=>{});
   let count=0;function check(c,m){if(!c)throw Error(m);count++;}
-  check(!d.getElementById('homePanel').hidden,'Overview is default');check(!d.getElementById('practicePanel').hidden===false,'Other panels hidden');
+  check(w.getComputedStyle(d.body).visibility==='hidden','Default appearance stays hidden while preferences load');
+  releasePreferences();
+  await new Promise(r=>setTimeout(r,20));await ui.loadSetup();
+  check(w.getComputedStyle(d.body).visibility==='visible'&&d.body.dataset.theme==='daylight','First visible appearance uses saved theme');
+  check(w.getComputedStyle(d.querySelector('.lab-top')).display==='flex'&&w.getComputedStyle(d.querySelector('.lab-frame')).display==='grid','Current shell styles parse and lay out the header and workspace');
+  check(!d.getElementById('homePanel').hidden,'Overview is default');check(!d.getElementById('compareButton')&&!d.getElementById('compareDialog')&&!d.getElementById('classicFrame'),'Classic UI and comparison are absent');check(!d.getElementById('practicePanel').hidden===false,'Other panels hidden');
   check(d.querySelectorAll('.vehicle-card').length===1,'Identical models grouped across seasons, unowned cars excluded');check(d.getElementById('carSelect').options.length===2,'Liveries remain selectable across seasons');check(d.getElementById('circuitSelect').options.length===1&&d.getElementById('trackSelect').options.length===2,'Circuit and layout use separate lists');check(d.querySelector('.brand-wordmark').textContent==='BMW'&&!d.querySelector('.car-pick svg'),'Brand overview replaces placeholder car');
   d.querySelector('[data-car]').click();await new Promise(r=>setTimeout(r,0));check(writes.length===0,'Selecting the active model keeps its livery');
   ui.setPage('practice');ui.renderCheckpoints(native);check(!d.querySelector('#destinationList button').disabled,'Destination buttons selectable on loaded track');d.querySelector('#destinationList button').click();check(d.getElementById('cp').value==='one','Practice destination selection uses shared checkpoint');check(!d.getElementById('practiceDock').hidden&&d.getElementById('setupDock').hidden,'Practice has its own action dock');
@@ -59,10 +64,18 @@ async function run(){
   ui.setPage('setup','selection');check(d.querySelector('.brand-logo').getAttribute('src').includes('/api/brands/BMW?theme=daylight'),'Manufacturer logos load from installed LMU assets');
   check(d.getElementById('carSelect').getBoundingClientRect().top<d.querySelector('.vehicle-grid').getBoundingClientRect().top,'Livery choice stays above the car list');
   ui.setPage('practice');check(!d.querySelector('.practice-rules')&&!d.getElementById('practicePanel').textContent.includes('Practice rules'),'Practice rules block removed');
+  check(d.getElementById('sessionSummary').hidden&&d.getElementById('summaryMeta').hidden&&d.querySelector('.dock-journal').hidden,'Practice dock omits session settings and edit history');
+  check(d.getElementById('restoreSpeedHint').hidden&&d.getElementById('capHint').hidden,'Available actions omit redundant instructions');
+  ui.setPage('settings');check(!d.getElementById('sessionSummary').hidden,'Session summary returns outside Practice');
   ui.setPage('settings');d.querySelector('[data-style-choice="redline"]').click();await new Promise(r=>setTimeout(r,10));check(d.body.dataset.style==='redline'&&d.body.dataset.theme==='midnight','Redline forces dark mode');check(d.querySelector('[data-theme="daylight"]').disabled&&ui.getPrefs().theme==='daylight','Redline retains Original theme preference');check(prefs.style==='redline','Garage style persisted');
   ui.setPage('setup','selection');check(d.querySelector('.brand-logo').getAttribute('src').includes('theme=midnight'),'Redline uses dark-theme manufacturer logos');
+  d.getElementById('capName').value='Keep this name';const readsBefore=preferencesReads;
+  d.querySelector('.lab-brand').click();
+  check(!d.getElementById('homePanel').hidden&&d.body.dataset.style==='redline'&&d.getElementById('capName').value==='Keep this name'&&preferencesReads===readsBefore,'IR returns home without reloading or losing the current appearance and controls');
   d.querySelector('[data-style-choice="original"]').click();await new Promise(r=>setTimeout(r,10));check(d.body.dataset.theme==='daylight'&&!d.querySelector('[data-theme="daylight"]').disabled,'Original restores its previous light theme');
   check(d.documentElement.scrollWidth===1280,'No desktop horizontal overflow');
+  failPreferences=true;d.documentElement.setAttribute('data-loading','');await ui.initLab();
+  check(w.getComputedStyle(d.body).visibility==='visible'&&!d.getElementById('labToast').hidden&&d.getElementById('labToastText').textContent.includes('could not be read'),'Preference failure reveals a usable page and its error');
   document.getElementById('report').textContent='PASS: '+count+' Lab checks';
 }
 run().catch(e=>document.getElementById('report').textContent='FAIL: '+e.stack);

@@ -1,22 +1,3 @@
-namespace InactiveReset.Ui;
-
-/// <summary>Practice workspace inside the shared application shell.</summary>
-internal static class Page
-{
-    public const string Html = """
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Practice tools · Inactive Reset</title><link rel="stylesheet" href="/app.css"></head><body>
-<header class="topbar"><a class="brand" href="/session"><span class="brand-mark">IR</span>Inactive Reset</a><nav aria-label="Workspaces"><a class="workspace" href="/session">Session setup</a><a class="workspace active" href="/" aria-current="page">Practice tools</a></nav><span class="connection" id="status">Connecting to LMU</span><button class="button" id="launchDirect" onclick="launch('direct')">Launch local play</button></header>
-<div class="workspace-grid practice-workspace">
-<aside class="sidebar checkpoints-card"><p class="eyebrow">PRACTICE LIBRARY</p><h2 id="destinationsLabel">Checkpoints</h2><select id="cp" size="12" aria-labelledby="destinationsLabel" onchange="updateDestination()"></select><div class="capture-area"><label class="input-label" for="capName">Save current position</label><input id="capName" type="text" placeholder="Checkpoint name" autocomplete="off" spellcheck="false"><button class="button" id="capBtn" onclick="capture()">Capture checkpoint</button><p class="hint" id="capHint"></p></div><details class="online-launch"><summary>Online launch</summary><p class="small-note">Practice tools are unavailable with EAC.</p><button class="button" id="launchEac" onclick="launch('eac')">Launch with EAC</button></details></aside>
-<main class="editor practice-editor"><div class="page-heading"><p class="eyebrow">MAKE EVERY LAP COUNT</p><h1>Practice tools</h1><p>Prepare your tyres and return to a saved point on this track.</p></div><div class="controls-grid"><section class="settings-card practice-card tyres-card"><h2>Tyres</h2><fieldset id="tyreSetup"><table class="tyre-settings"><thead><tr><th>Tyre</th><th>Condition %</th><th colspan="2">Initial heat °C</th></tr></thead><tbody><tr><th scope="row">FL</th><td><input id="tyreConditionFL" aria-label="Front left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFL" aria-label="Set front left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFL" aria-label="Front left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">FR</th><td><input id="tyreConditionFR" aria-label="Front right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledFR" aria-label="Set front right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureFR" aria-label="Front right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RL</th><td><input id="tyreConditionRL" aria-label="Rear left condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRL" aria-label="Set rear left initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRL" aria-label="Rear left initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr><tr><th scope="row">RR</th><td><input id="tyreConditionRR" aria-label="Rear right condition percent" type="number" min="0" max="100" value="100" oninput="updateTyreSettings()"></td><td><input id="tyreTemperatureEnabledRR" aria-label="Set rear right initial heat" type="checkbox" onchange="updateTyreSettings()"></td><td><input id="tyreTemperatureRR" aria-label="Rear right initial temperature Celsius" type="number" min="0" max="150" value="70" disabled oninput="updateTyreSettings()"></td></tr></tbody></table></fieldset><label class="checkbox-row"><input id="freshOnPlace" type="checkbox" onchange="updateTyreSettings()">Apply on placement</label><button class="button" id="tyreResetBtn" onclick="resetTyres()" disabled>Prepare tyres</button><p class="hint" id="tyreSummary"></p><p id="tyreResetHint"></p></section>
-<section class="settings-card practice-card penalties-card"><h2>Rules</h2><div id="penalties"></div><div class="rule-status"><span>Flag Rules</span><span id="flagStatus">Unknown</span></div><p class="rules-note">Flag Rules are managed during pit cleanup. Keep the pit limiter on until CLEAR.</p></section>
-</div><section class="settings-card practice-card activity-card" aria-label="Activity and operation progress"><div class="activity-head"><h2>Activity</h2></div><pre id="log" aria-label="Activity log"></pre></section>
-</main>
-<aside class="summary" aria-label="Practice summary"><p class="eyebrow">CURRENT SESSION</p><h2>Your practice</h2><div class="selection-summary session" id="session"><strong>Launch local play to begin</strong></div><div class="destination-summary"><p class="eyebrow">SELECTED CHECKPOINT</p><h3 id="destinationName">Choose a destination</h3></div><div class="launch-area"><p class="eyebrow">NEXT STEP</p><div class="phasebar"><span class="phase" id="phase">IDLE</span><span class="phasemsg" id="phaseMsg" role="status" aria-live="polite" aria-atomic="true">Load a Practice session.</span></div><button class="button cancel-operation" id="cancelBtn" onclick="cancelPlacement()" disabled hidden>Cancel operation</button><button class="button primary start-button" id="placeBtn" onclick="place()" disabled>Place checkpoint <span aria-hidden="true">↗</span></button><p class="launch-hint" id="placeHint">Load a Practice session to use a checkpoint.</p><a class="practice-link" href="/session">Edit session setup <span aria-hidden="true">→</span></a><p class="scope-note">Placement and tyre preparation require an offline Practice session. Return to the garage before preparing.</p></div></aside>
-</div><div id="notice" class="error-bar" role="alert" hidden><span id="noticeText"></span><button aria-label="Dismiss error" onclick="document.getElementById('notice').hidden=true">×</button></div>
-<script>
-
 'use strict';
 
 function esc(s) {
@@ -38,6 +19,7 @@ function savePracticePreferences() {
   try { sessionStorage.setItem('practice-preferences',JSON.stringify(practicePreferences)); } catch {}
 }
 let noticeTimer;
+function practiceShortcut(action, fallback) { return globalThis.practiceInputLabels?.[action] ?? fallback; }
 function showNotice(message) {
   const el = document.getElementById('notice');
   document.getElementById('noticeText').textContent = message;
@@ -86,7 +68,9 @@ function renderSession(s) {
   document.getElementById('session').innerHTML = d
     ? '<strong title="' + esc(d.track) + '">' + esc(d.track) + '</strong><span class="session-car" title="' + esc(d.vehicle) + '">' + esc(d.vehicle) + '</span><span class="session-state">' + (garage === true ? 'In garage' : garage === false ? 'On track' : 'Session loaded') + '</span>'
     : '<strong>' + (s.connected ? 'Load single-player Practice' : 'Launch the game to begin') + '</strong>';
-  document.getElementById('capHint').textContent = d ? (d.capturable ? 'Capture your current position.' : 'This position cannot be captured.') : 'Load a session to capture.';
+  const hint = d ? (d.capturable ? practiceShortcut('capture', 'Ctrl+Alt+C') + ': replace and select Quick capture for this track and car.' : 'This position cannot be captured.') : 'Load a session to capture.';
+  document.getElementById('capHint').textContent = hint;
+  document.getElementById('capHint').hidden = !hint;
 }
 
 function renderPenalties(s) {
@@ -100,13 +84,68 @@ function renderPenalties(s) {
   document.getElementById('flagStatus').textContent = !flag?.known ? 'Unknown' : flag.on ? 'ON' : 'OFF';
 }
 
+let visibleCheckpoints = [];
+let destinationState = {};
+function speedRestorationIssue() {
+  const checkpoint = visibleCheckpoints.find(c => c.id === document.getElementById('cp').value);
+  if (!checkpoint) return 'Choose a checkpoint first.';
+  if (!destinationState.rollingStartSupported) return 'Speed & gear are unavailable for this game build. Use Standing teleport.';
+  if (!checkpoint.rollingEligible) return 'This checkpoint needs a straight, level moving capture for speed & gear restoration. Use Standing teleport.';
+  const car = destinationState.session?.vehicle || '';
+  if (checkpoint.vehicle.toLowerCase() !== car.toLowerCase())
+    return `Captured in ${checkpoint.vehicle}; currently driving ${car || 'an unknown car'}. Speed & gear require the capture car. Load that car or use Standing teleport.`;
+  return '';
+}
+function canRestoreSpeed() { return !speedRestorationIssue(); }
+function renderDestinationSpeed() {
+  const checkpoint = visibleCheckpoints.find(c => c.id === document.getElementById('cp').value);
+  const eligible = canRestoreSpeed();
+  const hint = !checkpoint ? '' : eligible
+    ? ((destinationState.inGarage ?? destinationState.tyreRules?.inGarage) === true ? 'Speed & gear restore automatically. Neutral, pedals released after Drive.' : 'Speed & gear restore automatically.')
+    : speedRestorationIssue();
+  document.getElementById('restoreSpeedHint').textContent = hint;
+  document.getElementById('restoreSpeedHint').hidden = !hint;
+  document.getElementById('destinationSpeed').textContent = !checkpoint ? ''
+    : Number.isFinite(checkpoint.speedKmh) ? checkpoint.speedKmh.toFixed(1) + ' km/h captured'
+    : 'Captured speed unavailable';
+}
 function updateDestination() {
   const select = document.getElementById('cp');
   document.getElementById('destinationName').textContent = select.options[select.selectedIndex]?.textContent || 'Choose a destination';
+  renderDestinationSpeed();
   savePracticePreferences();
 }
 
+function speedReadyCheckpoints() {
+  const s = destinationState;
+  if (!s.connected || !s.session || !s.rollingStartSupported) return [];
+  return visibleCheckpoints.filter(c => c.vehicle.toLowerCase() === s.session.vehicle.toLowerCase() &&
+    c.rollingEligible && Number.isFinite(c.speedKmh) && c.speedKmh >= 0.5 && Number.isInteger(c.gear) && c.gear > 0)
+    .sort((a,b) => (a.lapDistance || 0) - (b.lapDistance || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+function cycleCheckpoint(direction) {
+  if (destinationState.busy && destinationState.phase !== 'WaitingToClear') return;
+  const list = speedReadyCheckpoints();
+  if (!list.length) { showNotice('No speed-ready checkpoints for this track and car. Capture while moving in a forward gear on a straight.'); return; }
+  const select = document.getElementById('cp');
+  const index = list.findIndex(c => c.id === select.value);
+  const checkpoint = list[index < 0 ? (direction < 0 ? list.length - 1 : 0) : (index + direction + list.length) % list.length];
+  select.value = checkpoint.id;
+  updateDestination();
+  renderCheckpoints(destinationState);
+  showNotice('Selected ' + checkpoint.name + ' · ' + checkpoint.speedKmh.toFixed(1) + ' km/h · gear ' + checkpoint.gear + '. Teleport when ready.');
+}
+
+async function runPracticeInput(action) {
+  if (action === 'capture') await quickCapture();
+  else if (action === 'teleport') await resetFromHotkey();
+  else if (action === 'standing') await resetFromHotkey(true);
+  else if (action === 'previous' || action === 'next') cycleCheckpoint(action === 'previous' ? -1 : 1);
+}
+
 function renderCheckpoints(s) {
+  destinationState = s;
   const select = document.getElementById('cp');
   const chosen = select.value || practicePreferences.checkpoint;
   const scroll = select.scrollTop;
@@ -114,6 +153,7 @@ function renderCheckpoints(s) {
   const session = s.session;
   const list = session ? (s.checkpoints || []).filter(c =>
     c.track.toLowerCase() === session.track.toLowerCase()) : [];
+  visibleCheckpoints = list;
   const options = list.length
     ? list.map(c => '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>').join('')
     : '<option value="">' + (session ? 'No captures for this track yet' : 'Load a track to see captures') + '</option>';
@@ -127,6 +167,7 @@ function renderCheckpoints(s) {
   select.dataset.track = (session?.track || '').toLowerCase();
   select.disabled = !!s.busy || !list.length;
   document.getElementById('destinationName').textContent = list.find(c => c.id === select.value)?.name || 'Choose a destination';
+  renderDestinationSpeed();
 }
 
 const diagnosticValues = new Map();
@@ -162,7 +203,7 @@ function renderActivity(s) {
   el.className = 'phase' + (phase === 'Armed' ? ' armed' : phase === 'Failed' ? ' bad' : s.busy ? ' live' : '');
   document.getElementById('phaseMsg').textContent = s.phaseMessage || (!s.connected
     ? 'Launch local Practice to begin.' : !s.session ? 'Load a Practice session.'
-    : (s.inGarage ?? s.tyreRules?.inGarage) === true ? 'Choose a destination or prepare your tyres.' : 'Capture here; return to the garage to prepare.');
+    : (s.inGarage ?? s.tyreRules?.inGarage) === true ? 'Choose a destination or prepare your tyres.' : (s.rollingStartSupported ? 'Capture here or reset the selected checkpoint on track.' : 'Capture here; return to the garage to prepare.'));
   collectDiagnostics(s);
   const log = document.getElementById('log');
   const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
@@ -195,10 +236,15 @@ async function refresh() {
   renderActivity(s);
 
   const garage = s.inGarage ?? s.tyreRules?.inGarage;
-  document.getElementById('placeBtn').disabled = !!s.busy || !s.connected || !s.session || garage !== true || !document.getElementById('cp').value;
-  document.getElementById('placeHint').textContent = s.busy ? 'Follow the Activity instructions. You can cancel the pending operation.' :
-    !s.session ? 'Load a Practice session to use a checkpoint.' : garage !== true ? 'Return to the garage to prepare placement.' :
-    !document.getElementById('cp').value ? 'Save a position on this track to create a destination.' : 'Prepare here, then press Drive in LMU when prompted.';
+  const directReset = garage === false && !!s.rollingStartSupported;
+  const placementBlocked = (!!s.busy && !(directReset && s.phase === 'WaitingToClear')) || !s.connected || !s.session || (garage !== true && !directReset) || !document.getElementById('cp').value;
+  document.getElementById('placeBtn').disabled = placementBlocked || !canRestoreSpeed();
+  document.getElementById('standingBtn').disabled = placementBlocked;
+  document.getElementById('placeBtn').textContent = directReset ? 'Reset on track ↺' : 'Place checkpoint ↗';
+  const placeHint = s.busy || !s.session ? '' : directReset ? practiceShortcut('teleport', 'Ctrl+Alt+R') + ' · speed & gear. ' + practiceShortcut('standing', 'Ctrl+Alt+Shift+R') + ' · standing.' : garage !== true ? 'Return to the garage to place.' :
+    !document.getElementById('cp').value ? 'Capture a position first.' : 'Press Drive when prompted.';
+  document.getElementById('placeHint').textContent = placeHint;
+  document.getElementById('placeHint').hidden = !placeHint;
   document.getElementById('capBtn').disabled = !!s.busy || !s.session || !s.session.capturable;
   document.getElementById('cancelBtn').disabled = !s.busy;
   document.getElementById('cancelBtn').hidden = !s.busy;
@@ -206,7 +252,7 @@ async function refresh() {
   document.getElementById('freshOnPlace').disabled = !!s.busy || !s.tyreRules;
   if (!s.tyreRules) document.getElementById('freshOnPlace').checked = false;
   updateTyreSettings();
-  document.getElementById('tyreResetHint').textContent = s.tyreRulesError ? s.tyreRulesError : garage === true ? 'Press Drive when prompted. Temperature changes naturally afterward.' : 'Return to the garage to prepare four tyres.';
+  document.getElementById('tyreResetHint').textContent = s.tyreRulesError ? s.tyreRulesError : garage === true ? 'Press Drive when prompted.' : 'Return to the garage to prepare tyres.';
   document.getElementById('tyreResetBtn').disabled = !!s.busy || !s.connected || !s.session || garage !== true || !s.tyreRules;
 
   // Both launches are refused while the game is up, so say so with the control
@@ -241,16 +287,43 @@ async function capture() {
   refresh();
 }
 
-async function place() {
+let quickCapturePending = false;
+async function quickCapture() {
+  if (quickCapturePending || destinationState.busy || !destinationState.connected || !destinationState.session?.capturable) return;
+  quickCapturePending = true;
+  try {
+    const res = await api('/api/capture', {quick:true});
+    if (res.error) { showNotice(res.error); return; }
+    if (!res.ok || !res.id) { showNotice('Quick capture was not saved.'); return; }
+    // Clear the old selection so the next refresh selects the newly saved ID.
+    practicePreferences.checkpoint = res.id;
+    document.getElementById('cp').value = '';
+    await refresh();
+    updateDestination();
+    showNotice('Quick capture saved and selected. ' + practiceShortcut('teleport', 'Ctrl+Alt+R') + ' to teleport; each quick capture replaces the previous one for this track and car.');
+  } finally { quickCapturePending = false; }
+}
+
+async function place(standing = false) {
   const checkpoint = document.getElementById('cp').value;
   if (!checkpoint) return;
-  const body = {checkpoint: checkpoint};
+  const directReset = (destinationState.inGarage ?? destinationState.tyreRules?.inGarage) === false;
+  const body = {checkpoint: checkpoint, directReset: directReset, restoreSpeed: !standing};
   if (document.getElementById('freshOnPlace').checked) {
+    if (directReset) { showNotice('Tyre conditioning requires the garage Drive handoff. Return to the garage, or uncheck Apply on garage teleport to teleport with your current tyres.'); return; }
     try { body.tyres = tyreOptions(); } catch (e) { showNotice(e.message); return; }
   }
   const res = await api('/api/place', body);
   if (res.error) showNotice(res.error);
   refresh();
+}
+
+async function resetFromHotkey(standing = false) {
+  const garage = destinationState.inGarage ?? destinationState.tyreRules?.inGarage;
+  if ((destinationState.busy && destinationState.phase !== 'WaitingToClear') || !destinationState.connected || !destinationState.session ||
+      (garage !== true && (garage !== false || !destinationState.rollingStartSupported))) return;
+  if (!standing && !canRestoreSpeed()) { showNotice(speedRestorationIssue()); return; }
+  try { await place(standing); } catch (e) { showNotice(e.message); }
 }
 
 async function cancelPlacement() {
@@ -323,7 +396,3 @@ document.getElementById('freshOnPlace').checked = !!practicePreferences.apply;
 updateTyreSettings();
 refresh();
 schedule(700);
-
-</script></body></html>
-""";
-}

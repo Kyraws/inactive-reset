@@ -19,6 +19,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
     private PlacementPhase _phase = PlacementPhase.Idle;
     private string _phaseMessage = "";
+    private string? _cleanupFailure;
+    private bool _resetDuringCleanup;
     private PlacementOutcome? _lastOutcome;
 
     // Kept beside the outcome so the report can judge staleness later, when the
@@ -46,6 +48,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             state["connected"] = true;
             state["pid"] = session.Process.Id;
             state["build"] = session.ExecutableSha256[..8];
+            state["rollingStartSupported"] = session.Offsets.Motion is not null;
+            state["resetUnavailableReason"] = session.Offsets.MotionUnavailableReason;
             state["moduleBase"] = $"0x{session.ModuleBase:X}";
             state["gameVersion"] = session.Offsets.FileVersion;
 
@@ -212,6 +216,9 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["lapCountsNext"] = lap.LapCountsNext,
                 ["pitFlag"] = lap.PitFlag,
                 ["pitState"] = lap.PitState,
+                ["sector"] = lap.Sector,
+                ["lapNumber"] = lap.LapNumber,
+                ["lapStartEt"] = lap.LapStartEt,
                 ["currentLapTimed"] = lap.CurrentLapIsTimed,
                 ["nextLapTimed"] = lap.NextLapWillBeTimed,
                 ["summary"] = lap.Summary,
@@ -324,6 +331,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["vehicle"] = snapshot.VehicleName,
                 ["lapDistance"] = snapshot.LapDistance,
                 ["gear"] = snapshot.Gear,
+                ["speedKmh"] = snapshot.SpeedKmh,
                 ["x"] = snapshot.Pose.Position.X,
                 ["y"] = snapshot.Pose.Position.Y,
                 ["z"] = snapshot.Pose.Position.Z,
@@ -351,6 +359,9 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["track"] = checkpoint.TrackName,
                 ["vehicle"] = checkpoint.VehicleName,
                 ["lapDistance"] = checkpoint.LapDistance,
+                ["speedKmh"] = checkpoint.SpeedKmh,
+                ["rollingEligible"] = RollingMotion.EligibleCapture(checkpoint.LocalVelocityMetresPerSecond),
+                ["gear"] = checkpoint.Gear,
             });
         }
         return array;
@@ -422,8 +433,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             if (starting)
             {
                 lock (_gate) { _log.Clear(); _lastOutcome = null; }
-                await _sessionMenu.StartAsync(body["menuConfirmed"]?.GetValue<bool>() == true,
-                    message => OnProgress(new(PlacementPhase.Gating, message)), cancellation);
+                await _sessionMenu.StartAsync(message => OnProgress(new(PlacementPhase.Gating, message)), cancellation, body["setup"] as JsonObject);
                 OnProgress(new(PlacementPhase.Done, "Session loaded. Switch to LMU and press Drive."));
                 result = new() { ["ok"] = true };
             }
@@ -496,7 +506,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
     public JsonObject Capture(JsonObject body)
     {
-        var name = body["name"]?.GetValue<string>();
+        var quick = body["quick"]?.GetValue<bool>() ?? false;
+        var name = quick ? CaptureService.QuickCaptureName : body["name"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new CheckpointException("a checkpoint name is required");
@@ -516,9 +527,10 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             };
         }
 
-        var path = CaptureService.Save(result.Checkpoint, Checkpoints);
+        var path = CaptureService.Save(result.Checkpoint, Checkpoints, quick);
         Log($"captured '{name}' at {result.Checkpoint.LapDistance:F0} m");
-        return new JsonObject { ["ok"] = true, ["path"] = path };
+        return new JsonObject { ["ok"] = true, ["path"] = path,
+            ["id"] = Path.GetRelativePath(Checkpoints, path).Replace('\\', '/') };
     }
 
     /// <summary>
@@ -528,6 +540,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     public JsonObject StartPlace(JsonObject body)
     {
         var tyreOptions = ReadTyreOptions(body);
+        var restoreSpeed = body["restoreSpeed"]?.GetValue<bool>() ?? true;
+        var directReset = body["directReset"]?.GetValue<bool>() ?? false;
         var name = body["checkpoint"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -537,10 +551,15 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         lock (_gate)
         {
             if (_stopping) return new JsonObject { ["error"] = "the app is closing" };
+            Task? cleanup = null;
             if (_running is { IsCompleted: false })
             {
-                return new JsonObject { ["ok"] = false, ["error"] = "a placement is already running" };
+                if (_phase != PlacementPhase.WaitingToClear || _resetDuringCleanup)
+                    return new JsonObject { ["ok"] = false, ["error"] = "a placement is already running" };
+                cleanup = _running;
             }
+            _cleanupFailure = null;
+            _resetDuringCleanup = cleanup is not null;
             _log.Clear();
             _lastOutcome = null;
             _lastCalibration = null;
@@ -549,8 +568,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             _phaseMessage = "starting";
             _placementCancellation?.Dispose();
             _placementCancellation = new CancellationTokenSource();
-            var token = _placementCancellation.Token;
-            _running = Task.Run(() => RunPlacement(name, tyreOptions, token));
+            var token = _placementCancellation!.Token;
+            _running = Task.Run(() => RunPlacement(name, tyreOptions, restoreSpeed, directReset, token, cleanup));
         }
         return new JsonObject { ["ok"] = true };
     }
@@ -631,12 +650,16 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         }
     }
 
-    private void RunPlacement(string name, TyreResetOptions? tyreOptions, CancellationToken cancellation)
+    private void RunPlacement(string name, TyreResetOptions? tyreOptions, bool restoreSpeed, bool directReset, CancellationToken cancellation, Task? cleanup = null)
     {
         try
         {
             _sessionMenu.RequirePracticeAsync(cancellation).GetAwaiter().GetResult();
             using var session = GameSession.Attach(offsetDirectory, forWriting: true);
+            var placementReader = new LiveStateReader(session);
+            directReset = placementReader.ReadControlOwner(placementReader.ResolveSlotIndex()) == 0;
+            if (cleanup is not null && !directReset) throw new GateException("Wait for the previous garage placement to finish cleanup.");
+            if (directReset && tyreOptions is not null) throw new GateException("Tyre conditioning requires the garage Drive handoff. Uncheck Apply on garage teleport to reset on track with your current tyres.");
             SessionIdentity? live = null;
             try
             {
@@ -651,6 +674,25 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             var checkpoint = Checkpoint.Require(Checkpoints, name, live);
             var identity = live ?? new SessionIdentity(checkpoint.TrackName, checkpoint.VehicleName);
             identity.RequireMatches(checkpoint);
+            if (restoreSpeed) RollingMotion.RequireEligible(checkpoint, session.Offsets.Motion is not null, identity);
+            if (directReset)
+            {
+                var reset = DirectReset.Restore(session, checkpoint, offsetDirectory, _sessionMenu, restoreSpeed,
+                    message => OnProgress(new(PlacementPhase.Restoring, message)), cancellation);
+                cleanup?.GetAwaiter().GetResult();
+                lock (_gate)
+                    if (cleanup is not null && _cleanupFailure is not null)
+                        throw new GateException("Checkpoint reset completed, but the previous placement cleanup failed: " + _cleanupFailure);
+                lock (_gate)
+                {
+                    _lastOutcome = new PlacementOutcome { Completed = true, Message = "reset on track",
+                        Achieved = reset.Observed, DirectResetPauseMilliseconds = reset.PauseMilliseconds,
+                        SpeedRestorationAttempted = restoreSpeed, RollingMotion = reset.Motion };
+                    _lastBuildSha256 = session.ExecutableSha256;
+                }
+                OnProgress(new(PlacementPhase.Done, "Checkpoint restored on track."));
+                return;
+            }
             var calibration = CalibrationProfile.Find(dataDirectory, identity.TrackName, identity.VehicleName)
                 ?? CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName);
             var learned = new LearnedRestStore(dataDirectory).Load(session.ExecutableSha256,
@@ -669,7 +711,35 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             }
 
             using var tyres = tyreOptions is null ? null : new TyreResetPreparation(session, offsetDirectory, tyreOptions);
-            var outcome = service.Place(plan, OnProgress, cancellation: cancellation, tyres: tyres);
+            var liveReader = new LiveStateReader(session);
+            var slot = plan.Live.Container.SlotIndex;
+            bool SameContext() => !session.Process.HasExited && liveReader.ResolveSlotIndex() == slot &&
+                session.Memory.ReadUInt64(session.Resolve(session.Offsets.SpotTable.IndexedDestination ??
+                    session.Offsets.SpotTable.PitPosTable, "placement table")) == plan.Live.Globals.PitPosTable;
+            if (restoreSpeed && plan.CanProceed && liveReader.ReadControlOwner(slot) != 1)
+                throw new GateException("Return to the garage before preparing a rolling start.");
+            var brakeHold = restoreSpeed && plan.CanProceed
+                ? RollingBrakeHold.Prepare(_sessionMenu, SameContext,
+                    message => OnProgress(new(PlacementPhase.Gating, message)), cancellation) : null;
+            PlacementOutcome outcome;
+            using (brakeHold)
+            {
+                RollingMotionResult RestoreMotion()
+                {
+                    try
+                    {
+                        // The car may creep on a slope after Drive; use the same verified moving reset as on track.
+                        RollingMotion.WaitForGarageHandoff(session, checkpoint, offsetDirectory, _sessionMenu, SameContext,
+                            message => OnProgress(new(PlacementPhase.Restoring, message)), cancellation);
+                        return DirectReset.Restore(session, checkpoint, offsetDirectory, _sessionMenu, true,
+                            message => OnProgress(new(PlacementPhase.Restoring, message)), cancellation).Motion
+                            ?? throw new GateException("Reset completed without verified speed and gear restoration.");
+                    }
+                    finally { brakeHold?.Restore(); }
+                }
+                outcome = service.Place(plan, OnProgress, cancellation: cancellation, tyres: tyres,
+                    restoreMotion: restoreSpeed ? RestoreMotion : null);
+            }
             lock (_gate)
             {
                 _lastOutcome = outcome;
@@ -684,10 +754,30 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         {
             lock (_gate)
             {
+                _cleanupFailure = ex.Message;
                 _phase = PlacementPhase.Failed;
                 _phaseMessage = ex.Message;
             }
             Log($"error: {ex.Message}");
+        }
+        finally
+        {
+            // A refused reset must leave the original rule-cleanup task available and cancellable.
+            if (cleanup is not null)
+            {
+                lock (_gate)
+                {
+                    _resetDuringCleanup = false;
+                    if (!cleanup.IsCompleted)
+                    {
+                        _running = cleanup;
+                        _phase = PlacementPhase.WaitingToClear;
+                        _phaseMessage = "Reset failed; drive until pit state clears, retry reset, or return to the garage.";
+                    }
+                }
+                // Shutdown may already be awaiting this task, so retain the cleanup lifetime on failure too.
+                cleanup.GetAwaiter().GetResult();
+            }
         }
     }
 

@@ -8,11 +8,11 @@ const sameNumber=(a,b)=>Math.abs(Number(a)-Number(b))<0.0001;
 function notify(message,error=false){$('labToastText').textContent=message;$('labToast').className='lab-toast'+(error?' error':'');$('labToast').hidden=false;clearTimeout(toastTimer);if(!error)toastTimer=setTimeout(()=>$('labToast').hidden=true,6500);}
 reportError=message=>{mutationFailed=true;$('saveStatus').textContent='Change not confirmed';$('saveDot').className='save-dot error';notify(message,true);};
 showNotice=message=>notify(message,true);
-const classicRequest=request;
+const baseRequest=request;
 request=async function(path,body){
   // State.error describes game attachment; it is not an HTTP connection failure.
   if(path==='/api/state'&&body===undefined){const response=await fetch(path),result=await response.json();if(!response.ok)throw Error(result.error||'The app connection was lost.');return result;}
-  return classicRequest(path,body);
+  return baseRequest(path,body);
 };
 function persistPreferences(){
   if(!preferencesReady)return Promise.resolve(false);
@@ -24,11 +24,11 @@ function persistPreferences(){
 function effectiveTheme(){return labPreferences.style==='redline'?'midnight':labPreferences.theme;}
 function applyAppearance(){
  const racing=labPreferences.style==='redline';document.body.dataset.style=racing?'redline':'original';document.body.dataset.theme=effectiveTheme();document.body.dataset.density=labPreferences.density;
- for(const img of document.querySelectorAll('.brand-logo')){img.hidden=false;img.nextElementSibling.hidden=true;img.src=brandLogoUrl(img.dataset.brand);}
+ for(const img of document.querySelectorAll('.brand-logo')){const src=brandLogoUrl(img.dataset.brand);if(img.getAttribute('src')===src)continue;img.hidden=true;img.nextElementSibling.hidden=false;img.onload=()=>{img.hidden=false;img.nextElementSibling.hidden=true;};img.src=src;}
  for(const b of document.querySelectorAll('[data-theme]')){b.classList.toggle('active',b.dataset.theme===effectiveTheme());b.disabled=racing;}
  for(const b of document.querySelectorAll('[data-density]'))b.classList.toggle('active',b.dataset.density===labPreferences.density);
  for(const b of document.querySelectorAll('[data-style-choice]')){const selected=b.dataset.styleChoice===(labPreferences.style||'original');b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));}
- $('themeDescription').textContent=racing?'Redline lives after dark. Original restores your previous colour theme.':'Midnight for the pit wall. Daylight for a brighter workspace.';
+ for(const b of document.querySelectorAll('button[data-theme]'))b.title=racing?'Available in Original style':'';
  document.querySelector('.lab-brand small').textContent=racing?'ONE MORE LAP. THEN WE GO.':'THE PRACTICE LAB';
 }
 function setPage(page,nextSection){
@@ -36,33 +36,34 @@ function setPage(page,nextSection){
   if(!panels[page])return;
   labPage=page;for(const id of Object.values(panels))$(id).hidden=id!==panels[page];
   $('setupDock').hidden=['practice','library','activity'].includes(page);$('practiceDock').hidden=!$('setupDock').hidden;
+  $('sessionSummary').hidden=$('summaryMeta').hidden=document.querySelector('.dock-journal').hidden=$('setupDock').hidden;
   $('dockEyebrow').textContent=$('setupDock').hidden?'YOUR PRACTICE':'YOUR SESSION';
-  if(nextSection)classicSwitchSection(nextSection);
+  if(nextSection)baseSwitchSection(nextSection);
   for(const b of document.querySelectorAll('.rail-link'))b.classList.toggle('active',b.dataset.page===page || page==='setup' && b.dataset.section===section);
   if(['practice','library','activity'].includes(page))refresh();else{clearInterval(timer);timer=null;period=0;}
   if(page==='presets')renderPlans();if(page==='library')renderLibrary();if(page==='activity')renderLabActivity();
   $('editor').scrollTop=0;updateLabControls();
 }
-const classicSwitchSection=switchSection;
+const baseSwitchSection=switchSection;
 switchSection=next=>setPage('setup',next);
-const classicSchedule=schedule;
-schedule=ms=>{if(['practice','library','activity'].includes(labPage))classicSchedule(ms);else{clearInterval(timer);timer=null;period=0;}};
-const classicRow=row;
+const baseSchedule=schedule;
+schedule=ms=>{if(['practice','library','activity'].includes(labPage))baseSchedule(ms);else{clearInterval(timer);timer=null;period=0;}};
+const baseRow=row;
 row=function(key,setting,action='setting',extra={}){
   if(!setting)return '';
   if(setting.uiSelectionType==='Switch' || action==='assist' && setting.minValue===0 && setting.maxValue===1){
     const on=!!setting.currentValue,body=action==='assist'?{action,key,value:on?0:1}:{action,key,steps:on?0:1};
     return `<div class="setting-row"><div class="setting-label">${escapeHtml(label(key))}</div><button class="lab-switch" role="switch" aria-checked="${on}" aria-label="${escapeHtml(label(key))}" data-change="${keyData(body)}">${on?'On':'Off'}</button></div>`;
   }
-  return classicRow(key,setting,action,extra);
+  return baseRow(key,setting,action,extra);
 };
 function decoratePins(container){for(const r of container.querySelectorAll('.setting-row')){const control=r.querySelector('[data-change]');if(!control)continue;const b=JSON.parse(control.dataset.change),key=b.key;if(!/^SESSSET_/.test(key)||r.querySelector('.pin-control'))continue;const pin=document.createElement('button');pin.type='button';pin.className='pin-control';pin.dataset.pin=key;pin.setAttribute('aria-pressed',String(labPreferences.pins.includes(key)));pin.setAttribute('aria-label','Pin '+label(key));pin.textContent=labPreferences.pins.includes(key)?'★':'☆';r.prepend(pin);}}
-const classicRenderContent=renderContent;
-renderContent=function(){classicRenderContent();$('sectionContent').dataset.section=section;if(setup&&catalog){decoratePins($('sectionContent'));renderHome();if(section==='weather')addWeatherPreview();if(section==='sessions')addDurationShortcuts();}updateLabControls();};
-const classicNavigation=renderNavigation;
-renderNavigation=function(){classicNavigation();renderMetrics();updateLabControls();};
-const classicUpdateControls=updateControls;
-updateControls=function(){classicUpdateControls();updateLabControls();};
+const baseRenderContent=renderContent;
+renderContent=function(){baseRenderContent();$('sectionContent').dataset.section=section;if(setup&&catalog){decoratePins($('sectionContent'));renderHome();if(section==='weather')addWeatherPreview();if(section==='sessions')addDurationShortcuts();}updateLabControls();};
+const baseNavigation=renderNavigation;
+renderNavigation=function(){baseNavigation();renderMetrics();updateLabControls();};
+const baseUpdateControls=updateControls;
+updateControls=function(){baseUpdateControls();updateLabControls();};
 function updateLabControls(){
   const locked=!setup||!menuReady||saving||starting||serverBusy||applyingPlan;
   const busy=saving||starting||serverBusy||applyingPlan;
@@ -97,7 +98,7 @@ function layoutName(track){
 }
 function brandLogoUrl(brand){return '/api/brands/'+encodeURIComponent(brand)+'?theme='+effectiveTheme();}
 function brandName(car){return car.manufacturer||parts(car)[2].match(/^(Aston Martin|Mercedes-AMG|Isotta Fraschini|[A-Za-z]+)/)?.[0]||'LMU';}
-renderSelection=function(){
+function renderSelection(){
  const car=currentCar(),track=currentTrack(),owned=catalog.cars.filter(c=>c.isOwned),key=car?modelKey(car):'';
  if(!vehicleClass)vehicleClass='all';
  const filtered=owned.filter(c=>(vehicleSeason==='all'||parts(c)[0]===vehicleSeason)&&(vehicleClass==='all'||parts(c)[1].replace('_ELMS','')===vehicleClass)&&(!carSearch||`${c.desc} ${c.fullPathTree} ${brandName(c)}`.toLowerCase().includes(carSearch.toLowerCase())));
@@ -108,11 +109,8 @@ renderSelection=function(){
  return `<section class="section-block circuit-picker"><div><label class="input-label" for="circuitSelect">Circuit</label><select id="circuitSelect">${circuits.map(n=>option(n,n,n===circuit,!tracks.some(t=>circuitName(t)===n&&t.owned))).join('')}</select></div><div><label class="input-label" for="trackSelect">Layout / event configuration</label><select id="trackSelect">${layouts.map(t=>option(t.id,layoutName(t),t.id===track?.id,!t.owned)).join('')}</select></div><button class="icon-button" data-fav-track="${escapeHtml(track?.id||'')}" aria-label="Favourite current layout">${labPreferences.tracks.includes(track?.id)?'★':'☆'}</button><div class="track-details"><span class="pill">${escapeHtml(track?.countryCode||'')}</span><span class="pill">${escapeHtml(track?.trackLength||tracks.find(t=>t.id===track?.id)?.length||'—')} km</span></div><div class="favourite-tracks">${tracks.filter(t=>t.owned&&labPreferences.tracks.includes(t.id)).map(t=>`<button class="button" data-track="${escapeHtml(t.id)}">${escapeHtml(circuitName(t))} · ${escapeHtml(layoutName(t))}</button>`).join('')}</div></section>
  <section class="section-block"><h2>Car model</h2><div class="vehicle-filters"><input id="carSearch" type="search" value="${escapeHtml(carSearch)}" placeholder="Search model, brand or team" aria-label="Search cars"><button class="button quiet" data-favourite-cars aria-pressed="${favouriteCarsOnly}">${favouriteCarsOnly?'★':'☆'} Favourites</button><select id="vehicleSeason" aria-label="Livery season">${option('all','All livery seasons',vehicleSeason==='all')}${seasons.map(s=>option(s,s,s===vehicleSeason)).join('')}</select><select id="vehicleClass" aria-label="Vehicle class">${option('all','All classes',vehicleClass==='all')}${classes.map(s=>option(s,s,s===vehicleClass)).join('')}</select></div><div class="livery-choice"><label class="input-label" for="carSelect">Season · team · livery</label><select id="carSelect">${teams.sort((a,b)=>parts(b)[0].localeCompare(parts(a)[0])||a.desc.localeCompare(b.desc)).map(c=>option(c.id,parts(c)[0]+' · '+c.desc,c.id===car?.id)).join('')}</select></div><div class="vehicle-grid">${models.map(c=>`<article class="vehicle-card ${modelKey(c)===key?'active':''}"><button class="car-pick" data-car="${escapeHtml(c.id)}" aria-pressed="${modelKey(c)===key}"><span class="brand-art"><img class="brand-logo" data-light-variant="${['Alpine','Aston Martin','BMW','Cadillac','Genesis','Isotta Fraschini','Lexus','Ligier','Oreca','Toyota','Vanwall'].includes(brandName(c))}" data-brand="${escapeHtml(brandName(c))}" src="${brandLogoUrl(brandName(c))}" alt="${escapeHtml(brandName(c))}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="brand-wordmark" hidden>${escapeHtml(brandName(c))}</span></span><strong>${escapeHtml(parts(c)[2])}</strong><small>${escapeHtml(parts(c)[1].replace('_ELMS',' · ELMS'))} · ${owned.filter(v=>modelKey(v)===modelKey(c)).length} liveries</small></button><button class="icon-button" data-fav-car="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(parts(c)[2])}">${favs.has(modelKey(c))?'★':'☆'}</button></article>`).join('')||'<p class="empty-note">No matching models.</p>'}</div><p class="small-note">${models.length} models. Season entries share one card; distinct Evo models and classes stay separate.</p></section><button class="button quiet" data-dialog="defaultsDialog">Use circuit defaults</button>`;
 };
-const classicRenderRules=renderRules;
-renderRules=function(){const assists=setup.assists;try{setup.assists={};return classicRenderRules().replaceAll('rule or assist','rule').replaceAll('rules and assists','rules');}finally{setup.assists=assists;}};
-SECTION_INFO.rules=['MAKE IT YOURS','Rules','Simulation settings and session rules. Your driving assists stay as configured in LMU.'];
-const classicRenderSummary=renderSummary;
-renderSummary=function(){classicRenderSummary();const track=currentTrack();if(track){$('selectionSummary').querySelector('h3').textContent=circuitName(track);$('selectionSummary').querySelector('p').textContent=layoutName(catalog?.tracks.find(t=>t.id===track.id)||track);}};
+const baseRenderSummary=renderSummary;
+renderSummary=function(){baseRenderSummary();const track=currentTrack();if(track){$('selectionSummary').querySelector('h3').textContent=circuitName(track);$('selectionSummary').querySelector('p').textContent=layoutName(catalog?.tracks.find(t=>t.id===track.id)||track);}};
 
 function addDurationShortcuts(){for(const [type,key] of [['PRACTICE','SESSSET_Practice_Length'],['QUALIFY','SESSSET_Qualify_Length'],['RACE','SESSSET_race_time']]){if(!setup.amounts[type])continue;const input=$('value-'+key);if(!input||input.closest('fieldset[disabled]'))continue;const bar=document.createElement('div');bar.className='duration-shortcuts';bar.innerHTML='<span>Quick duration</span>'+[15,30,60].map(v=>`<button class="button" data-target="${key}" data-value="${v}">${v} min</button>`).join('');input.closest('.section-block').prepend(bar);}}
 function addWeatherPreview(){
@@ -120,19 +118,19 @@ function addWeatherPreview(){
   const preview=document.createElement('section');preview.className='weather-preview';preview.innerHTML='<div class="section-heading" style="margin:0"><h2>Forecast at a glance</h2><span class="muted">Rain chance / air temperature</span></div><div class="weather-chart">'+Object.entries(names).map(([n,title])=>`<button class="weather-point" data-weather-node="${n}" aria-label="${title}: ${w[n]?.WNV_RAIN_CHANCE?.currentValue??0}% rain chance, ${w[n]?.WNV_TEMPERATURE?.currentValue??'unknown'} degrees"><span class="rain-percent">${escapeHtml(w[n]?.WNV_RAIN_CHANCE?.currentValue??0)}%</span><span class="rain-bar" style="height:${Math.max(3,Math.min(55,Number(w[n]?.WNV_RAIN_CHANCE?.currentValue||0)*.55))}px"></span><strong>${escapeHtml(w[n]?.WNV_TEMPERATURE?.currentValue??'—')}°</strong><span>${title}</span></button>`).join('')+'</div><div class="weather-actions"><button class="button" data-weather-copy="points">Copy this point to all</button><button class="button" data-weather-copy="QUALIFY">Copy to qualifying</button><button class="button" data-weather-copy="RACE">Copy to race</button></div>';
   $('sectionContent').prepend(preview);
 }
-const classicChange=change;
-change=async function(body){if(body.action==='assist'){notify('Driving assists are managed in LMU.',true);return;}const before=setup?clone(setup):null;mutationFailed=false;await classicChange(body);if(before&&setup&&!mutationFailed){let intent=null;if(body.action==='setting'&&!sameNumber(before.settings[body.key]?.currentValue,setup.settings[body.key]?.currentValue))intent={type:'setting',key:body.key,value:before.settings[body.key].currentValue};if(body.action==='assist')intent={type:'assist',key:body.key,value:before.assists[body.key].currentValue};if(body.action==='amount')intent={type:'amount',session:body.session,value:before.amounts[body.session]};if(intent){lastUndo=intent;$('lastChange').textContent=(body.key?label(body.key):SESSION_NAMES[body.session])+' updated · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}updateLabControls();}};
-const classicCheckpoints=renderCheckpoints;
-renderCheckpoints=function(s){labState=s;classicCheckpoints(s);$('libraryCount').textContent=(s.checkpoints||[]).length;
+const baseChange=change;
+change=async function(body){if(body.action==='assist'){notify('Driving assists are managed in LMU.',true);return;}const before=setup?clone(setup):null;mutationFailed=false;await baseChange(body);if(before&&setup&&!mutationFailed){let intent=null;if(body.action==='setting'&&!sameNumber(before.settings[body.key]?.currentValue,setup.settings[body.key]?.currentValue))intent={type:'setting',key:body.key,value:before.settings[body.key].currentValue};if(body.action==='assist')intent={type:'assist',key:body.key,value:before.assists[body.key].currentValue};if(body.action==='amount')intent={type:'amount',session:body.session,value:before.amounts[body.session]};if(intent){lastUndo=intent;$('lastChange').textContent=(body.key?label(body.key):SESSION_NAMES[body.session])+' updated · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}updateLabControls();}};
+const baseCheckpoints=renderCheckpoints;
+renderCheckpoints=function(s){labState=s;baseCheckpoints(s);$('libraryCount').textContent=(s.checkpoints||[]).length;
  const list=(s.checkpoints||[]).filter(c=>c.track.toLowerCase()===(s.session?.track||'').toLowerCase());
  $('destinationList').innerHTML=list.map(c=>`<button class="destination-option ${$('cp').value===c.id?'active':''}" data-pick-checkpoint="${escapeHtml(c.id)}" ${s.busy?'disabled':''} aria-pressed="${$('cp').value===c.id}"><strong>${escapeHtml(c.name)}</strong><span>${Math.round(c.lapDistance||0).toLocaleString()} m</span></button>`).join('')||'<p class="empty-note">'+(s.session?'No captures for this track yet.':'Load Practice to see destinations.')+'</p>';if(labPage==='library')renderLibrary();};
-const classicActivity=renderActivity;
-renderActivity=function(s){classicActivity(s);labState=s;$('operationRibbon').hidden=!s.busy;$('operationText').textContent=s.phase==='Armed'?'LMU is ready. Press Drive in the game.':s.phaseMessage||'An operation is in progress.';if(labPage==='activity')renderLabActivity();updateLabControls();};
+const baseActivity=renderActivity;
+renderActivity=function(s){baseActivity(s);labState=s;$('operationRibbon').hidden=!s.busy;$('operationText').textContent=s.phase==='Armed'?'LMU is ready. Press Drive in the game.':s.phaseMessage||'An operation is in progress.';if(labPage==='activity')renderLabActivity();updateLabControls();};
 function renderLibrary(){
   const all=labState?.checkpoints||[],loaded=labState?.session?.track||'';
   const list=all.filter(c=>(!onlyFavourites||labPreferences.checkpoints.includes(c.id))&&`${c.name} ${c.track} ${c.vehicle}`.toLowerCase().includes(libraryQuery.toLowerCase())).sort((a,b)=>librarySort==='distance'?a.lapDistance-b.lapDistance:librarySort==='track'?a.track.localeCompare(b.track)||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   $('libraryMeta').textContent=`${list.length} of ${all.length} checkpoints · ${loaded?'loaded track: '+loaded:'load Practice to place a checkpoint'}`;
-  $('checkpointCards').innerHTML=list.map(c=>{const usable=c.track.toLowerCase()===loaded.toLowerCase()&&!labState?.busy;return `<article class="checkpoint-item ${usable?'':'dimmed'}"><button class="icon-button" data-fav-checkpoint="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(c.name)}">${labPreferences.checkpoints.includes(c.id)?'★':'☆'}</button><div><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.track)} · captured in ${escapeHtml(c.vehicle)}</p></div><span class="distance">${Math.round(c.lapDistance||0).toLocaleString()} m</span><button class="button" data-pick-checkpoint="${escapeHtml(c.id)}" ${usable?'':'disabled'}>${usable?'Select ↗':'Other track'}</button></article>`;}).join('')||'<p class="empty-note">No matching checkpoints. Capture a position in Practice or change your filter.</p>';
+  $('checkpointCards').innerHTML=list.map(c=>{const usable=c.track.toLowerCase()===loaded.toLowerCase()&&!labState?.busy;return `<article class="checkpoint-item ${usable?'':'dimmed'}"><button class="icon-button" data-fav-checkpoint="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(c.name)}">${labPreferences.checkpoints.includes(c.id)?'★':'☆'}</button><div><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.track)} · captured in ${escapeHtml(c.vehicle)}${Number.isFinite(c.speedKmh)?' · captured at '+c.speedKmh.toFixed(1)+' km/h':''}</p></div><span class="distance">${Math.round(c.lapDistance||0).toLocaleString()} m</span><button class="button" data-pick-checkpoint="${escapeHtml(c.id)}" ${usable?'':'disabled'}>${usable?'Select ↗':'Other track'}</button></article>`;}).join('')||'<p class="empty-note">No matching checkpoints. Capture a position in Practice or change your filter.</p>';
 }
 function activityText(){return [...diagnosticLog,...(labState?.log||[]),...(labState?.outcome?.lines||[]).map(l=>l.label+': '+l.value)].join('\n')||'No activity yet.';}
 function renderLabActivity(){const text=activityText(),filtered=logFilter==='issues'?text.split('\n').filter(l=>/error|fail|refus|unavail|unknown|cancel|mismatch/i.test(l)).join('\n'):text;$('log').textContent=filtered;$('activityEmpty').hidden=!!filtered;}
@@ -242,7 +240,6 @@ document.addEventListener('click',async e=>{
   if(b.dataset.pickCheckpoint){$('cp').value=b.dataset.pickCheckpoint;updateDestination();renderCheckpoints(labState);setPage('practice');notify('Checkpoint selected. Place it from the garage when ready.');}
   if(b.dataset.logFilter){logFilter=b.dataset.logFilter;for(const v of document.querySelectorAll('[data-log-filter]'))v.classList.toggle('active',v===b);renderLabActivity();}
 
-  if(b.dataset.classic)$('classicFrame').src=b.dataset.classic;
 });
 document.addEventListener('change',e=>{const t=e.target;if(t.id==='circuitSelect'){const next=catalog.tracks.find(v=>circuitName(v)===t.value&&v.owned);if(next)change({action:'track',id:next.id});}if(t.id==='vehicleSeason'){vehicleSeason=t.value;renderContent();}if(t.id==='vehicleClass'){vehicleClass=t.value;renderContent();}if(t.id==='librarySort'){librarySort=t.value;renderLibrary();}});
 document.addEventListener('input',e=>{if(e.target.id==='librarySearch'){libraryQuery=e.target.value;renderLibrary();}if(e.target.id==='presetSearch'){presetQuery=e.target.value;renderPlans();}if(e.target.id==='allTemperature'){for(const w of TYRE_WHEELS)$('tyreTemperature'+w).value=e.target.value==='0'?'':e.target.value;updateTyreSettings();}if(e.target.id==='allCondition'){for(const w of TYRE_WHEELS)$('tyreCondition'+w).value=e.target.value;$('allConditionValue').textContent=e.target.value+'%';updateTyreSettings();}});
@@ -270,11 +267,9 @@ $('importPlansFile').addEventListener('change',async e=>{try{const f=e.target.fi
 $('exportPlansButton').addEventListener('click',()=>download('inactive-reset-plans.json',JSON.stringify({schema:1,plans:labPreferences.plans},null,2),'application/json'));
 $('exportActivityButton').addEventListener('click',()=>download('inactive-reset-activity.txt','Inactive Reset · Lab 02\n'+new Date().toISOString()+'\n\n'+activityText()));
 $('favouritesOnly').addEventListener('click',()=>{onlyFavourites=!onlyFavourites;$('favouritesOnly').setAttribute('aria-pressed',String(onlyFavourites));$('favouritesOnly').textContent=onlyFavourites?'★ Favourites':'☆ Favourites';renderLibrary();});
-$('quickCaptureButton').addEventListener('click',()=>{if(!labState?.session?.capturable){notify('Drive to a capturable position in Practice first.',true);return;}$('capName').value=Math.round(labState.session.lapDistance||0)+'m-'+new Date().toISOString().replace(/[-:.TZ]/g,'');capture();});
+$('quickCaptureButton').addEventListener('click',quickCapture);
 
 $('refreshLabButton').addEventListener('click',async()=>{await loadSetup();await poll();if(['practice','library','activity'].includes(labPage))await refresh();notify('Refreshed from LMU.');});
-$('compareButton').addEventListener('click',()=>{$('classicFrame').src='/session';$('compareDialog').showModal();});
-$('compareDialog').addEventListener('close',()=>{$('classicFrame').src='about:blank';loadSetup();});
 $('dismissLabToast').addEventListener('click',()=>$('labToast').hidden=true);
-async function initLab(){try{const p=await request('/api/lab/preferences');labPreferences=p;preferencesReady=true;}catch(e){notify('Saved Lab choices could not be read. '+e.message,true);}applyAppearance();renderHome();setPage('home');}
+async function initLab(){try{const p=await request('/api/lab/preferences');labPreferences=p;preferencesReady=true;}catch(e){notify('Saved Lab choices could not be read. '+e.message,true);}applyAppearance();renderHome();setPage('home');document.documentElement.removeAttribute('data-loading');}
 initLab();

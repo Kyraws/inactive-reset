@@ -3,7 +3,6 @@
     "Byte offsets into LMU's shared memory, emitted by the compiler from",
     "SharedMemoryInterface.hpp. Do not hand-edit: re-run tools/dump-sdk-offsets."
   ],
-  "sdkHeaderSha256": "A82833D5E9E277A7C3AF8802518E35EA62F4EC7C7C7C9083650282E4EDF1F8BF",
   "mapName": "LMU_Data",
   "eventName": "",
   "layoutSize": 324824,
@@ -22,6 +21,10 @@
     "mPos": 160,
     "mLocalVel": 184,
     "mOri": 232,
+    "mUnfilteredThrottle": 388,
+    "mUnfilteredBrake": 396,
+    "mFilteredThrottle": 420,
+    "mFilteredBrake": 428,
     "mGear": 352,
     "mVehicleClass": 826,
     "mFrontTireCompoundName": 620,
@@ -35,6 +38,9 @@
   "wheel": {
     "mTemperature": 128,
     "mWear": 152,
+    "mRotation": 40,
+    "mStaticUndeflectedRadius": 179,
+    "mVerticalTireDeflection": 180,
     "mFlat": 177,
     "mDetached": 178,
     "mTireCarcassTemperature": 204,
@@ -66,5 +72,6 @@
   "generic": {
     "base": 0,
     "gameVersion": 64
-  }
+  },
+  "sdkHeaderSha256": "A82833D5E9E277A7C3AF8802518E35EA62F4EC7C7C7C9083650282E4EDF1F8BF"
 }

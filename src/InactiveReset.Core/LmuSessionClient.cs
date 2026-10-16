@@ -27,6 +27,9 @@ public sealed class LmuSessionClient
     public async Task<JsonObject> NavigationAsync(CancellationToken cancellation = default) =>
         Object(await RequestAsync(HttpMethod.Get, "/navigation/state", cancellation: cancellation));
 
+    public async Task<JsonObject> GameStateAsync(CancellationToken cancellation = default) =>
+        Object(await RequestAsync(HttpMethod.Get, "/rest/sessions/GetGameState", cancellation: cancellation));
+
     public async Task RequirePracticeAsync(CancellationToken cancellation = default)
     {
         var nav = await NavigationAsync(cancellation);
@@ -35,6 +38,25 @@ public sealed class LmuSessionClient
             state["gameSession"]?.GetValue<string>()?.StartsWith("PRACTICE", StringComparison.Ordinal) != true ||
             state["gameState"]?.GetValue<string>() != "GSTATE_DYN" || nav["loadingStatus"]?["loading"]?.GetValue<bool>() == true)
             throw new GateException("Load an offline Practice session before using the practice tools.");
+    }
+
+    internal async Task<bool> HoldBrakesAsync(CancellationToken cancellation = default)
+    {
+        var settings = Object(await RequestAsync(HttpMethod.Get, "/rest/options/settings", cancellation: cancellation));
+        var hold = settings["DRIVEAIDS_hold_brakes"] as JsonObject;
+        if (hold?["valueType"]?.GetValue<string>() != "LONG" ||
+            hold["minValue"]?.GetValue<double>() != 0 || hold["maxValue"]?.GetValue<double>() != 1 ||
+            hold["stepValue"]?.GetValue<double>() != 1 || hold["currentValue"]?.GetValue<double>() is not (0 or 1))
+            throw new GateException("LMU's Hold Brakes setting is unavailable or has an unsupported range.");
+        return hold["currentValue"]!.GetValue<double>() == 1;
+    }
+
+    internal async Task SetHoldBrakesAsync(bool enabled, CancellationToken cancellation = default)
+    {
+        await RequirePracticeAsync(cancellation);
+        await HoldBrakesAsync(cancellation);
+        await PostAsync("/rest/options/long", new JsonObject
+            { ["optionEntry"] = "DRIVEAIDS_hold_brakes", ["value"] = enabled ? 1 : 0 }, cancellation);
     }
 
     public async Task<JsonObject> SetupAsync(CancellationToken cancellation = default)
@@ -166,6 +188,11 @@ public sealed class LmuSessionClient
         var nav = Object((await NavigationAsync(cancellation))["state"]);
         if (nav["settingMode"]?.GetValue<string>() != "SETTING_GRANDPRIX")
             throw new GateException("Session setup is available for local single-player sessions only.");
+        if (nav["gameState"]?.GetValue<string>() == "GSTATE_DYN")
+        {
+            await PostAsync("/navigation/action/NAV_BACK_TO_EVENT", null, cancellation);
+            await Task.Delay(500, cancellation);
+        }
         await PostAsync("/navigation/action/NAV_TO_MAIN_MENU", null, cancellation);
         for (var i = 0; i < 120; i++)
         {
@@ -176,23 +203,29 @@ public sealed class LmuSessionClient
         throw new GateException("LMU is still returning to the menu. Wait for it to finish, then refresh setup.");
     }
 
-    public async Task StartAsync(bool menuConfirmed, Action<string> progress, CancellationToken cancellation = default)
+    public async Task StartAsync(Action<string> progress, CancellationToken cancellation = default,
+        JsonObject? expectedSetup = null)
     {
-        if (!menuConfirmed) throw new GateException("Dismiss LMU's startup prompt and confirm that its main menu is visible.");
         await RequireMenuAsync(cancellation);
-        var amounts = Object(await RequestAsync(HttpMethod.Get, "/rest/sessions/amount", cancellation: cancellation));
+        var setup = await SetupAsync(cancellation);
+        if (expectedSetup is not null && !SameSetup(expectedSetup, setup))
+            throw new GateException("LMU's setup changed since it was displayed. Refresh from LMU before starting.");
+        var amounts = Object(setup["amounts"]);
         if (!amounts.Any(a => a.Value?.GetValue<int>() > 0)) throw new GateException("Enable at least one session before starting.");
-        var selection = Object(await RequestAsync(HttpMethod.Get, "/rest/garage/UIScreen/SessionSetup", cancellation: cancellation));
+        var selection = Object(setup["selection"]);
         if (selection["selectedCar"]?["isOwned"]?.GetValue<bool>() != true || selection["trackInfo"]?["isOwned"]?.GetValue<bool>() != true)
             throw new GateException("Choose a car and track that you own before starting.");
         var preset = await PresetAsync(cancellation);
-        if (preset["Player"]?["Game Options"]?["Opponents"]?.GetValue<int>() > 0 && preset["Grid"] is JsonArray { Count: 0 })
-            throw new GateException("Choose opponent classes in Grid, or set the opponent count to zero.");
+        var launchPreset = LaunchPreset(preset, setup);
         progress("Preparing your session…");
         await PostAsync("/rest/garage/refreshsetups", null, cancellation);
-        await PostAsync("/rest/sessions/SessionPresets/applyPreset", preset, cancellation);
-        var save = Object(await PostAsync("/rest/sessions/SaveLoad/generateSaveFileFromSessionPreset", preset, cancellation));
-        if (save["SessionPreset"] is not JsonObject) throw new GateException("LMU did not generate a valid session. Nothing was loaded.");
+        await PostAsync("/rest/sessions/SessionPresets/applyPreset", launchPreset, cancellation);
+        var accepted = await SetupAsync(cancellation);
+        if (!SameSessionValues(setup, accepted))
+            throw new GateException("Applying LMU's preset changed the session setup. Refresh from LMU and review it before starting.");
+        var save = Object(await PostAsync("/rest/sessions/SaveLoad/generateSaveFileFromSessionPreset", launchPreset, cancellation));
+        if (save["SessionPreset"] is not JsonObject generated || !SameSetup(generated, launchPreset))
+            throw new GateException("LMU's generated session does not match the accepted setup. Nothing was loaded.");
         await RequireMenuAsync(cancellation);
         cancellation.ThrowIfCancellationRequested();
         // After LMU accepts loadGame, cancellation stops monitoring; it cannot undo a game load.
@@ -216,6 +249,44 @@ public sealed class LmuSessionClient
             await Task.Delay(250, cancellation);
         }
         throw new GateException("LMU has not finished loading. Check its screen before trying again; the session may still load.");
+    }
+
+    internal static bool SameSessionValues(JsonObject expected, JsonObject actual) =>
+        new[] { "settings", "amounts", "weather", "assists" }.All(key => SameSetup(expected[key], actual[key])) &&
+        SameSetup(expected["selection"]?["selectedCar"], actual["selection"]?["selectedCar"]) &&
+        SameSetup(expected["selection"]?["trackInfo"], actual["selection"]?["trackInfo"]);
+
+    internal static bool SameSetup(JsonNode? left, JsonNode? right)
+    {
+        if (left is JsonObject a && right is JsonObject b)
+            return a.Count == b.Count && a.All(p => b.ContainsKey(p.Key) && SameSetup(p.Value, b[p.Key]));
+        if (left is JsonArray x && right is JsonArray y)
+            return x.Count == y.Count && x.Zip(y).All(p => SameSetup(p.First, p.Second));
+        // Browser JSON round trips turn numeric tokens such as 20.0 into 20.
+        if (left is JsonValue && right is JsonValue &&
+            double.TryParse(left.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var l) &&
+            double.TryParse(right.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var r))
+            return l.Equals(r);
+        return JsonNode.DeepEquals(left, right);
+    }
+
+    internal static JsonObject LaunchPreset(JsonObject preset, JsonObject setup)
+    {
+        var count = setup["settings"]?["SESSSET_Num_Opponents"]?["currentValue"]?.GetValue<int>()
+            ?? throw new GateException("LMU did not return the opponent count.");
+        if (count < 0) throw new GateException("LMU returned an invalid opponent count.");
+        var player = setup["selection"]?["selectedCar"]?["id"]?.GetValue<string>()
+            ?? throw new GateException("Choose a car before starting.");
+        var grid = preset["Grid"] as JsonArray ?? throw new GateException("LMU did not return an opponent grid.");
+        var opponents = grid.Where(c => c?.GetValue<string>() != player).ToArray();
+        if (count > opponents.Length)
+            throw new GateException($"The grid has {opponents.Length} available opponents, but {count} were requested. Adjust the count or opponent classes.");
+        var launch = (JsonObject)preset.DeepClone();
+        launch["Player"]!["Game Options"]!["Opponents"] = count;
+        // Save loading can use Grid independently of Opponents; never pass surplus entries.
+        launch["Grid"] = new JsonArray((count == 0 ? [] : grid.Where(c => c?.GetValue<string>() == player)
+            .Concat(opponents.Take(count))).Select(c => c?.DeepClone()).ToArray());
+        return launch;
     }
 
     private async Task RequireMenuAsync(CancellationToken cancellation)

@@ -17,6 +17,7 @@ internal sealed class LmuApiRoutes
     [
         new("/navigation/state", "getState", "getJson", "config"),
         new("/navigation/action/NAV_TO_MAIN_MENU", "navToMainMenu", "postJson", "null"),
+        new("/navigation/action/NAV_BACK_TO_EVENT", "navBackToEvent", "postJson", "null"),
         new("/rest/garage/UIScreen/SessionSetup", "getSessionSetup", "getJson", ""),
         new("/rest/sessions", "getSessionSettings", "getJson", ""),
         new("/rest/sessions/amount", "getSessionAmounts", "getJson", ""),

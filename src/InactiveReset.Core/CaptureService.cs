@@ -13,6 +13,7 @@ namespace InactiveReset.Core;
 /// </summary>
 public sealed class CaptureService(SharedMemoryReader reader)
 {
+    public const string QuickCaptureName = "Quick capture";
     private readonly SharedMemoryReader _reader = reader;
 
     /// <summary>
@@ -49,6 +50,7 @@ public sealed class CaptureService(SharedMemoryReader reader)
                 LapDistance = snapshot.LapDistance,
                 Gear = snapshot.Gear,
                 Tyres = snapshot.Tyres,
+                LocalVelocityMetresPerSecond = snapshot.LocalVelocityMetresPerSecond,
             },
             Target = target,
             Snapshot = snapshot,
@@ -59,13 +61,16 @@ public sealed class CaptureService(SharedMemoryReader reader)
     /// Write a checkpoint to disk, under a folder per track/vehicle pair so that
     /// combinations cannot get mixed up.
     /// </summary>
-    public static string Save(Checkpoint checkpoint, string checkpointDirectory)
+    public static string Save(Checkpoint checkpoint, string checkpointDirectory, bool quick = false)
     {
+        var reserved = string.Equals(checkpoint.Name, QuickCaptureName, StringComparison.OrdinalIgnoreCase);
+        if (quick != reserved)
+            throw new CheckpointException("'Quick capture' is reserved for the quick-capture action; use another name for a library checkpoint.");
         var folder = Path.Combine(checkpointDirectory, SanitiseFolder(checkpoint));
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, checkpoint.Name + ".json");
 
-        if (File.Exists(path))
+        if (!quick && File.Exists(path))
         {
             throw new CheckpointException(
                 $"'{checkpoint.Name}' already exists at {path}; choose another name");
@@ -91,10 +96,23 @@ public sealed class CaptureService(SharedMemoryReader reader)
             },
         };
 
+        if (checkpoint.LocalVelocityMetresPerSecond is { } velocity)
+            json["motion"] = new JsonObject
+            {
+                ["local_velocity_mps"] = Vec(MotionCapture.Validate(velocity)),
+            };
+
         if (checkpoint.Tyres is { } tyres)
             json["tyres"] = JsonSerializer.SerializeToNode(tyres, TyreState.JsonOptions);
 
-        File.WriteAllText(path, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var payload = json.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        if (quick)
+        {
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try { File.WriteAllText(temporary, payload); File.Move(temporary, path, overwrite: true); }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        else File.WriteAllText(path, payload);
         return path;
 
         static JsonNode Vec(Vec3 v) => new JsonObject

@@ -57,7 +57,10 @@ public sealed record PlacementPlan
 
 public sealed record PlacementOutcome
 {
+    public double? DirectResetPauseMilliseconds { get; init; }
     public TyreResetResult? TyreReset { get; init; }
+    public bool SpeedRestorationAttempted { get; init; }
+    public RollingMotionResult? RollingMotion { get; init; }
     public required bool Completed { get; init; }
     public required string Message { get; init; }
     public Vec3 Achieved { get; init; }
@@ -277,7 +280,8 @@ public sealed class PlacementService(GameSession session)
         CancellationToken cancellation = default,
         bool clearPitFlag = true,
         int? setSector = LapValidityController.LastSector,
-        TyreResetPreparation? tyres = null)
+        TyreResetPreparation? tyres = null,
+        Func<RollingMotionResult>? restoreMotion = null)
     {
         if (cancellation.IsCancellationRequested)
             return Failed("cancelled before placement; nothing was written", progress, cancelled: true);
@@ -395,6 +399,17 @@ public sealed class PlacementService(GameSession session)
         if (PitPenaltyEnabled()) new RulesController(_session).SetPitSpeedingPenalty(false);
         var (sector, sectorFailure) = TrySetSector(slot, setSector, progress);
         var (lapFix, lapFixFailure) = TryClearPitFlag(slot, clearPitFlag, progress);
+        RollingMotionResult? rolling = null;
+        string? rollingFailure = null;
+        if (restoreMotion is not null)
+        {
+            try { rolling = restoreMotion(); }
+            catch (Exception ex)
+            {
+                rollingFailure = ex.Message;
+                Report(progress, PlacementPhase.Restoring, "Speed restoration failed; continuing placement cleanup. " + ex.Message);
+            }
+        }
         var stopwatch = Stopwatch.StartNew();
         var distance = 0f;
         var skipped = !flags.Pending;
@@ -428,12 +443,17 @@ public sealed class PlacementService(GameSession session)
             : cancelled ? "cancelled; original Flag Rules restored"
             : skipped ? "placed; Flag Rules were already off"
             : "CLEAR - original Flag Rules restored";
-        Report(progress, end == PitWaitEnd.SessionEnded ? PlacementPhase.Failed
+        if (rollingFailure is not null) message += "; speed restoration failed: " + rollingFailure;
+        else if (rolling is not null) message += $"; rolling start requested {rolling.RequestedSpeedKmh:F2} km/h, observed {rolling.ObservedSpeedKmh:F2} km/h";
+        if (tyreReset is { Verified: false }) message += "; " + tyreReset.Message;
+        Report(progress, end == PitWaitEnd.SessionEnded || rollingFailure is not null || tyreReset is { Verified: false } ? PlacementPhase.Failed
             : cancelled || end == PitWaitEnd.Garage ? PlacementPhase.Cancelled
             : PlacementPhase.Done, message);
         return new PlacementOutcome
         {
-            Completed = end != PitWaitEnd.SessionEnded && !cancelled,
+            Completed = end != PitWaitEnd.SessionEnded && !cancelled && rollingFailure is null && tyreReset is not { Verified: false },
+            SpeedRestorationAttempted = restoreMotion is not null,
+            RollingMotion = rolling,
             TyreReset = tyreReset,
             Message = message,
             Achieved = achieved,

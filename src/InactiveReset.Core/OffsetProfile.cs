@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace InactiveReset.Core;
 
@@ -57,6 +58,8 @@ public sealed class OffsetProfile
     public required ulong SizeOfImage { get; init; }
     public required bool PlacementValidated { get; init; }
     public int AutomaticResolverVersion { get; init; }
+    public MotionLayout? Motion { get; init; }
+    public string? MotionUnavailableReason { get; init; }
 
     public required ProbeSpec Probe { get; init; }
     public required SpotTableSpec SpotTable { get; init; }
@@ -141,9 +144,13 @@ public sealed class OffsetProfile
         var engine = Require(root, "engineModel");
         var rest = Require(root, "restGates");
 
-        return new OffsetProfile
+        var profile = new OffsetProfile
         {
             SourcePath = path,
+            Motion = root.TryGetProperty("motion",out var motion) && motion.ValueKind == JsonValueKind.Object
+                ? MotionLayout.FromJson(JsonNode.Parse(motion.GetRawText())!.AsObject(),build.GetProperty("executableSha256").GetString()!) : null,
+            MotionUnavailableReason = root.TryGetProperty("motionUnavailableReason",out var unavailable)
+                ? unavailable.GetString() : null,
             AutomaticResolverVersion = build.TryGetProperty("automaticResolverVersion", out var resolver)
                 ? resolver.GetInt32() : 0,
             ExecutableSha256 = build.GetProperty("executableSha256").GetString()!,
@@ -191,6 +198,9 @@ public sealed class OffsetProfile
                 SessionsRead = rest.GetProperty("sessionsRead").GetString()!,
             },
         };
+        if(profile.Motion is {} motionLayout && (ulong)motionLayout.ImageSize!=profile.SizeOfImage)
+            throw new OffsetProfileException("Reset layout belongs to a different module size.");
+        return profile;
     }
 
     private static EngineModelSpec ReadEngineModel(JsonElement engine)

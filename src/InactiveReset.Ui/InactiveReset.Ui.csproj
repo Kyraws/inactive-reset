@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Session.*" LogicalName="InactiveReset.Ui.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Practice.js" LogicalName="InactiveReset.Ui.Practice.js" />
     <EmbeddedResource Include="App.css" LogicalName="InactiveReset.Ui.App.css" />
     <EmbeddedResource Include="Lab.*" LogicalName="InactiveReset.Ui.%(Filename)%(Extension)" />
   </ItemGroup>

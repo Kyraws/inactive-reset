@@ -25,6 +25,21 @@ public sealed class GameSession : IDisposable
     public required OffsetProfile Offsets { get; init; }
     public required ProcessMemory Memory { get; init; }
     public required IReadOnlyList<GateCheck> Gates { get; init; }
+    private bool _motionVerified;
+
+    public MotionLayout RequireMotion()
+    {
+        var motion = Offsets.Motion;
+        if (motion is null || Offsets.AutomaticResolverVersion != AutomaticOffsets.ResolverVersion || motion.ExecutableSha256 != ExecutableSha256)
+            throw new GateException("Checkpoint reset and speed restoration are unavailable for this game update. " +
+                (Offsets.MotionUnavailableReason ?? "The reset layout could not be verified."));
+        if (!_motionVerified)
+        {
+            motion.VerifyProbes((rva,size) => Memory.ReadBytes(ModuleBase+rva,size));
+            _motionVerified = true;
+        }
+        return motion;
+    }
 
     /// <summary>Translate a profile RVA into a live address.</summary>
     public ulong Resolve(Rva rva, string what) => ModuleBase + rva.Require(what);

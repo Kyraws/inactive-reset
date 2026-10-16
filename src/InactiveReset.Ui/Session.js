@@ -5,19 +5,13 @@ let setup = null, catalog = null, navigation = null;
 let section = 'selection', weatherSession = 'PRACTICE', weatherNode = 'START';
 let saving = false, starting = false, menuReady = false, gameRunning = false, serverBusy = false;
 let carSearch = '', settingSearch = '', pollTimer, polling = false;
-let confirmedPid = 0;
-try { confirmedPid = Number(sessionStorage.getItem('lmu-menu-confirmed-pid')) || 0; } catch {}
-function rememberMenuConfirmation() {
-  confirmedPid = $('menuConfirmed').checked ? navigation?.pid || 0 : 0;
-  try { sessionStorage.setItem('lmu-menu-confirmed-pid',String(confirmedPid)); } catch {}
-}
 
 const SECTION_INFO = {
   selection:['YOUR NEXT SESSION','Car & track','Choose where you drive and what you drive.'],
   sessions:['BUILD YOUR WEEKEND','Sessions','Choose your session order, duration and track conditions.'],
   weather:['SET THE CONDITIONS','Weather','Shape the weather from the opening minutes to the end of each session.'],
   grid:['WHO YOU DRIVE WITH','Opponent grid','Choose the classes on your grid and how competitive they are.'],
-  rules:['MAKE IT YOURS','Rules & assists','Set the simulation, rule enforcement and driving assistance.']
+  rules:['MAKE IT YOURS','Rules','Simulation settings and session rules.']
 };
 const LABELS = {
   AI_Aggression:'AI aggression', AI_Strength:'AI strength', Damage_Multi:'Damage multiplier', Finish_Criteria:'Race length mode', Fuel_Usage:'Fuel usage', Grid_Position:'Starting position', Mech_Failures:'Mechanical failures', Num_Opponents:'AI opponents', Practice_Length:'Practice duration', Qualify_Length:'Qualifying duration', Race_Laps:'Race laps', Tire_Wear:'Tyre wear', WarmUp_Length:'Warmup duration', adjust_frozen:'Frozen-order adjustment', blue_flags:'Blue flags', cut_rules:'Track limits', cuts_allowed:'Allowed cuts', flag_rules:'Flag Rules', force_formation:'Force formation', formation:'Race start', keep_tire_inv_on_track_change:'Keep tyre inventory between tracks', num_qual_sessions:'Qualifying sessions', num_race_sessions:'Race sessions', parc_ferme:'Parc fermé', pract1:'Practice 1', pract2:'Practice 2', pract3:'Practice 3', pract4:'Practice 4', pract1_realroad_init:'Starting grip', pract1_realroad_temperatures:'Track temperatures', pract1_realroad_wet:'Starting wetness', practice1_starting_time:'Start time', private_prac:'Private practice', private_qual:'Private qualifying', qual1_realroad_init:'Starting grip', qual1_realroad_temperatures:'Track temperatures', qual1_realroad_wet:'Starting wetness', qualify_starting_time:'Start time', race_realroad_init:'Starting grip', race_realroad_temperatures:'Track temperatures', race_realroad_wet:'Starting wetness', race_starting_time:'Start time', race_time:'Race duration', race_timer:'Race timer display interval', race_timescale:'Time acceleration', realroad_timescale_practice:'Grip evolution', realroad_timescale_qualify:'Grip evolution', realroad_timescale_race:'Grip evolution', recon_pit_closed:'Reconnaissance · pit closed', recon_pit_open:'Reconnaissance · pit open', recon_timer:'Reconnaissance timer', reconnaissance:'Reconnaissance laps', run_warmup:'Warmup', safetycar_thresh:'Safety car threshold', safetycarcollision:'Safety car collisions', timescaled_weather:'Scale weather to session length', tire_warmers:'Tyre warmers', tires_available_in_garage:'Available tyres', unsportsmanlike:'Unsportsmanlike sensitivity', walkthrough:'Grid walkthrough', warmup_starting_time:'Warmup start time', weather:'Weather mode',
@@ -55,7 +49,6 @@ function setSaved(message = 'Saved in LMU') {
   $('saveDot').className = 'save-dot';
   $('saveStatus').textContent = message;
 }
-function model(car) { return car.fullPathTree?.split(',').map(x=>x.trim()).join(' · ') || car.manufacturer || 'Other cars'; }
 function currentCar() { return setup?.selection?.selectedCar; }
 function currentTrack() { return setup?.selection?.trackInfo; }
 function settingValue(key) { const s = setup?.settings?.[key]; return s ? s.stringValue || String(s.currentValue) : '—'; }
@@ -93,18 +86,6 @@ function block(title, keys, caption = '') {
   return rows ? `<section class="section-block"><h2>${escapeHtml(title)}</h2>${caption ? `<p class="section-caption">${escapeHtml(caption)}</p>` : ''}<div class="settings-card">${rows}</div></section>` : '';
 }
 function option(value, text, selected, disabled = false) { return `<option value="${escapeHtml(value)}" ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${escapeHtml(text)}</option>`; }
-function renderSelection() {
-  const car = currentCar(), track = currentTrack();
-  const filtered = catalog.cars.filter(c=>c.isOwned && (!carSearch || `${c.desc} ${c.fullPathTree}`.toLowerCase().includes(carSearch.toLowerCase())));
-  const models = [...new Set(filtered.map(model))].sort();
-  if (car && !models.includes(model(car))) models.unshift(model(car));
-  const selectedModel = model(car || {});
-  const teams = catalog.cars.filter(c=>c.isOwned && model(c)===selectedModel).sort((a,b)=>a.desc.localeCompare(b.desc));
-  const tracks = [...catalog.tracks].sort((a,b)=>(a.displayProperties?.shortName || a.shortName).localeCompare(b.displayProperties?.shortName || b.shortName));
-  return `<section class="section-block"><h2>Circuit</h2><label class="input-label" for="trackSelect">Track & layout</label><select id="trackSelect">${tracks.map(t=>option(t.id,t.name,t.id===track?.id,!t.owned)).join('')}</select><div class="track-details">${track ? `<span class="pill">${escapeHtml(track.countryCode)}</span><span class="pill">${escapeHtml(track.trackLength)} km</span><span class="pill">${escapeHtml(track.type)}</span>` : ''}</div><p class="small-note">Your session settings are kept when you change tracks.</p></section>
-  <section class="section-block"><h2>Your car</h2><div class="filter-row"><input type="search" id="carSearch" value="${escapeHtml(carSearch)}" placeholder="Search manufacturer, model or team" aria-label="Search cars"></div><div class="selection-fields"><div><label class="input-label" for="modelSelect">Season, class & model <small>· ${filtered.length} owned cars</small></label><select id="modelSelect">${models.map(m=>option(m,m,m===selectedModel)).join('')}</select></div><div><label class="input-label" for="carSelect">Team & livery</label><select id="carSelect">${teams.map(c=>option(c.id,c.desc,c.id===car?.id)).join('')}</select></div></div>${filtered.length===0 ? '<p class="small-note">No cars match that search. Your current car stays selected.</p>' : ''}</section>
-  <section class="section-block"><h2>A starting point</h2><p class="section-caption">Prefer the circuit’s default weekend, grid and weather?</p><button class="button" data-dialog="defaultsDialog">Use track defaults</button></section>`;
-}
 const SESSION_NAMES = {PRACTICE:'Practice',QUALIFY:'Qualifying',WARMUP:'Warmup',RACE:'Race'};
 const SESSION_KEYS = {
   PRACTICE:['SESSSET_Practice_Length','SESSSET_practice1_starting_time','SESSSET_private_prac','SESSSET_pract1_realroad_init','SESSSET_pract1_realroad_wet','SESSSET_pract1_realroad_temperatures','SESSSET_realroad_timescale_practice'],
@@ -138,10 +119,8 @@ function renderRules() {
   const rules = ['SESSSET_flag_rules','SESSSET_cut_rules','SESSSET_cuts_allowed','SESSSET_blue_flags','SESSSET_parc_ferme'];
   simulation.concat(rules).forEach(k=>used.add(k));
   const remaining = Object.keys(setup.settings).filter(k=>!used.has(k));
-  const assists = Object.entries(setup.assists).filter(([k])=>!settingSearch || label(k).toLowerCase().includes(settingSearch.toLowerCase()));
-  return `<input class="setting-search" type="search" id="settingSearch" value="${escapeHtml(settingSearch)}" placeholder="Find a rule or assist" aria-label="Search rules and assists">` +
+  return `<input class="setting-search" type="search" id="settingSearch" value="${escapeHtml(settingSearch)}" placeholder="Find a rule" aria-label="Search rules">` +
     block('Simulation',simulation) + block('Rules',rules) +
-    (assists.length ? `<section class="section-block"><h2>Driving assists</h2><div class="settings-card">${assists.map(([k,v])=>row(k,v,'assist')).join('')}</div></section>` : '') +
     (remaining.length ? `<details class="subsection" ${settingSearch?'open':''}><summary>Additional session controls</summary><div class="settings-card">${settingsRows(remaining)}</div></details>` : '');
 }
 function renderContent() {
@@ -182,13 +161,12 @@ function renderSummary() {
 function updateControls() {
   $('editorFields').disabled = saving || starting || !menuReady || serverBusy;
   const anySession = setup && Object.values(setup.amounts).some(n=>n>0);
-  $('startButton').disabled = !setup || !menuReady || saving || starting || serverBusy || !anySession || !$('menuConfirmed').checked;
+  $('startButton').disabled = !setup || !menuReady || saving || starting || serverBusy || !anySession;
   $('startButton').innerHTML = starting ? 'Loading session…' : 'Start session <span aria-hidden="true">↗</span>';
-  $('menuConfirmed').disabled = starting || !menuReady;
   $('reloadButton').disabled = saving || starting;
   $('launchButton').disabled = gameRunning || saving || starting;
   $('emptyLaunch').disabled = gameRunning || saving || starting;
-  $('launchHint').textContent = starting ? 'Loading progress appears below. You can switch to LMU.' : !gameRunning ? 'Launch local play to begin.' : !menuReady ? 'Return to the main menu to start a new session.' : !anySession ? 'Enable at least one session in Sessions.' : !$('menuConfirmed').checked ? 'Dismiss the startup prompt in LMU, then confirm above.' : 'Loads this setup in LMU. Press Drive there when ready.';
+  $('launchHint').textContent = starting ? 'Loading progress appears below. You can switch to LMU.' : !gameRunning ? 'Launch local play to begin.' : !menuReady ? 'Return to the main menu to start a new session.' : !anySession ? 'Enable at least one session in Sessions.' : 'Loads this setup in LMU. Press Drive there when ready.';
 }
 function renderNavigation() {
   const state = navigation?.state || {};
@@ -239,7 +217,6 @@ async function poll() {
   polling=true;
   try {
     navigation = await request('/api/session/state');
-    if (navigation.pid) $('menuConfirmed').checked = confirmedPid === navigation.pid;
     serverBusy=!!navigation.operationBusy && !saving && !starting;
     gameRunning=true;
     if (!setup && !saving && !starting) await loadSetup();
@@ -259,7 +236,7 @@ async function poll() {
         serverBusy=!!state.busy;
         $('connection').textContent=state.game?.protected ? 'EAC launch · setup unavailable' : gameRunning ? 'Waiting for LMU’s API' : 'LMU not running';
       } catch { $('connection').textContent='App connection lost'; }
-      if(!gameRunning) {$('menuConfirmed').checked=false;rememberMenuConfirmation();setup=null;catalog=null;$('editorFields').hidden=true;$('emptyState').hidden=false;}
+      if(!gameRunning) {setup=null;catalog=null;$('editorFields').hidden=true;$('emptyState').hidden=false;}
     }
     updateControls();
   } finally { polling=false; }
@@ -268,10 +245,10 @@ async function startSession() {
   if ($('startButton').disabled) return;
   starting=true; $('stopMonitoring').hidden=false; updateControls(); $('loadProgress').hidden=false; $('loadProgressBar').removeAttribute('value'); $('loadProgressText').textContent='Preparing session…';
   try {
-    await request('/api/session/action',{action:'start',menuConfirmed:$('menuConfirmed').checked});
+    await request('/api/session/action',{action:'start',setup});
     $('loadProgressBar').value=100; $('loadProgressText').textContent='Session loaded. Switch to LMU and press Drive.'; $('stopMonitoring').hidden=true;
     setSaved('Session loaded');
-  } catch(e) { reportError(e.message); $('loadProgressText').textContent='Check LMU before trying again.'; }
+  } catch(e) { await loadSetup(); reportError(e.message); $('loadProgressText').textContent='Check LMU before trying again.'; }
   finally {starting=false;await poll();updateControls();}
 }
 function switchSection(next) {
@@ -296,9 +273,7 @@ document.addEventListener('change',e=>{
   if(el.dataset.assist)change({action:'assist',key:el.dataset.assist,value:el.checked?1:0});
   if(el.id==='trackSelect')change({action:'track',id:el.value});
   if(el.id==='carSelect')change({action:'car',id:el.value});
-  if(el.id==='modelSelect'){const car=catalog.cars.find(c=>c.isOwned && model(c)===el.value);if(car)change({action:'car',id:car.id});}
   if(el.dataset.class || el.id==='gridSource')change({action:'grid',classes:[...$('sectionContent').querySelectorAll('[data-class]:checked')].map(c=>c.dataset.class),fullGrid:$('gridSource').value==='fill'});
-  if(el.id==='menuConfirmed'){rememberMenuConfirmation();updateControls();}
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='carSearch'){carSearch=e.target.value;renderContent();}
@@ -313,7 +288,7 @@ $('keepSettings').addEventListener('click',()=>$('defaultsDialog').close());
 $('applyDefaults').addEventListener('click',()=>{$('defaultsDialog').close();change({action:'trackDefaults'});});
 $('returnMenu').addEventListener('click',async()=>{
   $('menuDialog').close();if(saving || starting)return;saving=true;updateControls();
-  try{setup=await request('/api/session/action',{action:'menu'});$('menuConfirmed').checked=false;rememberMenuConfirmation();renderContent();renderSummary();setSaved('In sync with LMU');await poll();}catch(e){reportError(e.message);}finally{saving=false;updateControls();}
+  try{setup=await request('/api/session/action',{action:'menu'});renderContent();renderSummary();setSaved('In sync with LMU');await poll();}catch(e){reportError(e.message);}finally{saving=false;updateControls();}
 });
 $('stopMonitoring').addEventListener('click',async()=>{try{await request('/api/cancel',{});}catch(e){reportError(e.message);}});
 poll();pollTimer=setInterval(poll,1500);

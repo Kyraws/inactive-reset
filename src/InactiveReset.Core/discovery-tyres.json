@@ -137,14 +137,16 @@
       "operand": 22,
       "width": 1,
       "kind": "value",
-      "next": 23
+      "next": 23,
+      "signed": true
     },
     {
       "pattern": "E8 ?? ?? ?? ?? F2 0F 10 B4 24 ?? ?? ?? ?? 83 78 ?? 02 7C ?? E8 ?? ?? ?? ?? 8B 4B ?? 4C 8D 0D ?? ?? ?? ?? F2 0F 10 83 ?? ?? ?? ?? 48 8D 15 ?? ?? ?? ?? F2 0F 11 74 24 ?? 41 B8 95 00 00 00",
       "operand": 27,
       "width": 1,
       "kind": "value",
-      "next": 28
+      "next": 28,
+      "signed": true
     }
   ],
   "freshFlagsOffset": [
@@ -153,14 +155,16 @@
       "operand": 15,
       "width": 1,
       "kind": "value",
-      "next": 16
+      "next": 16,
+      "signed": true
     },
     {
       "pattern": "49 8B CC E8 ?? ?? ?? ?? E9 ?? ?? ?? ?? 45 38 7E ?? 0F 84 ?? ?? ?? ?? E8 ?? ?? ?? ?? 4A 8B 8C 26 ?? ?? ?? ??",
       "operand": 16,
       "width": 1,
       "kind": "value",
-      "next": 17
+      "next": 17,
+      "signed": true
     }
   ],
   "uniformFlagOffset": [
@@ -169,14 +173,16 @@
       "operand": 21,
       "width": 1,
       "kind": "value",
-      "next": 22
+      "next": 22,
+      "signed": true
     },
     {
       "pattern": "48 69 F3 ?? ?? ?? ?? 48 89 B4 24 ?? ?? ?? ?? F2 42 0F 11 B4 26 ?? ?? ?? ?? 45 38 7E ?? 74 ?? E8 ?? ?? ?? ?? 48 8D 3D ?? ?? ?? ??",
       "operand": 28,
       "width": 1,
       "kind": "value",
-      "next": 29
+      "next": 29,
+      "signed": true
     }
   ],
   "heatWearOffset": [

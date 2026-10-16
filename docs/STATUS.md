@@ -35,6 +35,16 @@ promise. [Architecture](ARCHITECTURE.md) describes the implementation;
 | Low | Each UI state poll reattaches and hashes the executable | `PlacementRunner.State`; measure before optimising, retaining write-time checks |
 | Low | App build reports a WindowsBase reference conflict | Release solution build emits MSB3277 through WebView2's WPF assembly, although the app uses WinForms; review unused package references |
 
+## Direct reset validation (2026-10-16)
+
+An experimental on-track reset and Ctrl+Alt+R hotkey are implemented with a locally discovered and verified reset layout; live evidence below is for the researched `66942337` build. Short stopped-car tests succeeded, but the first moving long-distance reset fell below the road and triggered automatic pit recovery. The repair now mirrors vehicle cached pose, road/wheel cache invalidation and the separate collision body, and observes two seconds after resume instead of reporting success from one frame. The physical repair rolled smoothly in a moving roughly 819-metre reset after explicit one-byte pause recovery. Its first validation wrongly rejected LMU refreshing the road pointer while physics was paused. The corrected cache/rounding checks pass 146 focused tests. The final automatic Ctrl+Alt+R test returned from 110.36 km/h in second gear, roughly 525 metres away, to the saved 39.86 km/h in first gear. It resumed automatically after 763 ms; passive telemetry retained road contact and control for five seconds, and the owner confirmed smooth rolling. The timing-optimized build subsequently passed an owner-operated Barcelona test in Team Qatar by Iron Lynx 2026 #62:ELMS at a captured 126.68 km/h in second gear. The app reported 125.12 km/h, automatic resume, a 470 ms pause and completion after its observation; the owner confirmed smooth rolling and a shorter pause. Fixed waits fell from 200 to 50 ms, reads are batched and menu requests overlap read-only work; all per-write checks remain. 149 focused tests pass. Other combinations, repeated resets and faster target speeds remain unverified. See [Placement](PLACEMENT.md#experimental-reset-on-track).
+
+## Offset resilience update (2026-10-16)
+
+Reset/speed/gear paths now share an immutable profile derived from 79 native operands, 102 agreeing references and two drivetrain contracts. Resolver version 5 includes this optional capability in the existing fully validated cache. All production reset address literals and fixed-build checks have been replaced; engine speed setters are decoded and validated at runtime. Missing or changed reset patterns disable that feature while leaving successful placement discovery available. Signed one-byte displacements are validated rather than interpreted as large positive offsets.
+
+The full suite passed 426 tests; one older-capture test was skipped because its capture was unavailable. All 56 checkpoint UI checks passed. Tests cover moved code/globals, changed body operands, altered cache fields/probes/hash/version/module size, changed live probes, and missing/duplicate signatures. This refactor has not yet been live-tested; LMU was closed. Major engine/SDK changes still need compatibility work, and synthetic relocations are not a guarantee for an unseen patch.
+
 ## Behaviour that still needs live checks
 
 The 2026-10-10 API/cache changes add installed-menu route and port recovery and
@@ -57,7 +67,37 @@ write; capture at speed; and placement/learning across varied cars, tracks,
 setups, and surfaces. Record full executable hash and test conditions for each
 result rather than inferring support from a version string.
 
-Captured tyre state, fuel, general damage, and checkpoint speed restoration are not implemented.
+Checkpoint speed capture/display and automatic experimental motion restoration are
+implemented. Normal teleport requires a completely verified reset layout,
+straight moving captures (at least 0.5 km/h) and the capture vehicle. It uses an owned
+physics pause to apply linked-body velocity, wheel rotation and captured gear/engine state, verifies the
+complete state, then resumes. Garage motion restoration waits for released applied pedals after a minimum
+three-second handoff delay, then uses the direct reset to handle slope creep
+and clear inherited pit state. It temporarily
+releases/restores an enabled Hold Brakes preference through LMU’s options API.
+It excludes rolling outcomes from stationary
+learning and leaves possible partial motion updates paused for recovery.
+
+Separate native experiments on the Ferrari 296 LMGT3 at Monza progressed from
+a cached-motion write with no useful movement, through unpaused linked-body
+motion with an initial speed deficit and a partial-write failure, to complete
+manual-pause and automatic-pause batches. The automatic prototype verified all
+514 bytes and resumed without driver pause input; first SDK speed was 8.54 km/h
+for an 8.94 km/h request, peak 8.56 km/h, final 7.72 km/h after about two seconds
+and 4.47 m travelled with released pedals. The owner confirmed smooth movement.
+A subsequent EXITING-state experiment verified all 514 bytes, automatic resume
+and smooth movement with pit state unchanged. The first integrated handoff
+was blocked before motion writes by EXITING; the delayed version was blocked
+by full applied brake while physical brake input was zero. LMU’s Hold Brakes
+was On. With it manually Off, the owner confirmed smooth integrated restoration.
+The subsequent automatic workaround was tested live with Hold Brakes initially
+On: the app verified temporary release before Drive, restored captured speed
+after the control wait, and restored Hold Brakes to On immediately afterward.
+The settings API confirmed On and the owner confirmed smooth movement.
+Exact speed, drivetrain/tyre-contact state and broader support remain open.
+See [Developer tools](../tools/README.md).
+
+Captured tyre state, fuel and general damage restoration are not implemented.
 The compact UI provides per-wheel tyre settings; live readings remain in the
 game, and protection/discovery diagnostics appear in Activity. Tyre reset addresses are discovered from the current executable,
 code-probed, cached by full hash, and refused when the engine structure changes.
@@ -77,4 +117,28 @@ The requested compound policy is Medium/Wet for GT3, LMP2 and LMP3, and
 Soft/Medium/Hard/Wet for GTE and Hypercar. Actual compound availability and engine
 indices must be resolved for the loaded vehicle before implementing selection.
 Checkpoints store pose and metadata; placement does not resume the captured
-vehicle condition or motion.
+vehicle condition. Motion restoration is limited to the experimental option above.
+
+The arbitrary upper speed ceiling has been removed. Offline payload checks cover
+speeds through 350 km/h; live motion tests have reached 148.52 km/h. The new
+gear/engine extension passed a first-gear placement test: requested 39.86 km/h,
+app observed 38.25 km/h and gear 1 at 2682 RPM. The owner confirmed smooth
+rolling; Hold Brakes returned On and Flag Rules returned to 2 in the garage.
+Its first attempt was rejected before motion writes by a mismatched stability
+snapshot; both snapshots now use the same body/wheel/gear reader. Hold Clutch
+was On and filtered clutch remained 1, so sustained mechanical clutch coupling
+was not established in that test. A subsequent third-gear test at 148.52 km/h restored 144.83 km/h
+with filtered clutch engaged, five seconds of released pedals and owner-confirmed
+smooth rolling. Peak sampled engine speed over those five seconds was 5,968 RPM
+against the loaded 8,000 RPM limit; an initial RPM transient remains. Pit state
+cleared and original Hold Brakes/Flag Rules were restored. Other gears remain
+unverified.
+The integrated 39.86 km/h capture restored an initial 38.42 km/h, with smooth
+coasting confirmed by the owner and original Flag Rules restored in the garage.
+The 58.19 km/h capture restored an initial 56.32 km/h; the owner confirmed
+smooth rolling. Pit state then cleared normally, original Flag Rules were
+verified restored, and Hold Brakes read On afterward.
+The integrated 19.55 km/h capture restored an initial 18.79 km/h, followed by
+smooth neutral coasting with released pedals; the owner confirmed smooth motion.
+Original Flag Rules were verified restored on garage return. Higher speeds
+remain unverified, and the roughly 3–4% initial speed loss remains unexplained.

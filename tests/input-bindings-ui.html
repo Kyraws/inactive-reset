@@ -1,0 +1,44 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Input binding checks</title>
+<pre id="report">Running...</pre><div id="inputBindingsPanel"></div><button id="standingBtn"></button>
+<script>
+let posted=[];
+window.chrome=window.chrome||{};
+window.chrome.webview={postMessage:message=>posted.push(message)};
+function esc(value){return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');}
+fetch('../src/InactiveReset.Ui/Lab.inputs.js').then(r=>r.text()).then(script=>{
+  (0,eval)(script);
+  let checks=0;
+  function check(value,label){if(!value)throw Error(label);checks++;}
+  const panel=document.getElementById('inputBindingsPanel');
+  const bindings={capture:{keyboard:{keyCode:67,modifiers:3}},teleport:{keyboard:{keyCode:82,modifiers:3}},standing:{keyboard:{keyCode:82,modifiers:7}},previous:{keyboard:{keyCode:38,modifiers:3}},next:{keyboard:{keyCode:40,modifiers:3}}};
+  const state={bindings,devices:[]};
+  const publish=value=>window.dispatchEvent(new CustomEvent('input-bindings',{detail:value}));
+  check(posted[0].command==='get','page requests native bindings');
+  publish(state);
+  check(panel.querySelectorAll('[data-input="learnWheel"]').length===5,'all five actions support wheel assignment');
+  check(panel.textContent.includes('Ctrl+Alt+Up') && panel.textContent.includes('None detected'),'defaults and missing devices are clear');
+  panel.querySelector('[data-input="learnKeyboard"][data-action="capture"]').click();
+  check(posted.at(-1).command==='learnKeyboard' && posted.at(-1).action==='capture','keyboard assignment starts native learning');
+  publish({...state,learningKind:'keyboard',learningAction:'capture'});
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'F8',keyCode:119,bubbles:true,cancelable:true}));
+  check(posted.at(-1).command==='keyboard' && posted.at(-1).keyCode===119 && posted.at(-1).modifiers===0,'custom keyboard shortcut is submitted');
+  publish({...state,learningKind:'wheel',learningAction:'next'});
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  check(posted.at(-1).command==='cancel','Escape cancels wheel assignment');
+  panel.querySelector('[data-input="learnWheel"][data-action="next"]').click();
+  check(posted.at(-1).command==='learnWheel' && posted.at(-1).action==='next','wheel assignment targets the selected action');
+  const custom={...state,devices:[{path:'WHEEL',name:'Test wheel'}],bindings:{...bindings,capture:{keyboard:{keyCode:119,modifiers:0}},next:{wheel:{devicePath:'wheel',button:65}}}};
+  publish(custom);
+  check(panel.textContent.includes('Test wheel · Button 65') && panel.textContent.includes('F8'),'device button above32 and custom key render correctly');
+  check(practiceInputLabels.capture==='F8' && practiceInputLabels.next==='Button 65','Practice hints use configured bindings');
+  publish({...custom,devices:[]});
+  check(panel.textContent.includes('Disconnected device · Button 65'),'unplugging preserves the mapping and shows disconnection');
+  publish({...state,error:'That shortcut is unavailable'});
+  check(panel.textContent.includes('That shortcut is unavailable'),'native registration errors are visible');
+  panel.querySelector('[data-input="clearKeyboard"][data-action="capture"]').click();
+  check(posted.at(-1).command==='clearKeyboard' && posted.at(-1).action==='capture','keyboard binding can be cleared');
+  panel.querySelector('[data-input="defaults"]').click();
+  check(posted.at(-1).command==='defaults','defaults can be restored');
+  document.getElementById('report').textContent=checks+' checks passed';
+}).catch(error=>document.getElementById('report').textContent='FAILED: '+error.message);
+</script></html>

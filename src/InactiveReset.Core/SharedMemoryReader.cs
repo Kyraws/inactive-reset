@@ -24,6 +24,7 @@ public sealed class SharedMemoryOffsets
     public required int TelemInfoStride { get; init; }
 
     public required int TelemPos { get; init; }
+    public int? TelemLocalVelocity { get; init; }
     public required int TelemOri { get; init; }
     public required int TelemGear { get; init; }
     public required int TelemElapsedTime { get; init; }
@@ -78,6 +79,8 @@ public sealed class SharedMemoryOffsets
             TelemInfoStride = telemetry.GetProperty("telemInfoStride").GetInt32(),
 
             TelemPos = telem.GetProperty("mPos").GetInt32(),
+            TelemLocalVelocity = telem.TryGetProperty("mLocalVel", out var velocity)
+                ? velocity.GetInt32() : null,
             TelemOri = telem.GetProperty("mOri").GetInt32(),
             TelemGear = telem.GetProperty("mGear").GetInt32(),
             TelemElapsedTime = telem.GetProperty("mElapsedTime").GetInt32(),
@@ -115,7 +118,12 @@ public sealed record TelemetrySnapshot(
     float LapDistance,
     int Gear,
     double ElapsedTime,
-    TyreState? Tyres = null);
+    TyreState? Tyres = null,
+    Vec3? LocalVelocityMetresPerSecond = null)
+{
+    public double? SpeedKmh => LocalVelocityMetresPerSecond is { } v
+        ? MotionCapture.SpeedKmh(v) : null;
+}
 
 /// <summary>
 /// Reads LMU's official shared memory, read-only.
@@ -184,7 +192,9 @@ public sealed partial class SharedMemoryReader : IDisposable
             LapDistance: lapDistance,
             Gear: ReadInt32(telem + _offsets.TelemGear),
             ElapsedTime: ReadDouble(telem + _offsets.TelemElapsedTime),
-            Tyres: ReadTyres(telem));
+            Tyres: ReadTyres(telem),
+            LocalVelocityMetresPerSecond: _offsets.TelemLocalVelocity is { } velocity
+                ? MotionCapture.ReadLocalVelocity(telem + velocity, ReadDouble) : null);
     }
 
     private TyreState? ReadTyres(int telem)

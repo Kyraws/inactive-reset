@@ -66,6 +66,10 @@ int main() {
     std::printf("    \"mPos\": %zu,\n", OFF(TelemInfoV01, mPos));
     std::printf("    \"mLocalVel\": %zu,\n", OFF(TelemInfoV01, mLocalVel));
     std::printf("    \"mOri\": %zu,\n", OFF(TelemInfoV01, mOri));
+    std::printf("    \"mUnfilteredThrottle\": %zu,\n", OFF(TelemInfoV01, mUnfilteredThrottle));
+    std::printf("    \"mUnfilteredBrake\": %zu,\n", OFF(TelemInfoV01, mUnfilteredBrake));
+    std::printf("    \"mFilteredThrottle\": %zu,\n", OFF(TelemInfoV01, mFilteredThrottle));
+    std::printf("    \"mFilteredBrake\": %zu,\n", OFF(TelemInfoV01, mFilteredBrake));
     std::printf("    \"mGear\": %zu,\n", OFF(TelemInfoV01, mGear));
     std::printf("    \"mVehicleClass\": %zu,\n", OFF(TelemInfoV01, mVehicleClass));
     std::printf("    \"mFrontTireCompoundName\": %zu,\n", OFF(TelemInfoV01, mFrontTireCompoundName));
@@ -81,6 +85,9 @@ int main() {
     std::printf("  \"wheel\": {\n");
     std::printf("    \"mTemperature\": %zu,\n", OFF(TelemWheelV01, mTemperature));
     std::printf("    \"mWear\": %zu,\n", OFF(TelemWheelV01, mWear));
+    std::printf("    \"mRotation\": %zu,\n", OFF(TelemWheelV01, mRotation));
+    std::printf("    \"mStaticUndeflectedRadius\": %zu,\n", OFF(TelemWheelV01, mStaticUndeflectedRadius));
+    std::printf("    \"mVerticalTireDeflection\": %zu,\n", OFF(TelemWheelV01, mVerticalTireDeflection));
     std::printf("    \"mFlat\": %zu,\n", OFF(TelemWheelV01, mFlat));
     std::printf("    \"mDetached\": %zu,\n", OFF(TelemWheelV01, mDetached));
     std::printf("    \"mTireCarcassTemperature\": %zu,\n", OFF(TelemWheelV01, mTireCarcassTemperature));

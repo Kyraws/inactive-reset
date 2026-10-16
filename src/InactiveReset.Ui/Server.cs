@@ -83,7 +83,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 SendText(context, logo ?? "", "image/svg+xml");
                 return;
             }
-            var readOnly = path is "/" or "/session" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.js" or "/lab.race.svg" or "/lab.practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
+            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
             if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
                 (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
             {
@@ -93,20 +93,24 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
             }
             switch (path)
             {
+                case "/":
                 case "/lab":
-                    SendHtml(context, SessionPage.Read("Lab.html"));
+                    SendHtml(context, UiAssets.Read("Lab.html"));
                     break;
                 case "/lab.css":
-                    SendText(context, SessionPage.Read("Lab.css"), "text/css");
+                    SendText(context, UiAssets.Read("Lab.css"), "text/css");
                     break;
                 case "/lab.js":
-                    SendText(context, SessionPage.Read("Lab.js"), "text/javascript");
+                    SendText(context, UiAssets.Read("Lab.js"), "text/javascript");
+                    break;
+                case "/lab.inputs.js":
+                    SendText(context, UiAssets.Read("Lab.inputs.js"), "text/javascript");
                     break;
                 case "/lab.race.svg":
-                    SendText(context, SessionPage.Read("Lab.race.svg"), "image/svg+xml");
+                    SendText(context, UiAssets.Read("Lab.race.svg"), "image/svg+xml");
                     break;
-                case "/lab.practice.js":
-                    SendText(context, LabPage.PracticeScript(), "text/javascript");
+                case "/practice.js":
+                    SendText(context, UiAssets.Read("Practice.js"), "text/javascript");
                     break;
                 case "/api/lab/preferences":
                     if (context.Request.HttpMethod == "GET") SendJson(context, _labPreferences.Read());
@@ -116,17 +120,11 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                         SendJson(context, _labPreferences.Write(ReadBody(context)));
                     }
                     break;
-                case "/":
-                    SendHtml(context, Page.Html);
-                    break;
-                case "/session":
-                    SendHtml(context, SessionPage.Read("Session.html"));
-                    break;
                 case "/app.css":
-                    SendText(context, SessionPage.Read("App.css"), "text/css");
+                    SendText(context, UiAssets.Read("App.css"), "text/css");
                     break;
                 case "/session.js":
-                    SendText(context, SessionPage.Read("Session.js"), "text/javascript");
+                    SendText(context, UiAssets.Read("Session.js"), "text/javascript");
                     break;
                 case "/api/session/setup":
                     SendJson(context, await _runner.SessionSetupAsync());

@@ -45,6 +45,8 @@ internal static class Program
                 "spot-live" => SpotLive(rest),
                 "spot-telemetry" => SpotTelemetry(rest),
                 "spot-probe" => IndexedSpotProbe.Run(rest),
+                "velocity-probe" => VelocityProbe.Run(rest),
+                "pause-probe" => PauseProbe.Run(rest),
                 "spot-place-test" => IndexedSpotProbe.PlaceCheckpoint(rest),
                 "spot-place-rules-test" => IndexedSpotProbe.PlaceCheckpointWithRules(rest),
                 _ => Unknown(args[0]),
@@ -482,6 +484,19 @@ internal static class Program
 
           inactive-reset-reanchor spot-telemetry
               Read the active player's pose from LMU's SDK shared memory only.
+
+          inactive-reset-reanchor velocity-probe <full-build-sha256> <checkpoint.json> [--bodies | --wheels | --paused-wheels | --auto-wheels | --placement-wheels | --gear-wheels] [--arm]
+              Experimental captured-velocity probe (no upper speed ceiling); same-car offline Practice only.
+              Stop on track in neutral with pit state clear. Dry-run by default.
+              --arm writes cached world/local velocity once and records two seconds of telemetry.
+              --bodies instead shifts every linked rigid body once (researched 66942337 build only).
+              Body writes are not atomic; gear and wheel rotation are unchanged.
+              --wheels adds wheel state; --paused-wheels requires manual pause.
+              --auto-wheels owns physics pause and resume; --placement-wheels also accepts inherited EXITING.
+              --gear-wheels adds captured gear, engine speed and clutch state to the automatic batch.
+              No stale motion rollback; possible partial updates remain paused.
+          inactive-reset-reanchor pause-probe <researched-full-build-sha256> [--arm]
+              Bounded physics pause/resume check; no velocity writes.
 
           inactive-reset-reanchor spot-probe <full-build-sha256> <mode:0..2> <x|z|yaw> <delta-metres-or-radians> [--arm]
               Maintainer-only indexed-entry causal test on the exact Barcelona checkpoint car.

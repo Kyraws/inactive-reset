@@ -257,6 +257,9 @@ internal static class Program
         Console.WriteLine($"  yaw           {result.Target.Yaw:F6} rad "
                         + $"(heading magnitude {result.Target.HeadingHorizontalMagnitude:F6})");
         Console.WriteLine($"  lap distance  {checkpoint.LapDistance:F1} m   gear {checkpoint.Gear}");
+        Console.WriteLine(checkpoint.SpeedKmh is { } speed
+            ? $"  captured speed {speed:F1} km/h (placement starts stationary)"
+            : "  captured speed unavailable");
 
         if (!result.Usable)
         {
@@ -326,7 +329,8 @@ internal static class Program
             Console.WriteLine($"  {group.Key}");
             foreach (var checkpoint in group.OrderBy(c => c.Name))
             {
-                Console.WriteLine($"      {checkpoint.Name,-14} lap distance {checkpoint.LapDistance,8:F1} m");
+                Console.WriteLine($"      {checkpoint.Name,-14} lap distance {checkpoint.LapDistance,8:F1} m"
+                    + (checkpoint.SpeedKmh is { } speed ? $"  captured {speed:F1} km/h" : "  speed unavailable"));
             }
         }
         return 0;

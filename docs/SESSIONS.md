@@ -1,31 +1,49 @@
 # Local session setup
 
-The windowed app opens **Session setup**. Its five sections cover car and track,
-sessions, weather, opponent grid, and rules and driving assists. **Practice tools**
-opens the existing checkpoint and tyre workspace.
+The windowed app opens Overview. Its session builder covers car and track,
+weekend sessions, conditions, competition and rules. Practice tools provides
+checkpoints and tyre preparation. Driving assists stay configured in LMU.
 
-Both workspaces share the same header, navigation, sidebar, cards and fixed
-summary panel. Practice instructions and cancellation stay in the summary while
-the tool area scrolls. Tyre choices and the selected checkpoint survive workspace
-switches. Startup confirmation is remembered for the current LMU process and
-cleared for a new launch.
+The workspace uses one navigation rail and fixed summary panel. Practice
+instructions and cancellation stay visible while the tool area scrolls. Tyre
+choices and the selected checkpoint survive navigation.
 
 1. Keep Steam running and select **Launch local play**.
 2. In LMU, dismiss the startup video's **Press any button** prompt.
 3. Choose your car, livery and circuit in the app. Only owned cars can be selected;
-   unowned tracks are disabled.
+   unowned tracks are excluded.
 4. Configure Practice, Qualifying, Warmup and Race. Counts, durations, start times,
    race length modes and track conditions follow LMU's available settings.
 5. Adjust weather at Start, 25%, 50%, 75% and Finish for each supported session,
    or choose a forecast preset. Configure AI opponents and class selection, then
-   rules and assists. Additional session controls are under Rules & assists.
-6. Confirm that LMU's main menu is visible and select **Start session**. Progress
+   rules. Additional session controls are under Rules.
+6. Select **Start session** once LMU is ready at its main menu. Progress
    appears in the app. Once loaded, switch to LMU and press **Drive**.
 
 Edits save immediately to LMU and read back the game's accepted values. LMU
 controls the available ranges. The summary stays visible while you edit. Refresh
 from LMU after changing settings in the game. Changing tracks keeps the setup;
-**Use track defaults** explicitly replaces session settings, grid and weather.
+**Use circuit defaults** explicitly replaces session settings, grid and weather.
+
+Starting checks the displayed setup against LMU again, applies a grid limited
+to the requested AI count (zero loads only the player), and verifies session
+settings, amounts, weather, assists, car and track after applying the preset.
+The generated save must contain that same preset before it can be loaded.
+An insufficient opponent selection or changed setup stops the launch with an
+explanation. The applied grid can reduce the available class selection; choose
+classes again when increasing the grid for a later session.
+
+Returning to the menu first performs LMU's event-exit handoff, then waits for
+the actual setup state. Showing the home screen alone does not establish that
+the previous event has unloaded.
+
+Live regression checks on 2026-10-16, build 14200 / executable SHA-256
+`66942337813B301B87D12EDFA330F33354A2A4B8CD9B048885CBF77EB6F940CF`,
+loaded the Mercedes #62 at Barcelona with zero AI (one car total) and two AI
+(three cars total). Practice duration, AI strength, Flag Rules, qualifying
+enablement and forecast temperature edits read back and restored exactly.
+The corrected return-to-menu sequence reached `GSTATE_SETUP`. These checks
+cover the recorded settings and content, rather than every session combination.
 
 Setup is locked during loading, an active session or a practice-tool operation.
 **Return to menu** asks before ending the loaded session. Setup works only in
@@ -36,8 +54,9 @@ and practice rule toggles additionally require an active Practice session.
 
 The current API cannot distinguish LMU's intro screen from its visible main
 menu. A backend session can load while the intro remains on screen. Dismiss the
-prompt manually once per launch and confirm in the app before starting. This
-confirmation is cleared when the game exits or the app returns it to the menu.
+prompt manually once per launch. The app has no confirmation checkbox; it enables
+Start from the available menu/setup state and still refuses loading, online and
+active-session states.
 
 **Stop monitoring** cancels the app's wait. After LMU accepts the load request,
 it does not undo that load. Check LMU before attempting another start. Failed

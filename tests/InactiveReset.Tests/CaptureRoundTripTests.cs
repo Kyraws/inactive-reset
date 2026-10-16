@@ -39,6 +39,8 @@ public sealed class CaptureRoundTripTests : IDisposable
         Assert.Equal(Original.VehicleName, loaded.VehicleName);
         Assert.Equal(Original.Gear, loaded.Gear);
         Assert.Null(loaded.Tyres); // Legacy captures have no tyre block.
+        Assert.Null(loaded.LocalVelocityMetresPerSecond);
+        Assert.Null(loaded.SpeedKmh);
         Assert.Equal(Original.LapDistance, loaded.LapDistance, 4);
 
         Assert.Equal(Original.Pose.Position, loaded.Pose.Position);
@@ -60,6 +62,33 @@ public sealed class CaptureRoundTripTests : IDisposable
         var second = Assert.Throws<CheckpointException>(
             () => CaptureService.Save(Original, _directory));
         Assert.Contains("already exists", second.Message);
+    }
+
+    [Fact]
+    public void QuickCaptureReplacesOnlyItsOwnTrackAndCarSlot()
+    {
+        Checkpoint Quick(string vehicle, float distance, int gear) => new()
+        {
+            Name = CaptureService.QuickCaptureName, TrackName = Original.TrackName,
+            VehicleName = vehicle, Pose = Original.Pose, LapDistance = distance,
+            Gear = gear, LocalVelocityMetresPerSecond = new(0, 0, -35),
+        };
+        CaptureService.Save(Original, _directory);
+        var first = CaptureService.Save(Quick(Original.VehicleName, 100, 2), _directory, quick: true);
+        var otherCar = CaptureService.Save(Quick("Other car", 200, 3), _directory, quick: true);
+        var replaced = CaptureService.Save(Quick(Original.VehicleName, 300, 4), _directory, quick: true);
+        Assert.Equal(first, replaced);
+        var loaded = Checkpoint.Load(replaced);
+        Assert.Equal(300, loaded.LapDistance);
+        Assert.Equal(4, loaded.Gear);
+        Assert.Equal(Original.Pose, loaded.Pose);
+        Assert.Equal(new Vec3(0, 0, -35), loaded.LocalVelocityMetresPerSecond);
+        Assert.Equal(200, Checkpoint.Load(otherCar).LapDistance);
+        Assert.Equal(Original.LapDistance, Checkpoint.Require(_directory, Original.Name).LapDistance);
+        Assert.Equal(3, Checkpoint.LoadAll(_directory).Count);
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp", SearchOption.AllDirectories));
+        Assert.Throws<CheckpointException>(() => CaptureService.Save(loaded, _directory));
+        Assert.Throws<CheckpointException>(() => CaptureService.Save(Original, _directory, quick: true));
     }
 
     public void Dispose()
