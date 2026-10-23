@@ -63,12 +63,15 @@ public sealed class CaptureService(SharedMemoryReader reader)
     /// </summary>
     public static string Save(Checkpoint checkpoint, string checkpointDirectory, bool quick = false)
     {
+        ValidateName(checkpoint.Name);
         var reserved = string.Equals(checkpoint.Name, QuickCaptureName, StringComparison.OrdinalIgnoreCase);
         if (quick != reserved)
             throw new CheckpointException("'Quick capture' is reserved for the quick-capture action; use another name for a library checkpoint.");
         var folder = Path.Combine(checkpointDirectory, SanitiseFolder(checkpoint));
         Directory.CreateDirectory(folder);
-        var path = Path.Combine(folder, checkpoint.Name + ".json");
+        var path = Path.GetFullPath(Path.Combine(folder, checkpoint.Name + ".json"));
+        if (!path.StartsWith(Path.GetFullPath(folder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new CheckpointException("The checkpoint must stay inside its track and car folder.");
 
         if (!quick && File.Exists(path))
         {
@@ -106,13 +109,17 @@ public sealed class CaptureService(SharedMemoryReader reader)
             json["tyres"] = JsonSerializer.SerializeToNode(tyres, TyreState.JsonOptions);
 
         var payload = json.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-        if (quick)
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try { File.WriteAllText(temporary, payload); File.Move(temporary, path, overwrite: true); }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            File.WriteAllText(temporary, payload);
+            File.Move(temporary, path, overwrite: quick);
         }
-        else File.WriteAllText(path, payload);
+        catch (IOException) when (!quick && File.Exists(path))
+        {
+            throw new CheckpointException($"'{checkpoint.Name}' already exists at {path}; choose another name");
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
         return path;
 
         static JsonNode Vec(Vec3 v) => new JsonObject
@@ -121,6 +128,18 @@ public sealed class CaptureService(SharedMemoryReader reader)
             ["y"] = v.Y,
             ["z"] = v.Z,
         };
+    }
+
+    internal static void ValidateName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100 ||
+            name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.EndsWith('.') || name.EndsWith(' '))
+            throw new CheckpointException("Use a checkpoint name of 1–100 characters without filename punctuation or a trailing dot or space.");
+        var stem = name.Split('.')[0];
+        if (new[] { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" }.Contains(stem, StringComparer.OrdinalIgnoreCase) ||
+            stem.Length == 4 && (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+            "123456789¹²³".Contains(stem[3]))
+            throw new CheckpointException("This checkpoint name is reserved by Windows.");
     }
 
     private static string SanitiseFolder(Checkpoint checkpoint)

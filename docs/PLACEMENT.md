@@ -4,8 +4,10 @@ Current implementation, reviewed on 2026-10-07.
 
 ## Sequence
 
-1. Resolve the checkpoint and build a plan from live engine values. Check the
-   track and use the loaded car's calibration or derived offsets.
+1. Require active local Practice and live track/car identity, then resolve the
+   checkpoint and build a plan from live engine values. Check the track and use
+   the loaded car's calibration or derived offsets. Missing telemetry refuses
+   placement rather than substituting checkpoint metadata.
 2. Revalidate mapped code, table selection and AI ownership. Verify Flag Rules
    are off before arming. Failed suppression blocks placement; a failed rule
    write attempts to restore its original value.
@@ -34,6 +36,11 @@ temporary writes. After Drive, cancellation waits for pit state to clear or a
 garage return. It does not re-enable penalties while the player is still
 driving with inherited pit state. Activity explains when a garage return is
 needed. The CLI uses the same policy for Ctrl+C.
+
+Exceptions after Drive follow the same safe restoration wait. If the session
+changes while waiting, old rules are not written into the replacement session.
+If cleanup cannot read the state needed to prove restoration safe, it fails
+without re-enabling Flag Rules; check the rule setting before continuing.
 
 Closing the app requests this cleanup and keeps the window and process alive
 until the placement task finishes. Its title explains why closing may be

@@ -200,9 +200,9 @@ internal sealed class MainWindow : Form
         {
             if (!GameFocused()) return;
             var update = "";
-            if (action is "previous" or "next")
+            if (action is "capture" or "previous" or "next")
             {
-                // Refresh in the host: occluded WebView pages may defer fetch continuations.
+                // Practice polling stops on Home; refresh here because occluded WebViews may defer fetch continuations.
                 using var state = JsonDocument.Parse(await InputStateClient.GetStringAsync(_url + "api/state"));
                 if (!GameFocused() || _learningAction is not null) return;
                 update = $"renderCheckpoints({state.RootElement.GetRawText()});";

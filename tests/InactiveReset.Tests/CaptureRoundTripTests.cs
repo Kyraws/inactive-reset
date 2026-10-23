@@ -91,6 +91,61 @@ public sealed class CaptureRoundTripTests : IDisposable
         Assert.Throws<CheckpointException>(() => CaptureService.Save(Original, _directory, quick: true));
     }
 
+    private static Checkpoint Named(string name) => new()
+    {
+        Name = name, TrackName = Original.TrackName, VehicleName = Original.VehicleName,
+        Pose = Original.Pose,
+    };
+
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("..\\outside")]
+    [InlineData("C:\\outside")]
+    [InlineData("bad:stream")]
+    [InlineData("CON")]
+    [InlineData("nul.backup")]
+    [InlineData("COM1")]
+    [InlineData("LPT²")]
+    [InlineData("trailing.")]
+    [InlineData("trailing ")]
+    [InlineData("")]
+    public void InvalidNamesAreRejectedBeforeCreatingFiles(string name)
+    {
+        Assert.Throws<CheckpointException>(() => CaptureService.Save(Named(name), _directory));
+        Assert.False(Directory.Exists(_directory));
+    }
+
+    [Fact]
+    public async Task ConcurrentLibrarySavesNeverOverwriteTheWinner()
+    {
+        var results = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => Task.Run(() =>
+        {
+            try { CaptureService.Save(Original, _directory); return true; }
+            catch (CheckpointException) { return false; }
+        })));
+        Assert.Single(results, saved => saved);
+        Assert.Equal(Original.Pose, Checkpoint.Require(_directory, Original.Name).Pose);
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void DamagedFilesAreReportedWithoutHidingValidCheckpoints()
+    {
+        var valid = CaptureService.Save(Original, _directory);
+        File.WriteAllText(Path.Combine(_directory, "truncated.json"), "{");
+        File.WriteAllText(Path.Combine(_directory, "missing.json"), "{}");
+        File.WriteAllText(Path.Combine(_directory, "wrong-type.json"), "{\"pose\":42}");
+        File.WriteAllText(Path.Combine(_directory, "overflow.json"),
+            File.ReadAllText(valid).Replace("76.6936", "1e99"));
+        var errors = new List<string>();
+        var checkpoints = Checkpoint.LoadAll(_directory, errors.Add);
+        Assert.Equal(Original.Name, Assert.Single(checkpoints).Name);
+        Assert.Equal(4, errors.Count);
+        Assert.Contains(errors, error => error.Contains("truncated.json"));
+        Assert.Equal(Original.Name, Checkpoint.Require(_directory, Original.Name).Name);
+        Assert.Equal("{", File.ReadAllText(Path.Combine(_directory, "truncated.json")));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

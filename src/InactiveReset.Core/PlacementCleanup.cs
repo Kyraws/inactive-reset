@@ -25,7 +25,7 @@ internal static class PlacementCleanup
 }
 
 internal sealed class PlacementRestoreScope(bool pending, Action restore,
-    Func<bool> sameSession) : IDisposable
+    Func<bool> sameSession, Action? waitForSafeRestore = null) : IDisposable
 {
     public bool Pending { get; private set; } = pending;
     public bool SessionChanged { get; private set; }
@@ -35,7 +35,12 @@ internal sealed class PlacementRestoreScope(bool pending, Action restore,
         if (!Pending) return;
         // A destroyed/replaced table means the saved rules belong to a session
         // that is gone. Do not apply that value to the replacement session.
-        if (sameSession()) restore();
+        if (sameSession())
+        {
+            waitForSafeRestore?.Invoke();
+            if (sameSession()) restore();
+            else SessionChanged = true;
+        }
         else SessionChanged = true;
         Pending = false;
     }

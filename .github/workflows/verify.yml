@@ -7,11 +7,31 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: Ensure WebView2 runtime
+        shell: pwsh
+        run: |
+          $runtimeId = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$runtimeId", "HKCU:\Software\Microsoft\EdgeUpdate\Clients\$runtimeId")
+          $installed = $keys | ForEach-Object { Get-ItemPropertyValue -Path $_ -Name pv -ErrorAction SilentlyContinue } | Where-Object { $_ -and $_ -ne '0.0.0.0' }
+          if (!$installed) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            $setup = Start-Process -FilePath $installer -ArgumentList '/silent','/install' -Wait -PassThru -WindowStyle Hidden
+            if ($setup.ExitCode -ne 0) { throw "WebView2 setup failed: $($setup.ExitCode)" }
+          }
       - name: Test and package
         shell: cmd
         run: build.cmd package
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/TestResults/
+          if-no-files-found: warn

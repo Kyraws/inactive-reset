@@ -37,7 +37,12 @@ Game updates: reset offsets are discovered from the running game and cached per 
 - **Tyres:** set condition and starting heat for all four tyres or each wheel. Heat slider **0 = Game default**. Select **Prepare tyres**, or enable **Apply on placement**.
 - **Appearance:** choose Original or the dark-only Redline style; Compact keeps more controls in view. Find these in **Lab settings**.
 
-Checkpoint and tyre tools require **offline, single-player Practice without EasyAntiCheat**. For online racing, close LMU and launch it normally through Steam with EAC. The app refuses to attach to protected sessions.
+Choose **Launch local play** for all practice tools, or **Launch with EAC** for
+online racing in LMU. Session setup works at the single-player main menu in either
+mode, and checkpoint capture uses shared telemetry when available. Teleporting,
+tyre preparation and practice memory changes require **offline, single-player
+Practice without EAC**. The app explains disabled actions and never attaches to a
+protected session. Close LMU before switching launch modes.
 
 ## Updating or getting help
 

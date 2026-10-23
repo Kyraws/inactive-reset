@@ -4,11 +4,12 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 let setup = null, catalog = null, navigation = null;
 let section = 'selection', weatherSession = 'PRACTICE', weatherNode = 'START';
 let saving = false, starting = false, menuReady = false, gameRunning = false, serverBusy = false;
+let gameProtected = false, launching = false;
 let carSearch = '', settingSearch = '', pollTimer, polling = false;
 
 const SECTION_INFO = {
   selection:['YOUR NEXT SESSION','Car & track','Choose where you drive and what you drive.'],
-  sessions:['BUILD YOUR WEEKEND','Sessions','Choose your session order, duration and track conditions.'],
+  sessions:['BUILD YOUR WEEKEND','Sessions','Type durations and start times directly; press Enter to save. The +/− buttons update immediately and save after a short pause.'],
   weather:['SET THE CONDITIONS','Weather','Shape the weather from the opening minutes to the end of each session.'],
   grid:['WHO YOU DRIVE WITH','Opponent grid','Choose the classes on your grid and how competitive they are.'],
   rules:['MAKE IT YOURS','Rules','Simulation settings and session rules.']
@@ -19,6 +20,11 @@ const LABELS = {
   SKY:'Sky',RAIN_CHANCE:'Rain chance',TEMPERATURE:'Air temperature',HUMIDITY:'Humidity',WINDDIRECTION:'Wind direction',WINDSPEED:'Wind speed'
 };
 const NUMERIC = new Set(['SESSSET_AI_Strength','SESSSET_Damage_Multi','SESSSET_Num_Opponents','SESSSET_Practice_Length','SESSSET_Qualify_Length','SESSSET_WarmUp_Length','SESSSET_Race_Laps','SESSSET_race_time','SESSSET_cuts_allowed','SESSSET_tires_available_in_garage','SESSSET_recon_pit_closed','SESSSET_recon_pit_open']);
+const TIME_SETTINGS = new Set(['SESSSET_practice1_starting_time','SESSSET_qualify_starting_time','SESSSET_race_starting_time','SESSSET_warmup_starting_time']);
+const TIME_MODES = {'-3':'Random','-2':'Random daytime','-1':'Track default'};
+const sessionValueEdits = new Map();
+let sessionValueTimer, sessionValueSaving=false, sessionValueError='', sessionValueEditedAt=0, sessionValueRevision=0;
+function clockValue(value){return value<0?'':String(Math.floor(value/60)).padStart(2,'0')+':'+String(value%60).padStart(2,'0');}
 const NOTES = {
   SESSSET_AI_Strength:'LMU applies the available difficulty range.',
   SESSSET_Grid_Position:'Used when qualifying is disabled.',
@@ -56,16 +62,81 @@ function keyData(body) { return escapeHtml(JSON.stringify(body)); }
 function stepper(key, setting, action = 'setting', extra = {}) {
   const title = label(key);
   const assist = action === 'assist';
-  const value = setting.currentValue;
+  const value = action==='setting' && sessionValueEdits.has(key) ? sessionValueEdits.get(key) : setting.currentValue;
   const numeric = action === 'setting' && NUMERIC.has(key);
+  const clock = action === 'setting' && TIME_SETTINGS.has(key);
+  const edit = numeric || clock;
   const unavailable = assist && setting.minValue === setting.maxValue;
   const minus = assist ? {value:Math.max(setting.minValue,value-setting.stepValue)} : {steps:numeric || action === 'weather' ? -1 : 0};
   const plus = assist ? {value:Math.min(setting.maxValue,value+setting.stepValue)} : {steps:1};
   const base = {action,key,...extra};
   const percentage = /^%/.test(setup.settings.SESSSET_Finish_Criteria?.stringValue || '') && /^(SESSSET_Race_Laps|SESSSET_race_time)$/.test(key);
   const unit = percentage ? '%' : /Length$|^SESSSET_race_time$/.test(key) ? 'min' : /recon_pit_(open|closed)$/.test(key) ? 'sec' : '';
-  const center = numeric ? `<input id="value-${key}" type="number" value="${escapeHtml(value)}" data-setting="${escapeHtml(key)}" data-before="${value}" aria-label="${escapeHtml(title)}" step="1">${unit ? `<span class="unit">${unit}</span>` : ''}` : `<output>${escapeHtml(setting.stringValue || value)}</output>`;
-  return `<div class="stepper"><button type="button" aria-label="Decrease ${escapeHtml(title)}" data-change="${keyData({...base,...minus})}" ${unavailable || assist && value<=setting.minValue ? 'disabled' : ''}>−</button>${center}<button type="button" aria-label="Increase ${escapeHtml(title)}" data-change="${keyData({...base,...plus})}" ${unavailable || assist && value>=setting.maxValue ? 'disabled' : ''}>+</button></div>`;
+  const editKey=edit?` data-session-value="${escapeHtml(key)}"`:'';
+  const clockNote=TIME_MODES[value]||'';
+  const center = clock ? `<input id="value-${key}" type="time" value="${clockValue(value)}" data-session-value="${escapeHtml(key)}" aria-label="${escapeHtml(title)}" step="60"><span class="clock-note" data-clock-note="${escapeHtml(key)}">${clockNote}</span><button type="button" class="clock-default" data-session-value="${escapeHtml(key)}" data-direct-value="-1" aria-label="Use track default ${escapeHtml(title)}">Default</button>` : numeric ? `<input id="value-${key}" type="number" value="${escapeHtml(value)}" data-setting="${escapeHtml(key)}" data-session-value="${escapeHtml(key)}" data-before="${value}" aria-label="${escapeHtml(title)}" step="1">${unit ? `<span class="unit">${unit}</span>` : ''}` : `<output>${escapeHtml(setting.stringValue || value)}</output>`;
+  return `<div class="stepper${clock?' clock-stepper':''}"><button type="button" aria-label="Decrease ${escapeHtml(title)}" data-change="${keyData({...base,...minus})}"${editKey}${edit?' data-value-step="-1"':''} ${unavailable || assist && value<=setting.minValue ? 'disabled' : ''}>−</button>${center}<button type="button" aria-label="Increase ${escapeHtml(title)}" data-change="${keyData({...base,...plus})}"${editKey}${edit?' data-value-step="1"':''} ${unavailable || assist && value>=setting.maxValue ? 'disabled' : ''}>+</button></div>`;
+}
+
+function updateSessionValueControls(){
+  for(const el of document.querySelectorAll('[data-session-value]'))el.disabled=!menuReady||starting||serverBusy||(saving&&!sessionValueSaving)||!!el.closest('fieldset[disabled]');
+  const pending=sessionValueEdits.size;
+  $('sessionSaveNotice').hidden=!pending;
+  $('sessionSaveText').textContent=sessionValueError?'Changes are not confirmed. '+sessionValueError:sessionValueSaving?'Saving your changes. You can keep adjusting numbers and times.':'Changes will save after you pause. You can keep editing.';
+  $('retrySessionSave').hidden=!sessionValueError;
+  $('retrySessionSave').disabled=!!saving||!menuReady||starting||serverBusy;$('discardSessionEdits').disabled=!!saving;
+  if(pending){$('saveDot').className='save-dot '+(sessionValueError?'error':'saving');$('saveStatus').textContent=sessionValueError?'Changes not confirmed':sessionValueSaving?'Saving changes…':'Changes waiting to save…';}
+}
+function paintSessionValue(key,value){
+  const input=$('value-'+key);if(input)input.value=TIME_SETTINGS.has(key)?clockValue(value):String(value);
+  const note=document.querySelector('[data-clock-note="'+key+'"]');if(note)note.textContent=TIME_MODES[value]||'';
+}
+function scheduleSessionValues(){
+  clearTimeout(sessionValueTimer);
+  if(sessionValueEdits.size&&!sessionValueError)sessionValueTimer=setTimeout(flushSessionValues,Math.max(0,400-(Date.now()-sessionValueEditedAt)));
+}
+function queueSessionValue(key,value){
+  if(!menuReady||starting||serverBusy||(saving&&!sessionValueSaving))return;
+  if(!(NUMERIC.has(key)||TIME_SETTINGS.has(key))||!Number.isInteger(value)||value<(TIME_SETTINGS.has(key)?-3:0)||value>(TIME_SETTINGS.has(key)?1439:10000)){reportError('Enter a valid whole number, or choose a start time between 00:00 and 23:59.');return;}
+  const hadError=!!sessionValueError;sessionValueError='';
+  sessionValueRevision++;
+  if(!sessionValueSaving&&!hadError&&value===setup.settings[key]?.currentValue)sessionValueEdits.delete(key);else sessionValueEdits.set(key,value);
+  sessionValueEditedAt=Date.now();paintSessionValue(key,value);scheduleSessionValues();updateControls();
+  if(!sessionValueEdits.size)setSaved('Values confirmed in LMU');
+}
+function renderAfterSessionValues(preserveInput=true){
+  const focused=document.activeElement,key=focused?.dataset.sessionValue,id=focused?.id,raw=preserveInput&&focused?.tagName==='INPUT'?focused.value:null;
+  if(preserveInput&&key){
+    // Keep the live editor node, its caret and keyboard focus while replies arrive.
+    for(const input of document.querySelectorAll('input[data-session-value]'))if(input.dataset.sessionValue!==key){const other=input.dataset.sessionValue;paintSessionValue(other,sessionValueEdits.get(other)??setup.settings[other]?.currentValue);}
+    renderSummary();updateControls();return;
+  }
+  renderContent();renderSummary();updateControls();
+  const input=key?$('value-'+key):id?$(id):null;if(input){if(raw!==null)input.value=raw;input.focus({preventScroll:true});}
+}
+async function flushSessionValues(){
+  clearTimeout(sessionValueTimer);
+  if(sessionValueSaving||saving||!sessionValueEdits.size||sessionValueError)return;
+  if(!menuReady||starting||serverBusy){sessionValueError='Return to the single-player main menu, then retry or discard these edits.';updateControls();return;}
+  const [key,value]=sessionValueEdits.entries().next().value;
+  const before=setup.settings[key]?.currentValue;
+  sessionValueSaving=true;saving=true;updateControls();
+  try{
+    setup=await request('/api/session/action',{action:'sessionValue',key,value});
+    if(setup.settings[key]?.currentValue!==value)throw Error('LMU did not confirm the requested value.');
+    if(sessionValueEdits.get(key)===value)sessionValueEdits.delete(key);
+    if(before!==value&&typeof lastUndo!=='undefined'){lastUndo={type:'setting',key,value:before};$('lastChange').textContent=label(key)+' updated';}
+  }catch(e){sessionValueError=e.message;try{setup=await request('/api/session/setup');}catch{}}
+  finally{
+    sessionValueSaving=false;saving=false;renderAfterSessionValues();
+    if(!sessionValueEdits.size)setSaved('Values confirmed in LMU');else scheduleSessionValues();
+  }
+}
+async function discardSessionValues(){
+  if(saving)return;clearTimeout(sessionValueTimer);saving=true;updateControls();
+  try{setup=await request('/api/session/setup');sessionValueEdits.clear();sessionValueError='';setSaved('Showing confirmed LMU values');}
+  catch(e){sessionValueError='Could not read LMU. Your pending edits have been kept. '+e.message;}
+  finally{saving=false;renderAfterSessionValues(false);}
 }
 function row(key, setting, action = 'setting', extra = {}) {
   if (!setting) return '';
@@ -159,37 +230,42 @@ function renderSummary() {
   $('summaryMeta').innerHTML = `<div>${escapeHtml(setup.settings.SESSSET_Num_Opponents?.currentValue || 0)} AI opponents · ${escapeHtml(settingValue('SESSSET_AI_Strength'))} strength</div><div>${escapeHtml(settingValue('SESSSET_weather'))} weather</div>`;
 }
 function updateControls() {
-  $('editorFields').disabled = saving || starting || !menuReady || serverBusy;
+  $('editorFields').disabled = (saving&&!sessionValueSaving) || starting || !menuReady || serverBusy;
   const anySession = setup && Object.values(setup.amounts).some(n=>n>0);
-  $('startButton').disabled = !setup || !menuReady || saving || starting || serverBusy || !anySession;
+  $('startButton').disabled = !setup || !menuReady || saving || starting || serverBusy || !anySession || !!sessionValueEdits.size;
   $('startButton').innerHTML = starting ? 'Loading session…' : 'Start session <span aria-hidden="true">↗</span>';
-  $('reloadButton').disabled = saving || starting;
-  $('launchButton').disabled = gameRunning || saving || starting;
-  $('emptyLaunch').disabled = gameRunning || saving || starting;
-  $('launchHint').textContent = starting ? 'Loading progress appears below. You can switch to LMU.' : !gameRunning ? 'Launch local play to begin.' : !menuReady ? 'Return to the main menu to start a new session.' : !anySession ? 'Enable at least one session in Sessions.' : 'Loads this setup in LMU. Press Drive there when ready.';
+  $('reloadButton').disabled = saving || starting || !!sessionValueEdits.size;
+  $('launchButton').disabled = $('launchEacButton').disabled = gameRunning || launching || saving || starting;
+  $('emptyLaunch').disabled = gameRunning || launching || saving || starting;
+  $('launchHint').textContent = sessionValueEdits.size ? (sessionValueError?'Retry or discard pending edits before starting.':'Start session unlocks when your changes are confirmed.') : starting ? 'Loading progress appears below. You can switch to LMU.' : !gameRunning ? 'Choose a launch mode to open LMU.' : !menuReady ? 'Open the single-player main menu in LMU to start a local session.' : !anySession ? 'Enable at least one session in Sessions.' : 'Dismiss the startup prompt in LMU first. After loading, switch to LMU and press Drive.';
+  updateSessionValueControls();
 }
 function renderNavigation() {
   const state = navigation?.state || {};
-  menuReady = !navigation?.protected && state.settingMode==='SETTING_GRANDPRIX' && state.gameState==='GSTATE_SETUP' && state.navigationState==='NAV_MAIN_MENU' && !navigation.loadingStatus?.loading;
-  $('connection').textContent = !gameRunning ? 'LMU not running' : navigation?.loadingStatus?.loading ? 'Loading session' : menuReady ? 'Local play · main menu' : state.settingMode==='SETTING_MULTIPLAYER' ? 'Online session' : `${state.gameSession?.replace(/(\D)(\d)/,'$1 $2').toLowerCase() || 'Local session'} · loaded`;
+  gameProtected = !!navigation?.protected;
+  menuReady = state.settingMode==='SETTING_GRANDPRIX' && state.gameState==='GSTATE_SETUP' && state.navigationState==='NAV_MAIN_MENU' && !navigation.loadingStatus?.loading;
+  $('connection').textContent = !gameRunning ? 'LMU not running' : navigation?.loadingStatus?.loading ? 'Loading session' : menuReady ? 'Single-player main menu' : state.settingMode==='SETTING_MULTIPLAYER' ? 'Online session' : `${state.gameSession?.replace(/(\D)(\d)/,'$1 $2').toLowerCase() || 'Single-player session'} · loaded`;
   $('connection').className = 'connection' + (menuReady?' ready':'');
   const banner = $('stateBanner');
   banner.hidden = !gameRunning || menuReady && !serverBusy || !setup;
-  if (!banner.hidden) banner.innerHTML = serverBusy ? 'A practice-tool operation is in progress. Wait for it to finish before changing session setup.' : state.settingMode==='SETTING_MULTIPLAYER' ? 'Session setup is available in local single-player mode. Close LMU and launch local play.' : navigation.protected ? 'This LMU launch uses EAC. Close the game and launch local play to edit sessions.' : navigation.loadingStatus?.loading || starting ? 'LMU is loading. Setup will be available again at the main menu.' : 'A session is loaded in LMU. Return to the main menu to edit your next session.<button class="button" data-dialog="menuDialog">Return to menu</button>';
+  if (!banner.hidden) banner.innerHTML = serverBusy ? 'An operation is in progress. Wait for it to finish before changing the session.' : state.settingMode==='SETTING_MULTIPLAYER' ? 'You are in multiplayer. Events, presets and checkpoint capture remain available. Open LMU’s single-player main menu to edit or start a local session.' : navigation.loadingStatus?.loading || starting ? 'LMU is loading. Session editing unlocks at the main menu.' : 'A session is loaded in LMU. Return to the main menu to edit your next session.<button class="button" data-dialog="menuDialog">Return to menu</button>';
   updateControls();
 }
 async function loadSetup() {
+  if(sessionValueSaving)return;
+  const revision=sessionValueRevision;
   try {
     const next = await request('/api/session/setup');
     if (!catalog) catalog = await request('/api/session/catalog');
+    if(revision!==sessionValueRevision||sessionValueSaving)return;
     setup = next;
-    renderContent(); renderSummary(); setSaved('In sync with LMU');
+    renderContent(); renderSummary(); if(!sessionValueEdits.size)setSaved('In sync with LMU');
   } catch(e) {
     if (setup) reportError(e.message);
   }
 }
 async function change(body) {
-  if (saving || starting || !menuReady || serverBusy) return;
+  if (saving || starting || !menuReady || serverBusy || sessionValueEdits.size) return;
   saving = true; updateControls();
   $('saveDot').className = 'save-dot saving'; $('saveStatus').textContent = 'Saving to LMU…';
   try {
@@ -202,15 +278,17 @@ async function change(body) {
   }
   finally { saving=false; updateControls(); }
 }
-async function launchLocal() {
-  if (gameRunning) return;
-  $('launchButton').disabled = $('emptyLaunch').disabled = true;
+async function launchLocal() { return launchGame('direct'); }
+async function launchGame(mode) {
+  if (gameRunning || launching) return;
+  launching=true;updateControls();
   try {
-    await request('/api/launch',{mode:'direct'});
-    gameRunning=true; $('saveStatus').textContent='Waiting for LMU’s menu…';
+    await request('/api/launch',{mode});
+    gameRunning=true;gameProtected=mode==='eac';$('saveStatus').textContent='Waiting for LMU’s menu…';
     $('emptyState').querySelector('p').textContent='LMU is starting. Dismiss its “Press any button” prompt, then return here to configure your session.';
     updateControls();
-  } catch(e) { reportError(e.message); updateControls(); }
+  } catch(e) { reportError(e.message); }
+  finally { launching=false;updateControls(); }
 }
 async function poll() {
   if (polling) return;
@@ -233,10 +311,11 @@ async function poll() {
       try {
         const state=await request('/api/state');
         gameRunning=!!state.game?.running;
+        gameProtected=!!state.game?.protected;
         serverBusy=!!state.busy;
-        $('connection').textContent=state.game?.protected ? 'EAC launch · setup unavailable' : gameRunning ? 'Waiting for LMU’s API' : 'LMU not running';
+        $('connection').textContent=gameRunning ? 'Waiting for LMU’s menu' : 'LMU not running';
       } catch { $('connection').textContent='App connection lost'; }
-      if(!gameRunning) {setup=null;catalog=null;$('editorFields').hidden=true;$('emptyState').hidden=false;}
+      if(!gameRunning) {setup=null;catalog=null;$('editorFields').hidden=true;$('emptyState').hidden=false;$('saveStatus').textContent='LMU is closed';$('saveDot').className='save-dot';}
     }
     updateControls();
   } finally { polling=false; }
@@ -261,14 +340,15 @@ function switchSection(next) {
 document.addEventListener('click',e=>{
   const button=e.target.closest('button');if(!button || button.disabled)return;
   if(button.dataset.section)switchSection(button.dataset.section);
-  if(button.dataset.change)change(JSON.parse(button.dataset.change));
+  if(button.dataset.sessionValue){const key=button.dataset.sessionValue,current=sessionValueEdits.get(key)??setup.settings[key]?.currentValue;queueSessionValue(key,button.dataset.directValue!==undefined?Number(button.dataset.directValue):Math.max(TIME_SETTINGS.has(key)?-3:0,Math.min(TIME_SETTINGS.has(key)?1439:10000,current+Number(button.dataset.valueStep))));}
+  else if(button.dataset.change)change(JSON.parse(button.dataset.change));
   if(button.dataset.weatherSession){weatherSession=button.dataset.weatherSession;renderContent();}
   if(button.dataset.weatherNode){weatherNode=button.dataset.weatherNode;renderContent();}
   if(button.dataset.dialog)$(button.dataset.dialog).showModal();
 });
 document.addEventListener('change',e=>{
   const el=e.target;
-  if(el.dataset.setting){const value=Number(el.value),before=Number(el.dataset.before);if(!el.value.trim() || !Number.isInteger(value) || Math.abs(value-before)>10000){reportError('Enter a whole number within the available setting range.');el.value=before;return;}const delta=value-before;if(delta)change({action:'setting',key:el.dataset.setting,steps:delta});}
+  if(el.dataset.sessionValue){const key=el.dataset.sessionValue,clock=TIME_SETTINGS.has(key),match=clock?/^(\d{2}):(\d{2})$/.exec(el.value):null,value=clock?(match?Number(match[1])*60+Number(match[2]):NaN):el.value.trim()?Number(el.value):NaN;if(!Number.isInteger(value)||value<0||value>(clock?1439:10000)){reportError(clock?'Enter a start time between 00:00 and 23:59, or choose Default.':'Enter a whole number within the available setting range.');paintSessionValue(key,sessionValueEdits.get(key)??setup.settings[key].currentValue);return;}queueSessionValue(key,value);}
   if(el.dataset.amount)change({action:'amount',session:el.dataset.amount,amount:Number(el.value)});
   if(el.dataset.assist)change({action:'assist',key:el.dataset.assist,value:el.checked?1:0});
   if(el.id==='trackSelect')change({action:'track',id:el.value});
@@ -280,8 +360,14 @@ document.addEventListener('input',e=>{
   if(e.target.id==='settingSearch'){settingSearch=e.target.value;renderContent();}
 });
 $('launchButton').addEventListener('click',launchLocal);$('emptyLaunch').addEventListener('click',launchLocal);
+$('launchEacButton').addEventListener('click',()=>launchGame('eac'));
+$('launchLocalChoice').addEventListener('click',launchLocal);
+$('launchEacChoice').addEventListener('click',()=>launchGame('eac'));
 $('reloadButton').addEventListener('click',async()=>{await loadSetup();await poll();});
 $('startButton').addEventListener('click',startSession);
+$('retrySessionSave').addEventListener('click',()=>{sessionValueError='';flushSessionValues();});
+$('discardSessionEdits').addEventListener('click',discardSessionValues);
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('input[data-session-value]')){e.preventDefault();e.target.dispatchEvent(new Event('change',{bubbles:true}));flushSessionValues();}});
 $('dismissError').addEventListener('click',()=>{$('errorBar').hidden=true;});
 $('keepSession').addEventListener('click',()=>$('menuDialog').close());
 $('keepSettings').addEventListener('click',()=>$('defaultsDialog').close());

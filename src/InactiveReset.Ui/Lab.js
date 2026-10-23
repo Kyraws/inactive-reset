@@ -35,13 +35,14 @@ function setPage(page,nextSection){
   const panels={home:'homePanel',setup:'setupPanel',practice:'practicePanel',library:'libraryPanel',activity:'activityPanel',settings:'settingsPanel',presets:'presetsPanel'};
   if(!panels[page])return;
   labPage=page;for(const id of Object.values(panels))$(id).hidden=id!==panels[page];
+  document.body.dataset.page=page;
   $('setupDock').hidden=['practice','library','activity'].includes(page);$('practiceDock').hidden=!$('setupDock').hidden;
   $('sessionSummary').hidden=$('summaryMeta').hidden=document.querySelector('.dock-journal').hidden=$('setupDock').hidden;
   $('dockEyebrow').textContent=$('setupDock').hidden?'YOUR PRACTICE':'YOUR SESSION';
   if(nextSection)baseSwitchSection(nextSection);
   for(const b of document.querySelectorAll('.rail-link'))b.classList.toggle('active',b.dataset.page===page || page==='setup' && b.dataset.section===section);
   if(['practice','library','activity'].includes(page))refresh();else{clearInterval(timer);timer=null;period=0;}
-  if(page==='presets')renderPlans();if(page==='library')renderLibrary();if(page==='activity')renderLabActivity();
+  if(page==='presets'){renderPlans();renderOfficialSessions();}if(page==='library')renderLibrary();if(page==='activity')renderLabActivity();
   $('editor').scrollTop=0;updateLabControls();
 }
 const baseSwitchSection=switchSection;
@@ -57,37 +58,48 @@ row=function(key,setting,action='setting',extra={}){
   }
   return baseRow(key,setting,action,extra);
 };
-function decoratePins(container){for(const r of container.querySelectorAll('.setting-row')){const control=r.querySelector('[data-change]');if(!control)continue;const b=JSON.parse(control.dataset.change),key=b.key;if(!/^SESSSET_/.test(key)||r.querySelector('.pin-control'))continue;const pin=document.createElement('button');pin.type='button';pin.className='pin-control';pin.dataset.pin=key;pin.setAttribute('aria-pressed',String(labPreferences.pins.includes(key)));pin.setAttribute('aria-label','Pin '+label(key));pin.textContent=labPreferences.pins.includes(key)?'★':'☆';r.prepend(pin);}}
 const baseRenderContent=renderContent;
-renderContent=function(){baseRenderContent();$('sectionContent').dataset.section=section;if(setup&&catalog){decoratePins($('sectionContent'));renderHome();if(section==='weather')addWeatherPreview();if(section==='sessions')addDurationShortcuts();}updateLabControls();};
+renderContent=function(){baseRenderContent();$('sectionContent').dataset.section=section;if(setup&&catalog){renderHome();if(section==='weather')addWeatherPreview();if(section==='sessions')addDurationShortcuts();}updateLabControls();};
 const baseNavigation=renderNavigation;
-renderNavigation=function(){baseNavigation();renderMetrics();updateLabControls();};
+renderNavigation=function(){baseNavigation();renderMetrics();updateLabControls();maybeRefreshOfficialSessions();};
 const baseUpdateControls=updateControls;
 updateControls=function(){baseUpdateControls();updateLabControls();};
 function updateLabControls(){
-  const locked=!setup||!menuReady||saving||starting||serverBusy||applyingPlan;
-  const busy=saving||starting||serverBusy||applyingPlan;
-  $('pinnedFields').disabled=busy;$('editorFields').disabled=busy;$('savePlanButton').disabled=!setup||!preferencesReady||busy;
-  for(const b of document.querySelectorAll('[data-template],[data-plan]'))b.disabled=busy;
+  const locked=!setup||!menuReady||saving||starting||serverBusy||applyingPlan||!!sessionValueEdits.size;
+  const busy=saving||starting||serverBusy||applyingPlan||!!sessionValueEdits.size;
+  $('editorFields').disabled=!menuReady||starting||serverBusy||applyingPlan||(saving&&!sessionValueSaving);$('savePlanButton').disabled=!setup||!preferencesReady||busy;
+  $('refreshLabButton').disabled=busy;
+  for(const b of document.querySelectorAll('[data-plan],[data-official-preset]'))b.disabled=busy||b.hasAttribute('data-official-preset')&&officialRefreshing;
   for(const b of document.querySelectorAll('[data-change],[data-setting],[data-assist],[data-amount],[data-class],[data-car],[data-track],#circuitSelect,#trackSelect,#carSelect,#gridSource,[data-target],[data-weather-copy]')){if(b.dataset.lmuDisabled===undefined)b.dataset.lmuDisabled=String(b.disabled);b.disabled=locked||b.dataset.lmuDisabled==='true';}
   if(!applyingPlan)$('applyPlanButton').disabled=locked||!pendingPlan?.intents.length;
   const practiceBusy=!!labState?.busy;
-  $('quickCaptureButton').disabled=practiceBusy||!labState?.session?.capturable;
+  $('quickCaptureButton').disabled=!canCapture(labState||{});
   $('allCondition').disabled=$('allTemperature').disabled=practiceBusy;
   for(const b of document.querySelectorAll('[data-tyre-preset]'))b.disabled=practiceBusy;
   $('undoButton').disabled=locked||!lastUndo;
+  renderAccessMessage();
+  updateSessionValueControls();
+}
+function renderAccessMessage(){
+  renderMetrics();
+  const switchHint=gameRunning?'LMU is already running. Close it before choosing a different launch mode.':null;
+  $('launchButton').title=switchHint||'EAC off: all tools in single-player Practice. Online racing is unavailable.';
+  $('launchEacButton').title=switchHint||'EAC on: online racing, local session setup and checkpoint capture. Teleporting and tyre preparation are disabled.';
+  $('launchModeBadge').textContent=!gameRunning?'LMU CLOSED':gameProtected?'EAC ON':'EAC OFF';
+  const online=navigation?.state?.settingMode==='SETTING_MULTIPLAYER';
+  $('accessTitle').textContent=!gameRunning?'Start here':gameProtected?'EAC is on · teleporting and tyre preparation are disabled':online?'Multiplayer session · practice changes are disabled':'EAC is off · full practice tools available';
+  $('accessText').textContent=!gameRunning?'Choose a launch below. You can browse saved presets and checkpoints before opening LMU. To practise an official event, choose Qualifying practice or Race practice, review the changes, then press Start session.'
+    :gameProtected?'Easy Anti-Cheat is active. Events, saved presets and checkpoint capture remain available when LMU provides a car position. '+(online?'You are in multiplayer. Open LMU’s single-player main menu to edit or start a local session. ':'You can edit and start local sessions from LMU’s single-player main menu. ')+'To teleport or prepare tyres, close LMU and choose Launch local play, then load single-player Practice.'
+    :online?'Events and saved data remain available. Session editing needs LMU’s single-player main menu; teleporting and tyre preparation need single-player Practice.'
+    :'Choose an official event or build a session. Review and apply it, press Start session, then switch to LMU and press Drive. Teleporting and tyre preparation work only in single-player Practice. For online racing, close LMU first and choose Launch with EAC.';
+  $('accessNotice').hidden=gameRunning&&!gameProtected&&!online&&labPage!=='home';
+  $('launchChoices').hidden=gameRunning;
+  $('launchLocalChoice').disabled=$('launchEacChoice').disabled=gameRunning||launching||saving||starting;
 }
 function renderMetrics(){
-  if(!setup){$('dashboardMetrics').innerHTML='<div class="metric"><span>SESSION</span><strong>Not loaded</strong></div><div class="metric"><span>MODE</span><strong>Local play</strong></div><div class="metric"><span>STARTUP</span><strong>One button press</strong></div>';return;}
-  const enabled=Object.values(setup.amounts).reduce((a,b)=>a+b,0);
-  $('dashboardMetrics').innerHTML=`<div class="metric"><span>ENABLED SESSIONS</span><strong>${enabled}</strong></div><div class="metric"><span>AI OPPONENTS</span><strong>${escapeHtml(setup.settings.SESSSET_Num_Opponents?.currentValue??0)}</strong></div><div class="metric"><span>CONDITIONS</span><strong>${escapeHtml(settingValue('SESSSET_weather'))}</strong></div>`;
-  $('heroTitle').textContent=circuitName(currentTrack())||'Your next lap starts here.';
-  $('heroSubtitle').textContent=(currentCar()?.fullPathTree?.split(',').map(s=>s.trim()).join(' · ')||'Choose your car')+' — '+(menuReady?'ready to configure.':'your setup, ready for the next run.');
+  $('currentSetupSummary').textContent=setup ? (currentTrack()?.eventName||currentTrack()?.trackName||currentTrack()?.name||'Current session')+' · '+(currentCar()?.desc||'Choose your car') : 'Open LMU to prepare a session. Saved presets and checkpoints stay available here.';
 }
-function renderHome(){
-  renderMetrics();if(setup){const focused=document.activeElement?.id;$('pinnedControls').innerHTML=labPreferences.pins.filter(k=>k.startsWith('SESSSET_')).map(k=>row(k,setup.settings[k],'setting').replaceAll('id="value-','id="home-value-')).join('')||'<p class="empty-note">Pin a control from the session builder to put it here.</p>';decoratePins($('pinnedControls'));if(focused&&$(focused))$(focused).focus({preventScroll:true});}
-  renderPlans();
-}
+function renderHome(){renderMetrics();renderOfficialSessions();renderPlans();maybeRefreshOfficialSessions();}
 function parts(car){return (car.fullPathTree||'Other, Other, Other').split(',').map(s=>s.trim());}
 function modelKey(car){return parts(car)[2].toLowerCase()+'|'+parts(car)[1].toLowerCase();}
 function circuitName(track){if(!track)return '';track=catalog?.tracks?.find(t=>t.id===track.id)||track;return (track.displayProperties?.shortName||track.shortName||track.trackName||track.name||'Unknown circuit').replace(/\s+\d+\.\d+$/, '').replace(/Aut.dromo Jos. Carlos Pace/,'Autódromo José Carlos Pace');}
@@ -132,8 +144,8 @@ function renderLibrary(){
   $('libraryMeta').textContent=`${list.length} of ${all.length} checkpoints · ${loaded?'loaded track: '+loaded:'load Practice to place a checkpoint'}`;
   $('checkpointCards').innerHTML=list.map(c=>{const usable=c.track.toLowerCase()===loaded.toLowerCase()&&!labState?.busy;return `<article class="checkpoint-item ${usable?'':'dimmed'}"><button class="icon-button" data-fav-checkpoint="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(c.name)}">${labPreferences.checkpoints.includes(c.id)?'★':'☆'}</button><div><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.track)} · captured in ${escapeHtml(c.vehicle)}${Number.isFinite(c.speedKmh)?' · captured at '+c.speedKmh.toFixed(1)+' km/h':''}</p></div><span class="distance">${Math.round(c.lapDistance||0).toLocaleString()} m</span><button class="button" data-pick-checkpoint="${escapeHtml(c.id)}" ${usable?'':'disabled'}>${usable?'Select ↗':'Other track'}</button></article>`;}).join('')||'<p class="empty-note">No matching checkpoints. Capture a position in Practice or change your filter.</p>';
 }
-function activityText(){return [...diagnosticLog,...(labState?.log||[]),...(labState?.outcome?.lines||[]).map(l=>l.label+': '+l.value)].join('\n')||'No activity yet.';}
-function renderLabActivity(){const text=activityText(),filtered=logFilter==='issues'?text.split('\n').filter(l=>/error|fail|refus|unavail|unknown|cancel|mismatch/i.test(l)).join('\n'):text;$('log').textContent=filtered;$('activityEmpty').hidden=!!filtered;}
+function activityText(){return [...diagnosticLog,...(labState?.checkpointErrors||[]),...(labState?.log||[]),...(labState?.outcome?.lines||[]).map(l=>l.label+': '+l.value)].join('\n')||'No activity yet.';}
+function renderLabActivity(){const text=activityText(),filtered=logFilter==='issues'?text.split('\n').filter(l=>/error|fail|refus|unavail|unknown|cancel|mismatch|skipped checkpoint/i.test(l)).join('\n'):text;$('log').textContent=filtered;$('activityEmpty').hidden=!!filtered;}
 function toggleFavourite(group,id){if(!id)return;const list=labPreferences[group],at=list.indexOf(id);if(at<0){if(list.length>=200){notify('Your favourites list is full.',true);return;}list.push(id);}else list.splice(at,1);persistPreferences();renderHome();renderLibrary();if(setup&&labPage==='setup')renderContent();}
 function snapshotPlan(){
   if(!setup)throw Error('Load LMU’s menu setup first.');
@@ -164,15 +176,17 @@ function planIntents(target){
   return intents;
 }
 function intentValue(i){if(i.type==='setting')return setup?.settings[i.key]?.currentValue;if(i.type==='assist')return setup?.assists[i.key]?.currentValue;if(i.type==='weather')return setup?.weather[i.session]?.[i.node]?.[i.key]?.currentValue;if(i.type==='amount')return setup?.amounts[i.session];if(i.type==='car')return currentCar()?.id;if(i.type==='track')return currentTrack()?.id;if(i.type==='grid')return JSON.stringify([setup?.selection.classesSelection,!!setup?.selection.fullGrid]);return null;}
-function needed(i){if(i.type==='weatherPreset')return true;if(i.type==='grid')return JSON.stringify([i.classes,i.fullGrid])!==intentValue(i);if(['car','track'].includes(i.type))return i.id!==intentValue(i);return !sameNumber(i.value,intentValue(i));}
-function describeIntent(i){if(i.type==='car')return ['Car',i.display||catalog?.cars.find(c=>c.id===i.id)?.desc||'Saved car'];if(i.type==='track')return ['Circuit',i.display||catalog?.tracks.find(t=>t.id===i.id)?.name||'Saved circuit'];if(i.type==='grid')return ['Opponent classes',(i.classes.join(', ')||'None')+' · '+(i.fullGrid?'fill grid':'season grid')];if(i.type==='amount')return [SESSION_NAMES[i.session],i.value===0?'Disabled':i.value+' session'+(i.value>1?'s':'')];if(i.type==='weatherPreset')return [SESSION_NAMES[i.session]+' forecast',i.preset.toLowerCase()];return [(i.type==='weather'?SESSION_NAMES[i.session]+' · '+i.node.replace('NODE_','')+' · ':'')+label(i.key),i.display||(i.key==='SESSSET_Finish_Criteria'&&i.value===2?'Time':String(i.value))];}
+function needed(i){if(i.type==='weatherPreset'||i.type==='practiceConditions')return true;if(i.type==='grid')return JSON.stringify([i.classes,i.fullGrid])!==intentValue(i);if(['car','track'].includes(i.type))return i.id!==intentValue(i);return !sameNumber(i.value,intentValue(i));}
+function describeIntent(i){if(i.type==='setting'&&TIME_SETTINGS.has(i.key))return [label(i.key),TIME_MODES[i.value]||clockValue(i.value)];if(i.type==='practiceConditions')return ['Practice time & surface',String(Math.floor(i.time/60)).padStart(2,'0')+':'+String(i.time%60).padStart(2,'0')+' · '+i.road.replace('preset:','').replace('.RRBIN','').toLowerCase()+' · water '+(i.waterDepth<0?'track default':Math.round(i.waterDepth*100)+'%')];if(i.type==='car')return ['Car',i.display||catalog?.cars.find(c=>c.id===i.id)?.desc||'Saved car'];if(i.type==='track')return ['Circuit',i.display||catalog?.tracks.find(t=>t.id===i.id)?.name||'Saved circuit'];if(i.type==='grid')return ['Opponent classes',(i.classes.join(', ')||'None')+' · '+(i.fullGrid?'fill grid':'season grid')];if(i.type==='amount')return [SESSION_NAMES[i.session],i.value===0?'Disabled':i.value+' session'+(i.value>1?'s':'')];if(i.type==='weatherPreset')return [SESSION_NAMES[i.session]+' forecast',i.preset.toLowerCase()];return [(i.type==='weather'?SESSION_NAMES[i.session]+' · '+i.node.replace('NODE_','')+' · ':'')+label(i.key),i.display||(i.key==='SESSSET_Finish_Criteria'&&i.value===2?'Time':String(i.value))];}
 function reviewPlan(title,intents,description='These changes save to LMU. Review them before applying.'){
-  if(saving||starting||serverBusy||applyingPlan){notify('Wait for the current operation before reviewing another plan.',true);return;}
+  if(saving||starting||serverBusy||applyingPlan||sessionValueEdits.size){notify('Wait for your changes to save before reviewing another plan.',true);return;}
   pendingPlan={title,intents:intents.filter(i=>i.type!=='assist').filter(needed)};$('planTitle').textContent=title;$('planDescription').textContent=description;$('planProgress').textContent='';$('planChanges').innerHTML=pendingPlan.intents.map(i=>{const [k,v]=describeIntent(i);return `<div class="plan-change"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`;}).join('')||'<p class="empty-note">This setup already matches. No changes are needed.</p>';
-  $('applyPlanButton').disabled=!pendingPlan.intents.length||!setup||!menuReady;$('cancelPlanButton').textContent='Keep current setup';if(!menuReady)$('planProgress').textContent='You can review this plan now. Launch local play and return to its main menu to apply it.';$('planDialog').showModal();
+  $('applyPlanButton').disabled=!pendingPlan.intents.length||!setup||!menuReady;$('cancelPlanButton').textContent='Keep current setup';if(!menuReady)$('planProgress').textContent='You can review this plan now. Open LMU and go to its single-player main menu to apply it.';$('planDialog').showModal();return true;
 }
 async function applyIntent(i){
   if(!needed(i))return;
+  if(i.type==='setting'&&(NUMERIC.has(i.key)||TIME_SETTINGS.has(i.key))){setup=await request('/api/session/action',{action:'sessionValue',key:i.key,value:i.value});return;}
+  if(i.type==='practiceConditions'){setup=await request('/api/session/action',{action:'practiceConditions',time:i.time,road:i.road,waterDepth:i.waterDepth,loadTemperatures:i.loadTemperatures});return;}
   if(['car','track','grid','weatherPreset'].includes(i.type)){setup=await request('/api/session/action',{action:i.type,...i});return;}
   if(i.type==='amount'){setup=await request('/api/session/action',{action:'amount',session:i.session,amount:i.value});return;}
   if(i.type==='assist')throw Error('Driving assists are managed in LMU.');
@@ -186,13 +200,11 @@ async function applyIntent(i){
 }
 async function applyPendingPlan(){
   if(!pendingPlan||applyingPlan)return;if(!setup||!menuReady||serverBusy||starting){notify('Return to LMU’s local main menu before applying a plan.',true);return;}applyingPlan=true;saving=true;cancelPlan=false;updateControls();$('applyPlanButton').disabled=true;$('cancelPlanButton').textContent='Stop after current change';let applied=0;
-  try{for(const intent of pendingPlan.intents){if(cancelPlan)break;$('planProgress').textContent=`Applying ${applied+1} of ${pendingPlan.intents.length} · ${describeIntent(intent)[0]}`;await applyIntent(intent);if(cancelPlan)break;applied++;}lastUndo=null;$('lastChange').textContent=pendingPlan.title+' · '+applied+' changes confirmed';notify(cancelPlan?'Plan stopped. Confirmed changes remain in LMU.':'Plan applied. Your session is ready to review.');$('planDialog').close();}
+  try{for(const intent of pendingPlan.intents){if(cancelPlan)break;$('planProgress').textContent=`Applying ${applied+1} of ${pendingPlan.intents.length} · ${describeIntent(intent)[0]}`;await applyIntent(intent);if(cancelPlan)break;applied++;}lastUndo=null;$('lastChange').textContent=pendingPlan.title+' · '+applied+' changes confirmed';notify(cancelPlan?'Plan stopped. Confirmed changes remain in LMU.':'Plan applied. Your session is ready to review.');$('planDialog').close();if(!cancelPlan&&pendingPlan.official)setPage('setup','sessions');}
   catch(e){notify(`Stopped after ${applied} confirmed changes. ${e.message}`,true);$('planProgress').textContent='Stopped. Confirmed changes remain in LMU. Refresh and review before trying again.';try{setup=await request('/api/session/setup');}catch{}}
   finally{applyingPlan=false;saving=false;renderContent();renderSummary();updateControls();$('applyPlanButton').disabled=true;$('cancelPlanButton').textContent='Close review';}
 }
-const templates={solo:{name:'Solo focus',icon:'◎',description:'30 minutes. No traffic. One section at a time.',intents:[{type:'amount',session:'PRACTICE',value:1},{type:'amount',session:'QUALIFY',value:0},{type:'amount',session:'WARMUP',value:0},{type:'amount',session:'RACE',value:0},{type:'setting',key:'SESSSET_Practice_Length',value:30},{type:'setting',key:'SESSSET_Num_Opponents',value:0}]},sprint:{name:'Sprint rehearsal',icon:'⚑',description:'Practice, qualifying and a 20-minute race.',intents:[{type:'amount',session:'PRACTICE',value:1},{type:'amount',session:'QUALIFY',value:1},{type:'amount',session:'WARMUP',value:0},{type:'amount',session:'RACE',value:1},{type:'setting',key:'SESSSET_Practice_Length',value:15},{type:'setting',key:'SESSSET_Qualify_Length',value:10},{type:'setting',key:'SESSSET_Finish_Criteria',value:2},{type:'setting',key:'SESSSET_race_time',value:20}]},wet:{name:'Wet-weather reps',icon:'☂',description:'A solo Practice session with a rainy forecast.',intents:[{type:'amount',session:'PRACTICE',value:1},{type:'amount',session:'QUALIFY',value:0},{type:'amount',session:'RACE',value:0},{type:'amount',session:'WARMUP',value:0},{type:'setting',key:'SESSSET_Num_Opponents',value:0},{type:'weatherPreset',session:'PRACTICE',preset:'RAINY'}]}};
 function renderPlans(){
- $('quickPlans').innerHTML=Object.entries(templates).map(([id,p])=>`<button class="plan-card" data-template="${id}"><span class="plan-icon">${p.icon}</span><strong>${p.name}</strong><small>${p.description}</small><span class="card-arrow">Review preset ↗</span></button>`).join('');
  const plans=labPreferences.plans.filter(p=>`${p.name} ${p.target.display?.car||''} ${p.target.display?.track||''}`.toLowerCase().includes(presetQuery.toLowerCase()));
  $('savedPlans').innerHTML=plans.map(p=>`<article class="saved-plan"><div><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.target.display?.track||'Saved circuit')} · ${escapeHtml(p.target.display?.car||'Saved car')}</p></div><div class="preset-actions"><button class="button" data-plan="${escapeHtml(p.id)}">Use preset</button><button class="button quiet" data-rename-plan="${escapeHtml(p.id)}">Rename</button><button class="button quiet" data-replace-plan="${escapeHtml(p.id)}" ${!setup?'disabled':''}>Update from session</button><button class="icon-button" data-delete-plan="${escapeHtml(p.id)}" aria-label="Delete ${escapeHtml(p.name)}">×</button></div></article>`).join('')||'<p class="empty-note">No matching presets. Save the current session to reuse it later.</p>';updateLabControls();
 }
@@ -229,11 +241,10 @@ document.addEventListener('click',async e=>{
   if(b.dataset.styleChoice){labPreferences.style=b.dataset.styleChoice;applyAppearance();persistPreferences();}
   if(b.dataset.theme){labPreferences.theme=b.dataset.theme;applyAppearance();persistPreferences();}if(b.dataset.density){labPreferences.density=b.dataset.density;applyAppearance();persistPreferences();}
   if(b.hasAttribute('data-favourite-cars')){favouriteCarsOnly=!favouriteCarsOnly;renderContent();}
-  if(b.dataset.pin){const k=b.dataset.pin,at=labPreferences.pins.indexOf(k);if(at>=0)labPreferences.pins.splice(at,1);else if(labPreferences.pins.length<100)labPreferences.pins.push(k);persistPreferences();renderContent();}
   if(b.dataset.favCar)toggleFavourite('cars',b.dataset.favCar);if(b.dataset.favTrack)toggleFavourite('tracks',b.dataset.favTrack);if(b.dataset.favCheckpoint)toggleFavourite('checkpoints',b.dataset.favCheckpoint);
   if(b.dataset.car&&modelKey(catalog.cars.find(c=>c.id===b.dataset.car)||{})!==modelKey(currentCar()||{}))change({action:'car',id:b.dataset.car});if(b.dataset.track)change({action:'track',id:b.dataset.track});
-  if(b.dataset.target)reviewPlan('Quick duration',[{type:'setting',key:b.dataset.target,value:Number(b.dataset.value)}]);
-  if(b.dataset.template){const p=templates[b.dataset.template];reviewPlan(p.name,p.intents,p.description);}if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);reviewPlan(p.name,planIntents(p.target));}catch(err){notify(err.message,true);}}
+  if(b.dataset.target)queueSessionValue(b.dataset.target,Number(b.dataset.value));
+  if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);reviewPlan(p.name,planIntents(p.target));}catch(err){notify(err.message,true);}}
   if(b.dataset.deletePlan){const p=labPreferences.plans.find(p=>p.id===b.dataset.deletePlan);if(p&&confirm('Delete saved preset “'+p.name+'”?')){const before=clone(labPreferences.plans);labPreferences.plans=labPreferences.plans.filter(v=>v.id!==p.id);if(!await persistPreferences())labPreferences.plans=before;renderPlans();}}
   if(b.dataset.weatherCopy){const source=setup.weather[weatherSession]||{},intents=[];if(b.dataset.weatherCopy==='points'){for(const node of Object.keys(source))if(node!==weatherNode)for(const [key,v] of Object.entries(source[weatherNode]||{}))intents.push({type:'weather',session:weatherSession,node,key,value:v.currentValue});}else{for(const [node,fields] of Object.entries(source))for(const [key,v] of Object.entries(fields))intents.push({type:'weather',session:b.dataset.weatherCopy,node,key,value:v.currentValue});}reviewPlan('Copy weather conditions',intents);}
   if(b.dataset.tyrePreset)tyrePreset(b.dataset.tyrePreset);if(b.dataset.renamePlan)editPreset(b.dataset.renamePlan);if(b.dataset.replacePlan)editPreset(b.dataset.replacePlan,true);
@@ -242,7 +253,7 @@ document.addEventListener('click',async e=>{
 
 });
 document.addEventListener('change',e=>{const t=e.target;if(t.id==='circuitSelect'){const next=catalog.tracks.find(v=>circuitName(v)===t.value&&v.owned);if(next)change({action:'track',id:next.id});}if(t.id==='vehicleSeason'){vehicleSeason=t.value;renderContent();}if(t.id==='vehicleClass'){vehicleClass=t.value;renderContent();}if(t.id==='librarySort'){librarySort=t.value;renderLibrary();}});
-document.addEventListener('input',e=>{if(e.target.id==='librarySearch'){libraryQuery=e.target.value;renderLibrary();}if(e.target.id==='presetSearch'){presetQuery=e.target.value;renderPlans();}if(e.target.id==='allTemperature'){for(const w of TYRE_WHEELS)$('tyreTemperature'+w).value=e.target.value==='0'?'':e.target.value;updateTyreSettings();}if(e.target.id==='allCondition'){for(const w of TYRE_WHEELS)$('tyreCondition'+w).value=e.target.value;$('allConditionValue').textContent=e.target.value+'%';updateTyreSettings();}});
+document.addEventListener('input',e=>{if(e.target.id==='librarySearch'){libraryQuery=e.target.value;renderLibrary();}if(e.target.id==='presetSearch'){presetQuery=e.target.value;renderPlans();renderOfficialSessions();}if(e.target.id==='allTemperature'){for(const w of TYRE_WHEELS)$('tyreTemperature'+w).value=e.target.value==='0'?'':e.target.value;updateTyreSettings();}if(e.target.id==='allCondition'){for(const w of TYRE_WHEELS)$('tyreCondition'+w).value=e.target.value;$('allConditionValue').textContent=e.target.value+'%';updateTyreSettings();}});
 $('applyPlanButton').addEventListener('click',applyPendingPlan);
 $('cancelPlanButton').addEventListener('click',()=>{if(applyingPlan){cancelPlan=true;$('planProgress').textContent='Stopping after the current request finishes…';}else $('planDialog').close();});
 $('planDialog').addEventListener('cancel',e=>{if(applyingPlan){e.preventDefault();cancelPlan=true;}});
@@ -271,5 +282,5 @@ $('quickCaptureButton').addEventListener('click',quickCapture);
 
 $('refreshLabButton').addEventListener('click',async()=>{await loadSetup();await poll();if(['practice','library','activity'].includes(labPage))await refresh();notify('Refreshed from LMU.');});
 $('dismissLabToast').addEventListener('click',()=>$('labToast').hidden=true);
-async function initLab(){try{const p=await request('/api/lab/preferences');labPreferences=p;preferencesReady=true;}catch(e){notify('Saved Lab choices could not be read. '+e.message,true);}applyAppearance();renderHome();setPage('home');document.documentElement.removeAttribute('data-loading');}
+async function initLab(){try{const p=await request('/api/lab/preferences');labPreferences=p;preferencesReady=true;}catch(e){notify('Saved Lab choices could not be read. '+e.message,true);}applyAppearance();renderHome();loadOfficialSessions();setPage('home');document.documentElement.removeAttribute('data-loading');}
 initLab();

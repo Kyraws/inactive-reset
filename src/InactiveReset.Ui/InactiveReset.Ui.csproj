@@ -11,6 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="InactiveReset.Tests" />
+    <InternalsVisibleTo Include="InactiveReset.BrowserTests" />
     <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
   </ItemGroup>
 

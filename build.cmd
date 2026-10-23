@@ -7,7 +7,9 @@ REM -ExecutionPolicy Bypass applies to this process only: it changes nothing on
 REM the machine and needs no administrator rights.
 REM
 REM Usage:  build            build (Debug)
-REM         build test       build and run the tests
+REM         build test       C# integration/unit tests and WebView2 browser checks
+REM         build browser    WebView2 browser checks only
+REM         build test-local read-only checks needing LMU/private game captures
 REM         build ship       Release build, tests, then dist\
 REM         build clean      delete artifacts\ and dist\
 REM In PowerShell, use .\build.cmd explicitly to avoid selecting build.ps1.

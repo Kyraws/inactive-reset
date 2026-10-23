@@ -22,12 +22,15 @@ Use Windows x64 and the .NET 8 SDK. From the repository root in PowerShell:
 .\build.cmd package
 ```
 
-Build the solution through the wrapper so its x64 mapping is applied. `package`
-tests Release, publishes the App and CLI, and creates the ZIP. The research
+Build the solution through the wrapper so its x64 mapping is applied. `test`
+runs portable C# and actual WebView2 checks; Windows needs the WebView2 Runtime.
+`package` tests Release, publishes the App and CLI, creates the ZIP and smoke
+tests the extracted package outside the checkout. The research
 project and native observers are not shipped. See [developer tools](tools/README.md)
 for their separate requirements.
 
-Some resolver tests require local mapped game dumps. Check skipped tests and
+Use `build.cmd test-local -Configuration Release` for read-only compatibility
+checks needing an LMU install or private mapped-game dumps. Check skips and
 record which captures were used; a green suite without those inputs does not
 validate a new game build. SDK headers and runtime dumps must remain outside
 version control. Existing historical offset JSONs are regression inputs.

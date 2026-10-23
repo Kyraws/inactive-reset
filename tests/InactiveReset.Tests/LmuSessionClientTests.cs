@@ -9,6 +9,85 @@ namespace InactiveReset.Tests;
 public sealed class LmuSessionClientTests
 {
     [Fact]
+    public async Task DirectNumericValuesUseFreshReadbackAndRepeatingThemDoesNotWriteAgain()
+    {
+        using var game = new MenuGame();
+        await game.Client.ChangeAsync(Parse("""{"action":"sessionValue","key":"SESSSET_Practice_Length","value":90}"""));
+        await game.Client.ChangeAsync(Parse("""{"action":"sessionValue","key":"SESSSET_Practice_Length","value":95}"""));
+        var result = await game.Client.ChangeAsync(Parse("""{"action":"sessionValue","key":"SESSSET_Practice_Length","value":95}"""));
+        Assert.Equal(95, result["settings"]!["SESSSET_Practice_Length"]!["currentValue"]!.GetValue<int>());
+        Assert.Equal(new[] { 30, 5 }, game.Requests.Where(r => r.Path == "/rest/sessions/settings").Select(r => Parse(r.Body)["value"]!.GetValue<int>()));
+    }
+
+    [Theory]
+    [InlineData("SESSSET_practice1_starting_time", "Practice1StartingTime")]
+    [InlineData("SESSSET_qualify_starting_time", "QualifyingStartingTime")]
+    [InlineData("SESSSET_race_starting_time", "RaceStartingTime")]
+    [InlineData("SESSSET_warmup_starting_time", "WarmupStartingTime")]
+    public async Task ClockEntryUsesOnePresetWriteAndPreservesUnrelatedValues(string key, string field)
+    {
+        using var game = new MenuGame { ConditionsPreset = Parse("""{"Player":{"Race Conditions":{"Practice1StartingTime":-1,"QualifyingStartingTime":-1,"RaceStartingTime":-1,"WarmupStartingTime":-1},"Controls":{"fixture":"unchanged"}},"Weather":{"fixture":"unchanged"},"Grid":["owned-car"]}""") };
+        var result = await game.Client.ChangeAsync(new JsonObject { ["action"] = "sessionValue", ["key"] = key, ["value"] = 945 });
+        Assert.Equal(945, result["settings"]![key]!["currentValue"]!.GetValue<int>());
+        var applied = Parse(Assert.Single(game.Requests, r => r.Path.EndsWith("/applyPreset")).Body);
+        Assert.Equal(945, applied["Player"]!["Race Conditions"]![field]!.GetValue<int>());
+        Assert.Equal("unchanged", applied["Player"]!["Controls"]!["fixture"]!.GetValue<string>());
+        Assert.Equal("unchanged", applied["Weather"]!["fixture"]!.GetValue<string>());
+        Assert.Equal("owned-car", Assert.Single(applied["Grid"]!.AsArray())!.GetValue<string>());
+        await game.Client.ChangeAsync(new JsonObject { ["action"] = "sessionValue", ["key"] = key, ["value"] = -1 });
+        Assert.Equal(-1, game.ConditionsPreset!["Player"]!["Race Conditions"]![field]!.GetValue<int>());
+    }
+
+    [Theory]
+    [InlineData("SESSSET_flag_rules", 1)]
+    [InlineData("SESSSET_Practice_Length", -1)]
+    [InlineData("SESSSET_practice1_starting_time", -4)]
+    [InlineData("SESSSET_practice1_starting_time", 1440)]
+    public async Task InvalidDirectValuesDoNotWrite(string key, int value)
+    {
+        using var game = new MenuGame();
+        await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(new JsonObject { ["action"] = "sessionValue", ["key"] = key, ["value"] = value }));
+        Assert.DoesNotContain(game.Requests, r => r.Method == "POST");
+    }
+
+    [Fact]
+    public async Task RefusedClockEntryDoesNotClaimConfirmation()
+    {
+        using var game = new MenuGame { RefuseConditions = true, ConditionsPreset = Parse("""{"Player":{"Race Conditions":{"Practice1StartingTime":600}},"Weather":{}}""") };
+        await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(Parse("""{"action":"sessionValue","key":"SESSSET_practice1_starting_time","value":945}""")));
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OfficialPracticeConditionsPreserveOtherSettingsAndRequireReadback(bool refused)
+    {
+        using var game = new MenuGame { RefuseConditions = refused, ConditionsPreset = Parse("""{"Grid":["owned-car"],"Player":{"Race Conditions":{"Practice1StartingTime":600,"QualifyingStartingTime":900},"DRIVING AIDS":{"unchanged":true},"Controls":{"fixture":"unchanged"}},"Weather":{"Practice":{"Road":{"RealRoad":"green","WaterDepth":0,"LoadTemperaturesFromRealRoadFile":false},"Weather":[{"Temperature":20}]},"Qualifying":{"unchanged":true}}}""") };
+        var body = Parse("""{"action":"practiceConditions","time":985,"road":"natural","waterDepth":-0.01,"loadTemperatures":false}""");
+        if (refused) await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(body));
+        else await game.Client.ChangeAsync(body);
+        var applied = Parse(Assert.Single(game.Requests, r => r.Path.EndsWith("/applyPreset")).Body);
+        Assert.Equal(985, applied["Player"]!["Race Conditions"]!["Practice1StartingTime"]!.GetValue<int>());
+        Assert.Equal(900, applied["Player"]!["Race Conditions"]!["QualifyingStartingTime"]!.GetValue<int>());
+        Assert.True(applied["Player"]!["DRIVING AIDS"]!["unchanged"]!.GetValue<bool>());
+        Assert.Equal("unchanged", applied["Player"]!["Controls"]!["fixture"]!.GetValue<string>());
+        Assert.Equal(20, applied["Weather"]!["Practice"]!["Weather"]![0]!["Temperature"]!.GetValue<int>());
+        Assert.True(applied["Weather"]!["Qualifying"]!["unchanged"]!.GetValue<bool>());
+        Assert.Equal(2, game.Requests.Count(r => r.Path.EndsWith("/requestPreset")));
+    }
+
+    [Theory]
+    [InlineData(-1, "natural", 0)]
+    [InlineData(1440, "natural", 0)]
+    [InlineData(900, "arbitrary-file", 0)]
+    [InlineData(900, "natural", 2)]
+    public async Task InvalidOfficialConditionsDoNotWrite(int time, string road, double water)
+    {
+        using var game = new MenuGame();
+        await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(new JsonObject { ["action"] = "practiceConditions", ["time"] = time, ["road"] = road, ["waterDepth"] = water }));
+        Assert.DoesNotContain(game.Requests, r => r.Method == "POST");
+    }
+
+    [Fact]
     public async Task LaunchRequiresTheActualMainMenuBeforeAnyWrites()
     {
         using var game = new MenuGame { Navigation = "NAV_EVENT" };
@@ -126,7 +205,8 @@ public sealed class LmuSessionClientTests
     public async Task SettingStepsAreRelativeAndUnknownSettingsAreRejected()
     {
         using var game = new MenuGame();
-        await game.Client.ChangeAsync(Parse("""{"action":"setting","key":"SESSSET_Practice_Length","steps":-15}"""));
+        var result = await game.Client.ChangeAsync(Parse("""{"action":"setting","key":"SESSSET_Practice_Length","steps":-15}"""));
+        Assert.Equal(45, result["settings"]!["SESSSET_Practice_Length"]!["currentValue"]!.GetValue<int>());
         var posted = JsonNode.Parse(Assert.Single(game.Requests, r => r.Path == "/rest/sessions/settings").Body)!;
         Assert.Equal(-15, posted["value"]!.GetValue<int>());
         await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(Parse("""{"action":"setting","key":"../arbitrary","steps":1}""")));
@@ -247,6 +327,8 @@ public sealed class LmuSessionClientTests
         public string? FailPath;
         public string StintState = "DISABLED";
         public bool AlterGeneratedPreset, AlterPresetOnApply;
+        public JsonObject? ConditionsPreset;
+        public bool RefuseConditions;
         private int _practiceLength = 60;
         public int Amount = 1;
         public int HoldBrakesMaximum = 1;
@@ -270,15 +352,23 @@ public sealed class LmuSessionClientTests
             switch (path)
             {
                 case "/navigation/state": response = new JsonObject { ["state"] = new JsonObject { ["gameState"] = State, ["navigationState"] = Navigation, ["settingMode"] = Mode, ["gameSession"] = Session }, ["loadingStatus"] = new JsonObject { ["loading"] = false } }.ToJsonString(); break;
-                case "/rest/sessions": response = """{"SESSSET_Practice_Length":{"currentValue":LENGTH,"stringValue":"","numStepsTotal":1440},"SESSSET_Num_Opponents":{"currentValue":0,"stringValue":"0"}}""".Replace("LENGTH", _practiceLength.ToString()); break;
+                case "/rest/sessions":
+                    var settings = Parse("""{"SESSSET_Practice_Length":{"currentValue":LENGTH,"stringValue":"","numStepsTotal":1440},"SESSSET_Num_Opponents":{"currentValue":0,"stringValue":"0"}}""".Replace("LENGTH", _practiceLength.ToString()));
+                    foreach (var (key, field) in new[] { ("SESSSET_practice1_starting_time", "Practice1StartingTime"), ("SESSSET_qualify_starting_time", "QualifyingStartingTime"), ("SESSSET_race_starting_time", "RaceStartingTime"), ("SESSSET_warmup_starting_time", "WarmupStartingTime") })
+                        if (ConditionsPreset?["Player"]?["Race Conditions"]?[field] is { } minute)
+                            settings[key] = new JsonObject { ["currentValue"] = minute.DeepClone(), ["stringValue"] = "", ["numStepsTotal"] = 1442 };
+                    response = settings.ToJsonString(); break;
                 case "/rest/sessions/amount": response = new JsonObject { ["PRACTICE"] = Amount, ["QUALIFY"] = 0, ["WARMUP"] = 0, ["RACE"] = 0 }.ToJsonString(); break;
                 case "/rest/sessions/weather": response = """{"PRACTICE":{"START":{"WNV_TEMPERATURE":{"currentValue":20,"stringValue":"20 °"}}}}"""; break;
                 case "/rest/options/settings": response = """{"DRIVEAIDS_hold_brakes":{"minValue":0,"maxValue":MAXIMUM,"stepValue":1,"currentValue":HOLD,"valueType":"LONG"},"DRIVEAIDS_steering_help":{"minValue":0,"maxValue":3,"stepValue":1,"currentValue":0,"valueType":"LONG"},"GFXOPT_test":{"currentValue":0}}""".Replace("MAXIMUM", HoldBrakesMaximum.ToString()).Replace("HOLD", HoldBrakes ? "1" : "0"); break;
                 case "/rest/garage/UIScreen/SessionSetup": response = """{"selectedCar":{"id":"owned-car","isOwned":OWNED},"trackInfo":{"id":"track-id","isOwned":true}}""".Replace("OWNED", Owned.ToString().ToLowerInvariant()); break;
                 case "/rest/sessions/getAllVehicles": response = """[{"id":"owned-car","isOwned":true,"fullPathTree":"WEC 2026, Hypercar, Test"},{"id":"unowned","isOwned":false}]"""; break;
                 case "/rest/race/track": response = """[{"id":"track-id","owned":true}]"""; break;
-                case "/rest/sessions/SessionPresets/requestPreset": response = """{"Grid":["owned-car"],"Player":{"Game Options":{"Opponents":0},"Controls":{"fixture":"unchanged"}},"Weather":{"fixture":"unchanged"}}"""; break;
-                case "/rest/sessions/SessionPresets/applyPreset": if (AlterPresetOnApply) _practiceLength = 45; response = ""; break;
+                case "/rest/sessions/SessionPresets/requestPreset": response = ConditionsPreset?.ToJsonString() ?? """{"Grid":["owned-car"],"Player":{"Game Options":{"Opponents":0},"Controls":{"fixture":"unchanged"}},"Weather":{"fixture":"unchanged"}}"""; break;
+                case "/rest/sessions/SessionPresets/applyPreset": if (ConditionsPreset is not null && !RefuseConditions) ConditionsPreset = Parse(body); if (AlterPresetOnApply) _practiceLength = 45; response = ""; break;
+                case "/rest/garage/refreshsetups": response = ""; break;
+                case "/rest/sessions/settings": _practiceLength += Parse(body)["value"]!.GetValue<int>(); response = ""; break;
+                case "/rest/sessions/weather/PRACTICE/START/WNV_TEMPERATURE": response = ""; break;
                 case "/rest/sessions/SaveLoad/generateSaveFileFromSessionPreset":
                     var generated = Parse(body);
                     if (AlterGeneratedPreset) generated["Player"]!["Game Options"]!["Opponents"] = 1;
@@ -291,7 +381,7 @@ public sealed class LmuSessionClientTests
                     if (JsonNode.Parse(body)?["optionEntry"]?.GetValue<string>() == "DRIVEAIDS_hold_brakes")
                         HoldBrakes = JsonNode.Parse(body)!["value"]!.GetValue<int>() == 1;
                     response = ""; break;
-                default: response = ""; break;
+                default: throw new InvalidOperationException($"Unexpected fixture request: {request.Method} {path}");
             }
             return new(HttpStatusCode.OK) { Content = new StringContent(response, Encoding.UTF8, "application/json") };
         }

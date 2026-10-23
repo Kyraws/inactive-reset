@@ -20,7 +20,11 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
 {
     private readonly PlacementRunner _runner = new(offsetDirectory, dataDirectory);
     private readonly LabPreferencesStore _labPreferences = new(dataDirectory);
+    private readonly OfficialSessionsStore _officialSessions = new(dataDirectory, new LmuSessionClient(dataDirectory: dataDirectory).AuthenticationTicketAsync);
     private readonly LmuBrandAssets _brandAssets = new(() => Path.Combine(GameLauncher.Locate(dataDirectory).Root, "Bin", "UI.zip"));
+
+    internal Server(PlacementRunner runner, string dataDirectory, int port, OfficialSessionsStore? officialSessions = null) : this("unused", dataDirectory, port)
+    { _runner = runner; if (officialSessions is not null) _officialSessions = officialSessions; }
 
     public string Url => $"http://127.0.0.1:{port}/";
     public Task StopAsync() => _runner.StopAsync();
@@ -83,7 +87,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 SendText(context, logo ?? "", "image/svg+xml");
                 return;
             }
-            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
+            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
             if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
                 (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
             {
@@ -105,6 +109,15 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/lab.inputs.js":
                     SendText(context, UiAssets.Read("Lab.inputs.js"), "text/javascript");
+                    break;
+                case "/lab.official.js":
+                    SendText(context, UiAssets.Read("Lab.official.js"), "text/javascript");
+                    break;
+                case "/api/official-sessions":
+                    SendJson(context, _officialSessions.Read());
+                    break;
+                case "/api/official-sessions/refresh":
+                    SendJson(context, await _officialSessions.RefreshAsync());
                     break;
                 case "/lab.race.svg":
                     SendText(context, UiAssets.Read("Lab.race.svg"), "image/svg+xml");
@@ -198,8 +211,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
 
     private static void SendJson(HttpListenerContext context, JsonNode node)
     {
-        var bytes = Encoding.UTF8.GetBytes(node.ToJsonString(
-            new JsonSerializerOptions { WriteIndented = false }));
+        var bytes = Encoding.UTF8.GetBytes(node.ToJsonString());
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.ContentLength64 = bytes.Length;
         context.Response.OutputStream.Write(bytes);

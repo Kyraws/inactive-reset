@@ -2,6 +2,25 @@
 
 The Lab workspace is the application interface. Open `inactive-reset-ui.exe` from the release ZIP. The classic pages and comparison dialog have been removed.
 
+## Launch mode and first use
+
+**Launch local play** starts without EAC and allows the full toolset in
+single-player Practice. **Launch with EAC** supports online racing in LMU,
+single-player session setup through REST, and checkpoint capture through shared
+telemetry. Teleporting, tyre preparation and practice memory writes stay disabled
+with EAC. The app never attaches to the protected game.
+
+The first screen explains both choices. A launch-mode badge and persistent EAC
+notice show what is available; disabled actions explain why and how to unlock
+them. Session editing requires the single-player main menu in either mode.
+Switching modes requires closing LMU first. Capture saves a position; selecting
+a checkpoint does not move the car. Quick capture replaces its track/car slot,
+while a named capture stays in the library.
+
+Capture is disabled at the main menu and during loading: LMU can leave its last
+car position in telemetry after returning to the menu. Both capture actions wait
+for an active session, and the server rechecks before saving.
+
 ## What to try
 
 With LMU focused, **Ctrl+Alt+C** saves and selects **Quick capture**. Each press
@@ -20,13 +39,12 @@ used that automatically selected capture and completed at an observed
 | Area | Experiment |
 | --- | --- |
 | Navigation | One rail for the dashboard, five builder sections, Practice, library, Activity and settings |
-| Overview | Current setup, session metrics, quick plans and pinned controls |
+| Overview | Official scheduled events, separate qualifying/race practice presets, and direct links to Practice tools, presets and the session builder |
 | Car browser | Installed manufacturer-logo cards grouped across seasons, class/season filters, model favourites and full season/team/livery selection; distinct Evo names and LMP2 regulations stay separate |
 | Circuit selection | Circuit names from catalog metadata; separate layout/event-configuration list and favourite layouts |
-| Quick plans | Solo focus, sprint rehearsal and wet-weather repetitions, each reviewed before applying |
 | Session presets | Dedicated manager: save, review/reuse, rename, update from current session, delete, search and import/export; includes car, layout, session rules, class selection and Scripted weather |
 | Conditions | Five-point forecast chart with rain percentages and temperature; reviewed copying between points or sessions |
-| Controls | Pin frequently used settings, switch-style boolean controls, duration shortcuts and reviewed undo for the latest simple edit |
+| Controls | Switch-style boolean controls, duration shortcuts and reviewed undo for the latest simple edit |
 | Practice | Explicit selectable destination buttons; consolidated all-wheel and individual condition/temperature controls; fresh/warm/worn/game-temperature choices and generated checkpoint names |
 | Library | All captured tracks, search, name/track/distance sorting, favourites and selection on the loaded track |
 | Activity | Operation ribbon, fixed next-step panel, issue filtering and report export |
@@ -111,9 +129,48 @@ All Lab pages were rendered in WebView2 at 1280×800 and the 1040×680 minimum;
 both themes were inspected. Loaded-layout checks used captured metadata as a
 visual fixture. No new live session combinations were run for this experiment.
 
-## RaceControl investigation (2026-10-10)
+## Official scheduled sessions
 
-The public [community event directory](https://www.racecontrol.gg/events) lists events, tracks and classes. A complete, supported feed covering scheduled official races and all local-session weather/rule values has not been verified. Automatic copying and online joining are not implemented; missing settings must not be guessed. Existing local presets can be reused for rehearsal, while online registration stays in RaceControl/LMU.
+Overview lists official daily, weekly and special events from RaceControl. When
+LMU is running, the app uses its normal Steam authentication ticket to refresh
+events automatically, at most every 15 minutes after a successful sync. **Refresh
+events** requests an update immediately. Authentication tokens remain in memory.
+No registration or online joining is performed.
+
+Each event's Qualifying and Race conditions are saved separately in
+`data/official-sessions.json` and listed in **Session presets**. These are solo
+Practice presets, so checkpoint tools remain available. They do not use the
+40 personal-preset slots. Refresh replaces the current official list; a failed
+category keeps its previous presets, marked as saved data. Cached presets remain
+available when RaceControl or LMU is unavailable. Hosted/community events are
+excluded. Alternating configurations within the same daily series remain separate.
+
+**Qualifying practice**, **Race practice** and **Use preset** open a review. The
+app matches the exact installed track scene and an owned eligible vehicle,
+keeping the selected livery when eligible. It copies the session duration, start
+time, track surface/water/temperature source, all five weather points and exposed
+time/RealRoad/fuel/tyre/damage multipliers and tyre warmers. Practice is the only
+enabled session, with zero AI. Driving assists stay unchanged. Online BoP, fixed
+setups and tyre allocation are not reproduced. After applying, the session page
+opens with **Start session** available; applying does not launch by itself.
+
+Online `natural` grip inherits the previous session. A standalone preset instead
+uses the last explicit starting surface in the event's earlier sessions and keeps
+the event's RealRoad progression rate. For Bahrain Outer LMGT3 Fixed, live source
+data on 2026-10-23 specifies Heavy for Practice, then Natural for Qualifying/Race:
+both solo presets therefore start Heavy with Normal (1×) progression. Heavy sets
+the initial rubber; it does not freeze evolution. Extra rubber/water accumulated
+by online traffic cannot be reconstructed from this configuration. Presets show
+the inherited baseline and the review explains this limit. An unresolved source
+is not guessed as Green; old caches refresh before using inherited grip.
+
+Live checks on 2026-10-23, directly launched LMU build 14200, retrieved ten events
+and twenty qualifying/race presets. All matched the installed catalog. An LMGT3
+Fixed Race preset at Bahrain Outer read back its solo session counts, duration,
+time, rules and thirty weather values; the original complete native preset was
+restored exactly. These checks validate menu configuration, not an on-track weather
+simulation or online equivalence. The weekly listing returned HTTP 500; daily and
+special-event import succeeded, and the app reports the partial failure.
 
 ## Logo and layout polish (2026-10-10)
 
@@ -129,7 +186,8 @@ Final minimum-window measurement (1040×680): Compact Practice has no main-panel
 
 Settings now offers Original and Redline. Original preserves the existing interface and its saved Midnight/Daylight choice. Redline is dark only, with local SVG tyre artwork, chequered accents, red paint and race-plate typography. Switching back restores the Original theme. The style is saved with existing Lab preferences; older preference files default to Original.
 
-The Practice rules block is removed. Both styles retain the compact controls. Redline Overview, Practice and Settings fit without main-panel scrolling at 1040×680 in Compact.
+The Practice rules block is removed. Both styles retain the compact controls.
+The official-event Overview scrolls when its event list exceeds the window height.
 
 Validation: 282 .NET tests passed, 1 skipped; browser suites passed 52 Lab, 23 session and 38 checkpoint checks. Redline and restored Original Daylight were visually inspected in WebView2. No game session or tyre writes were performed.
 

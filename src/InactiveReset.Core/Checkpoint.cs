@@ -51,7 +51,7 @@ public sealed class Checkpoint
             throw new CheckpointException($"{path}: orientation must have three rows");
         }
 
-        return new Checkpoint
+        var checkpoint = new Checkpoint
         {
             Name = Path.GetFileNameWithoutExtension(path),
             TrackName = root.GetProperty("track").GetProperty("name").GetString()!,
@@ -76,6 +76,11 @@ public sealed class Checkpoint
             Tyres = root.TryGetProperty("tyres", out var tyres)
                 ? tyres.Deserialize<TyreState>(TyreState.JsonOptions) : null,
         };
+        if (string.IsNullOrWhiteSpace(checkpoint.TrackName) || string.IsNullOrWhiteSpace(checkpoint.VehicleName) ||
+            !float.IsFinite(checkpoint.LapDistance) || !checkpoint.Pose.Position.IsFinite ||
+            !checkpoint.Pose.Row0.IsFinite || !checkpoint.Pose.Row1.IsFinite || !checkpoint.Pose.Row2.IsFinite)
+            throw new CheckpointException($"{path}: checkpoint identity or geometry is invalid");
+        return checkpoint;
 
         static Vec3 ReadVec(JsonElement element) => new(
             element.GetProperty("x").GetSingle(),
@@ -87,7 +92,7 @@ public sealed class Checkpoint
     /// All checkpoints under a directory, searched recursively so they can be
     /// organised per track/vehicle in folders.
     /// </summary>
-    public static IReadOnlyList<Checkpoint> LoadAll(string directory)
+    public static IReadOnlyList<Checkpoint> LoadAll(string directory, Action<string>? invalidFile = null)
     {
         if (!Directory.Exists(directory))
         {
@@ -96,7 +101,12 @@ public sealed class Checkpoint
         var found = new List<Checkpoint>();
         foreach (var file in Directory.EnumerateFiles(directory, "*.json", SearchOption.AllDirectories))
         {
-            found.Add(Load(file));
+            try { found.Add(Load(file)); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or
+                KeyNotFoundException or InvalidOperationException or FormatException or OverflowException or CheckpointException or GateException)
+            {
+                invalidFile?.Invoke($"Skipped checkpoint '{file}': {ex.Message}");
+            }
         }
         return found;
     }

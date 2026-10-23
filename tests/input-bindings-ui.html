@@ -2,11 +2,10 @@
 <pre id="report">Running...</pre><div id="inputBindingsPanel"></div><button id="standingBtn"></button>
 <script>
 let posted=[];
-window.chrome=window.chrome||{};
-window.chrome.webview={postMessage:message=>posted.push(message)};
+const testWindow={chrome:{webview:{postMessage:message=>posted.push(message)}},addEventListener:window.addEventListener.bind(window)};
 function esc(value){return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');}
 fetch('../src/InactiveReset.Ui/Lab.inputs.js').then(r=>r.text()).then(script=>{
-  (0,eval)(script);
+  new Function('window',script)(testWindow);
   let checks=0;
   function check(value,label){if(!value)throw Error(label);checks++;}
   const panel=document.getElementById('inputBindingsPanel');

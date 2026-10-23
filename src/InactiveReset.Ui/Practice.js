@@ -43,7 +43,7 @@ async function api(path, body) {
 
 function renderStatus(s) {
   const status = document.getElementById('status');
-  status.textContent = s.game?.protected ? 'EAC launch · tools unavailable' : s.connected ? 'Local play · ' + ((s.inGarage ?? s.tyreRules?.inGarage) === true ? 'garage' : 'session loaded') : s.game?.running ? 'Waiting for LMU' : 'LMU not running';
+  status.textContent = s.game?.protected ? 'EAC on · capture and saved destinations available' : s.connected ? 'Local play · ' + ((s.inGarage ?? s.tyreRules?.inGarage) === true ? 'garage' : 'session loaded') : s.game?.running ? 'Waiting for LMU' : 'LMU not running';
   status.className = 'connection' + (s.connected ? ' ready' : '');
 }
 
@@ -68,7 +68,7 @@ function renderSession(s) {
   document.getElementById('session').innerHTML = d
     ? '<strong title="' + esc(d.track) + '">' + esc(d.track) + '</strong><span class="session-car" title="' + esc(d.vehicle) + '">' + esc(d.vehicle) + '</span><span class="session-state">' + (garage === true ? 'In garage' : garage === false ? 'On track' : 'Session loaded') + '</span>'
     : '<strong>' + (s.connected ? 'Load single-player Practice' : 'Launch the game to begin') + '</strong>';
-  const hint = d ? (d.capturable ? practiceShortcut('capture', 'Ctrl+Alt+C') + ': replace and select Quick capture for this track and car.' : 'This position cannot be captured.') : 'Load a session to capture.';
+  const hint = canCapture(s) ? practiceShortcut('capture', 'Ctrl+Alt+C') + ': replace Quick capture for this track and car. Enter a name and choose Capture to keep a separate checkpoint.' : captureAccessIssue(s);
   document.getElementById('capHint').textContent = hint;
   document.getElementById('capHint').hidden = !hint;
 }
@@ -86,7 +86,16 @@ function renderPenalties(s) {
 
 let visibleCheckpoints = [];
 let destinationState = {};
+function practiceAccessIssue() {
+  if (destinationState.game?.protected) return 'Teleporting and tyre preparation are disabled with EAC on. Close LMU and choose Launch local play, then load single-player Practice.';
+  const nav = typeof navigation === 'undefined' ? null : navigation;
+  if (nav && (nav.state?.settingMode !== 'SETTING_GRANDPRIX' || nav.state?.gameState !== 'GSTATE_DYN' ||
+      !nav.state?.gameSession?.startsWith('PRACTICE') || nav.loadingStatus?.loading))
+    return 'Teleporting and tyre preparation need an active single-player Practice session. Set one up, press Start session, then switch to LMU.';
+  return '';
+}
 function speedRestorationIssue() {
+  if (destinationState.game?.protected) return 'Teleporting is disabled with EAC on. Close LMU and choose Launch local play, then load single-player Practice.';
   const checkpoint = visibleCheckpoints.find(c => c.id === document.getElementById('cp').value);
   if (!checkpoint) return 'Choose a checkpoint first.';
   if (!destinationState.rollingStartSupported) return 'Speed & gear are unavailable for this game build. Use Standing teleport.';
@@ -118,7 +127,7 @@ function updateDestination() {
 
 function speedReadyCheckpoints() {
   const s = destinationState;
-  if (!s.connected || !s.session || !s.rollingStartSupported) return [];
+  if (!(s.game?.running ?? s.connected) || !s.session) return [];
   return visibleCheckpoints.filter(c => c.vehicle.toLowerCase() === s.session.vehicle.toLowerCase() &&
     c.rollingEligible && Number.isFinite(c.speedKmh) && c.speedKmh >= 0.5 && Number.isInteger(c.gear) && c.gear > 0)
     .sort((a,b) => (a.lapDistance || 0) - (b.lapDistance || 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -134,7 +143,7 @@ function cycleCheckpoint(direction) {
   select.value = checkpoint.id;
   updateDestination();
   renderCheckpoints(destinationState);
-  showNotice('Selected ' + checkpoint.name + ' · ' + checkpoint.speedKmh.toFixed(1) + ' km/h · gear ' + checkpoint.gear + '. Teleport when ready.');
+  showNotice('Selected ' + checkpoint.name + ' · ' + checkpoint.speedKmh.toFixed(1) + ' km/h · gear ' + checkpoint.gear + (destinationState.game?.protected ? '. Saved for practice with EAC off.' : '. Teleport when ready.'));
 }
 
 async function runPracticeInput(action) {
@@ -176,7 +185,7 @@ function collectDiagnostics(s) {
   const calibration = s.session && (s.calibrations || []).find(c =>
     c.track.toLowerCase() === s.session.track.toLowerCase() && c.vehicle.toLowerCase() === s.session.vehicle.toLowerCase());
   const rows = [
-    ['Connection', s.connected ? 'Local Practice connected' : s.error || 'Game not connected'],
+    ['Connection', s.game?.protected ? 'EAC on; telemetry capture available when LMU shares a position' : s.connected ? 'Local Practice connected' : s.error || 'Game not connected'],
     ['Build', s.connected ? [s.build, s.gameVersion].filter(Boolean).join(' / ') : null],
     ['Tyre discovery', s.tyreRules ? 'Validated; tyre preparation available' : s.tyreRulesError || 'Unavailable; tyre preparation disabled'],
     ['Calibration', calibration ? calibration.advisory || 'Saved profile; compatibility checked before placement' : s.session ? 'Compatibility checked before placement' : null],
@@ -201,13 +210,14 @@ function renderActivity(s) {
   const phase = s.phase || 'Idle', el = document.getElementById('phase');
   el.textContent = phase === 'Armed' ? 'PRESS DRIVE' : phase.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
   el.className = 'phase' + (phase === 'Armed' ? ' armed' : phase === 'Failed' ? ' bad' : s.busy ? ' live' : '');
-  document.getElementById('phaseMsg').textContent = s.phaseMessage || (!s.connected
+  document.getElementById('phaseMsg').textContent = s.phaseMessage || (s.game?.protected
+    ? (canCapture(s) ? 'You can save checkpoints with EAC on. Teleporting and tyre preparation need Launch local play.' : captureAccessIssue(s)) : !s.connected
     ? 'Launch local Practice to begin.' : !s.session ? 'Load a Practice session.'
     : (s.inGarage ?? s.tyreRules?.inGarage) === true ? 'Choose a destination or prepare your tyres.' : (s.rollingStartSupported ? 'Capture here or reset the selected checkpoint on track.' : 'Capture here; return to the garage to prepare.'));
   collectDiagnostics(s);
   const log = document.getElementById('log');
   const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
-  const lines = [...diagnosticLog, ...(s.log || [])];
+  const lines = [...diagnosticLog, ...(s.checkpointErrors || []), ...(s.log || [])];
   if (s.outcome) {
     lines.push('', 'LAST RESULT');
     for (const line of s.outcome.lines || []) lines.push(line.label + ': ' + line.value + (line.sentence ? ' — ' + line.sentence : ''));
@@ -218,8 +228,14 @@ function renderActivity(s) {
 }
 
 let latestRefresh = 0;
+let activeRefreshes = 0;
 async function refresh() {
-  const request = ++latestRefresh;
+  activeRefreshes++;
+  try { return await refreshState(++latestRefresh); }
+  finally { activeRefreshes--; }
+}
+
+async function refreshState(request) {
   let s;
   try { s = await api('/api/state'); }
   catch (e) {
@@ -236,24 +252,25 @@ async function refresh() {
   renderActivity(s);
 
   const garage = s.inGarage ?? s.tyreRules?.inGarage;
+  const accessIssue = practiceAccessIssue();
   const directReset = garage === false && !!s.rollingStartSupported;
-  const placementBlocked = (!!s.busy && !(directReset && s.phase === 'WaitingToClear')) || !s.connected || !s.session || (garage !== true && !directReset) || !document.getElementById('cp').value;
+  const placementBlocked = !!accessIssue || (!!s.busy && !(directReset && s.phase === 'WaitingToClear')) || !s.connected || !s.session || (garage !== true && !directReset) || !document.getElementById('cp').value;
   document.getElementById('placeBtn').disabled = placementBlocked || !canRestoreSpeed();
   document.getElementById('standingBtn').disabled = placementBlocked;
   document.getElementById('placeBtn').textContent = directReset ? 'Reset on track ↺' : 'Place checkpoint ↗';
-  const placeHint = s.busy || !s.session ? '' : directReset ? practiceShortcut('teleport', 'Ctrl+Alt+R') + ' · speed & gear. ' + practiceShortcut('standing', 'Ctrl+Alt+Shift+R') + ' · standing.' : garage !== true ? 'Return to the garage to place.' :
-    !document.getElementById('cp').value ? 'Capture a position first.' : 'Press Drive when prompted.';
+  const placeHint = accessIssue || (s.busy ? 'Wait for the current operation to finish.' : !s.session ? 'Load single-player Practice to capture a position and teleport back to it.' : directReset ? practiceShortcut('teleport', 'Ctrl+Alt+R') + ' · speed & gear. ' + practiceShortcut('standing', 'Ctrl+Alt+Shift+R') + ' · standing.' : garage !== true ? 'Return to the garage to place.' :
+    !document.getElementById('cp').value ? 'Capture a position first.' : 'Press Drive when prompted.');
   document.getElementById('placeHint').textContent = placeHint;
   document.getElementById('placeHint').hidden = !placeHint;
-  document.getElementById('capBtn').disabled = !!s.busy || !s.session || !s.session.capturable;
+  document.getElementById('capBtn').disabled = !canCapture(s);
   document.getElementById('cancelBtn').disabled = !s.busy;
   document.getElementById('cancelBtn').hidden = !s.busy;
   document.getElementById('tyreSetup').disabled = !!s.busy;
-  document.getElementById('freshOnPlace').disabled = !!s.busy || !s.tyreRules;
+  document.getElementById('freshOnPlace').disabled = !!s.game?.protected || !!s.busy || !s.tyreRules;
   if (!s.tyreRules) document.getElementById('freshOnPlace').checked = false;
   updateTyreSettings();
-  document.getElementById('tyreResetHint').textContent = s.tyreRulesError ? s.tyreRulesError : garage === true ? 'Press Drive when prompted.' : 'Return to the garage to prepare tyres.';
-  document.getElementById('tyreResetBtn').disabled = !!s.busy || !s.connected || !s.session || garage !== true || !s.tyreRules;
+  document.getElementById('tyreResetHint').textContent = accessIssue || (s.tyreRulesError ? s.tyreRulesError : !s.session ? 'Load single-player Practice, then prepare tyres from its garage.' : garage === true ? 'Press Drive when prompted.' : 'Return to the garage to prepare tyres.');
+  document.getElementById('tyreResetBtn').disabled = !!accessIssue || !!s.busy || !s.connected || !s.session || garage !== true || !s.tyreRules;
 
   // Both launches are refused while the game is up, so say so with the control
   // rather than only in the error after it is pressed.
@@ -274,7 +291,17 @@ async function toggle(which, enable) {
   refresh();
 }
 
+function captureAccessIssue(s) {
+  if (s.busy) return 'Wait for the current operation before capturing.';
+  if (!(s.game?.running ?? s.connected)) return 'Open LMU and load a session to capture a checkpoint.';
+  const nav = typeof navigation === 'undefined' ? null : navigation;
+  if (nav && (nav.state?.gameState !== 'GSTATE_DYN' || nav.loadingStatus?.loading))
+    return 'Load a session and press Drive in LMU before capturing a checkpoint.';
+  return s.session?.capturable ? '' : 'No current car position is available. Load a session and press Drive in LMU, then try capturing again.';
+}
+function canCapture(s) { return !captureAccessIssue(s); }
 async function capture() {
+  if (!canCapture(destinationState)) { showNotice(captureAccessIssue(destinationState)); return; }
   const input = document.getElementById('capName');
   const name = input.value.trim();
   if (!name) { input.focus(); return; }
@@ -289,7 +316,7 @@ async function capture() {
 
 let quickCapturePending = false;
 async function quickCapture() {
-  if (quickCapturePending || destinationState.busy || !destinationState.connected || !destinationState.session?.capturable) return;
+  if (quickCapturePending || !canCapture(destinationState)) return;
   quickCapturePending = true;
   try {
     const res = await api('/api/capture', {quick:true});
@@ -300,11 +327,12 @@ async function quickCapture() {
     document.getElementById('cp').value = '';
     await refresh();
     updateDestination();
-    showNotice('Quick capture saved and selected. ' + practiceShortcut('teleport', 'Ctrl+Alt+R') + ' to teleport; each quick capture replaces the previous one for this track and car.');
+    showNotice(destinationState.game?.protected ? 'Quick capture saved and selected. To teleport back to it, restart LMU using Launch local play and load single-player Practice.' : 'Quick capture saved and selected. ' + practiceShortcut('teleport', 'Ctrl+Alt+R') + ' to teleport; each quick capture replaces the previous one for this track and car.');
   } finally { quickCapturePending = false; }
 }
 
 async function place(standing = false) {
+  if (practiceAccessIssue()) { showNotice(practiceAccessIssue()); return; }
   const checkpoint = document.getElementById('cp').value;
   if (!checkpoint) return;
   const directReset = (destinationState.inGarage ?? destinationState.tyreRules?.inGarage) === false;
@@ -319,6 +347,7 @@ async function place(standing = false) {
 }
 
 async function resetFromHotkey(standing = false) {
+  if (practiceAccessIssue()) { showNotice(practiceAccessIssue()); return; }
   const garage = destinationState.inGarage ?? destinationState.tyreRules?.inGarage;
   if ((destinationState.busy && destinationState.phase !== 'WaitingToClear') || !destinationState.connected || !destinationState.session ||
       (garage !== true && (garage !== false || !destinationState.rollingStartSupported))) return;
@@ -361,6 +390,7 @@ function tyreOptions() {
 }
 
 async function resetTyres() {
+  if (practiceAccessIssue()) { showNotice(practiceAccessIssue()); return; }
   let tyres;
   try { tyres = tyreOptions(); } catch (e) { showNotice(e.message); return; }
   const res = await api('/api/tyres', {tyres});
@@ -382,7 +412,7 @@ function schedule(ms) {
   if (ms === period) return;
   period = ms;
   if (timer) clearInterval(timer);
-  timer = setInterval(refresh, ms);
+  timer = setInterval(() => { if (!activeRefreshes) return refresh(); }, ms);
 }
 
 for (const wheel of TYRE_WHEELS) {

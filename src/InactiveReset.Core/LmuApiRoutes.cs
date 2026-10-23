@@ -52,6 +52,8 @@ internal sealed class LmuApiRoutes
 
     internal static LmuApiRoutes LoadInstalled(string dataDirectory)
     {
+        // EAC denies module inspection; REST discovery needs only the installed UI and settings files.
+        if (GameLauncher.Running().Protected) return Load(GameLauncher.Locate(dataDirectory).Root);
         using var process = Process.GetProcessesByName(GameSession.ProcessName).FirstOrDefault();
         var root = process is null ? GameLauncher.Locate(dataDirectory).Root
             : Path.GetDirectoryName(process.MainModule?.FileName) ?? throw Refuse("cannot identify the running install");

@@ -32,16 +32,17 @@ function runCheckpointTests(script, html) {
     });
     return elements.get(id);
   }
-  let response={},captureResponse={};
+  let response={},captureResponse={},pendingResponse=null,getRequests=0,pollRefresh=null;
   const storedPreferences={};
   const storage={getItem:k=>storedPreferences[k] || null,setItem:(k,v)=>storedPreferences[k]=v};
   const ui = new Function('document','fetch','setInterval','clearInterval','alert','sessionStorage',
-    script + '\nreturn {canRestoreSpeed,renderCheckpoints,renderActivity,updateDestination,place,resetFromHotkey,quickCapture,cycleCheckpoint,speedReadyCheckpoints,runPracticeInput,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh};')(
+    'let navigation=null;\n'+script + '\nreturn {canRestoreSpeed,renderCheckpoints,renderActivity,updateDestination,place,resetFromHotkey,capture,quickCapture,cycleCheckpoint,speedReadyCheckpoints,runPracticeInput,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh,setNavigation(value){navigation=value;}};')(
       {getElementById:element},
       async (path,options) => {
         if(options?.method==='POST') {posted=JSON.parse(options.body);postedPath=path;}
+        else if(path==='/api/state') { getRequests++; if(pendingResponse) await pendingResponse; }
         return {json:async()=>options?.method==='POST' && JSON.parse(options.body).quick ? captureResponse : response};
-      }, () => 1, () => {}, () => {}, storage);
+      }, callback => { pollRefresh=callback; return 1; }, () => {}, () => {}, storage);
   let posted, postedPath;
   const state={session:{track:'Daytona',vehicle:'McLaren'},checkpoints:[
     {id:'Barcelona/Ferrari/End of Lap.json',name:'End of Lap',track:'Barcelona',vehicle:'Ferrari',lapDistance:4500},
@@ -116,12 +117,13 @@ function runCheckpointTests(script, html) {
     check(element('log').textContent.includes('Tyre discovery: Unsupported tyre code'),'explain unavailable tyre reset in Activity');
     element('tyreConditionFL').value=''; let rejected=false; try{ui.tyreOptions();}catch{rejected=true;}
     check(rejected,'empty condition is not silently interpreted as zero');
-    const loggedState={...response,log:['Keep the pit limiter on until CLEAR.'],outcome:{lines:[{label:'Arrival',value:'Verified',sentence:'Horizontal error 0.001 m.'}]}};
+    const loggedState={...response,checkpointErrors:['Skipped checkpoint broken.json'],log:['Keep the pit limiter on until CLEAR.'],outcome:{lines:[{label:'Arrival',value:'Verified',sentence:'Horizontal error 0.001 m.'}]}};
     element('log').scrollTop=7; element('log').scrollHeight=500; element('log').clientHeight=100;
     ui.renderActivity(loggedState);
     check(element('log').scrollTop===7,'poll preserves earlier Activity scroll position');
     check(element('log').textContent.includes('Arrival: Verified') && element('log').textContent.includes('Horizontal error 0.001 m.'),'server result details remain in Activity');
     check(element('log').textContent.includes('Keep the pit limiter on until CLEAR.'),'backend cleanup guidance retained');
+    check(element('log').textContent.includes('Skipped checkpoint broken.json'),'invalid checkpoint is reported while valid state remains available');
     const diagnosticText=element('log').textContent; ui.renderActivity(loggedState);
     check(element('log').textContent===diagnosticText,'unchanged diagnostics do not duplicate on each poll');
     select.scrollTop=120; ui.renderCheckpoints(response);
@@ -205,13 +207,15 @@ function runCheckpointTests(script, html) {
         check(posted.directReset===true && posted.restoreSpeed===true,'reset during pit cleanup preserves the selected motion choice');
         posted=null;await ui.quickCapture();
         check(posted===null,'quick capture ignores an operation in progress');
-        ui.renderCheckpoints({...onTrack,session:{...onTrack.session,capturable:true}});
+        ui.renderCheckpoints({...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[]});
+        check(element('cp').disabled && !element('cp').value,'empty library has no teleport destination');
         const quick={id:'Daytona/McLaren/Quick capture.json',name:'Quick capture',track:'Daytona',vehicle:'McLaren',rollingEligible:true,speedKmh:126};
         captureResponse={ok:true,id:quick.id};
-        response={...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[...onTrack.checkpoints,quick]};
-        await ui.quickCapture();
+        response={...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[quick]};
+        await ui.runPracticeInput('capture');
         check(postedPath==='/api/capture' && posted.quick===true,'quick capture uses the reserved reusable slot');
         check(element('cp').value===quick.id && ui.canRestoreSpeed(),'quick capture selects the saved checkpoint for motion teleport');
+        check(!element('cp').disabled,'first quick capture enables the destination selector');
         await ui.resetFromHotkey();
         check(posted.checkpoint===quick.id && posted.restoreSpeed===true,'teleport hotkey returns to the quick capture with speed and gear');
         captureResponse={error:'Capture refused'};
@@ -236,10 +240,42 @@ function runCheckpointTests(script, html) {
         check(element('cp').value==='quick','quick capture participates in cycling');
         await ui.runPracticeInput('teleport');
         check(posted.checkpoint==='quick' && posted.restoreSpeed===true,'teleport uses the cycled selection');
+        const eac={...candidates,connected:false,rollingStartSupported:false,game:{running:true,protected:true}};
+        response=eac;await ui.refresh();
+        check(!element('capBtn').disabled && element('placeBtn').disabled && element('standingBtn').disabled && element('tyreResetBtn').disabled,'EAC enables telemetry capture while disabling teleport and tyre preparation');
+        check(element('placeHint').textContent.includes('EAC on') && element('tyreResetHint').textContent.includes('Launch local play'),'Disabled EAC actions explain the reason and next step');
+        check(ui.speedReadyCheckpoints().length===3,'EAC can browse speed-ready captures without internal build discovery');
+        posted=null;await ui.runPracticeInput('next');check(posted===null,'EAC checkpoint cycling changes selection without game writes');
+        posted=null;await ui.resetFromHotkey();await ui.place(true);await ui.resetTyres();
+        check(posted===null && element('noticeText').textContent.includes('EAC on'),'EAC shortcuts explain blocked actions without submitting writes');
+        captureResponse={ok:true,id:quick.id};response={...eac,checkpoints:[...eac.checkpoints,quick]};
+        await ui.quickCapture();
+        check(postedPath==='/api/capture' && posted.quick===true && element('cp').value===quick.id,'EAC quick capture uses telemetry without a memory connection');
+        check(element('noticeText').textContent.includes('restart LMU'),'EAC capture success explains how to teleport later');
+        element('capName').value='Named EAC checkpoint';await ui.capture();
+        check(posted.name==='Named EAC checkpoint','Named checkpoint capture is available under EAC');
+        ui.setNavigation({state:{gameState:'GSTATE_SETUP'}});response=eac;await ui.refresh();
+        check(element('capBtn').disabled && element('capHint').textContent.includes('Load a session'),'Main menu cannot capture a leftover SDK position');
+        posted=null;await ui.quickCapture();await ui.capture();check(posted===null,'Both capture paths refuse leftover main-menu telemetry');
+        response={...candidates,inGarage:true,tyreRules:{inGarage:true}};
+        ui.setNavigation({state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_DYN',gameSession:'RACE1'}});await ui.refresh();
+        check(element('placeBtn').disabled && element('tyreResetBtn').disabled && element('placeHint').textContent.includes('single-player Practice'),'EAC-off race sessions still explain that memory tools need Practice');
+        posted=null;await ui.resetFromHotkey();await ui.resetTyres();check(posted===null,'Race-session shortcuts do not submit practice-only writes');
+        ui.setNavigation(null);
+        response=candidates;element('cp').value='quick';await ui.refresh();
         ui.renderCheckpoints({...candidates,busy:true});ui.cycleCheckpoint(1);
         check(element('cp').value==='quick','active placement freezes cycling');
         ui.renderCheckpoints({...candidates,checkpoints:[]});ui.cycleCheckpoint(1);
         check(element('noticeText').textContent.includes('No speed-ready checkpoints'),'empty eligible list explains how to create a destination');
+        await ui.refresh();
+        let release;
+        pendingResponse=new Promise(resolve=>release=resolve);
+        response={...response,phase:'Armed',busy:true};
+        const previousRequests=getRequests;
+        const slow=ui.refresh(),overlapping=pollRefresh();pollRefresh();
+        check(getRequests===previousRequests+1,'slow polling keeps only one state request in flight');
+        release();await Promise.all([slow,overlapping]);pendingResponse=null;
+        check(element('phase').textContent==='PRESS DRIVE','slow state response still updates visible progress');
         return checks;
       });
     });

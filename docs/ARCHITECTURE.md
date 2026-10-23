@@ -28,6 +28,13 @@ or Steam's library and application manifests. It starts either
 Direct launch allows local sessions only, as confirmed by the project owner.
 Protected launch is the route for online racing.
 
+REST session setup is independent of memory attachment. It is allowed in both
+launch modes while the navigation API confirms the single-player main menu.
+Protected-launch API discovery uses the installed UI package and settings file,
+avoiding `Process.MainModule`, which EAC denies. SDK telemetry capture is also
+independent of attachment. The UI runner rejects placement, tyre and rule memory
+actions before attachment when EAC is detected; Core retains its own EAC gates.
+
 `GameSession.Attach` checks for a running LMU process and rejects attachment if
 an EasyAntiCheat or protected-launcher process is detected. This is a
 machine-wide process check, not a process-tree inspection. It hashes the
@@ -35,10 +42,12 @@ installed executable and compares its PE identity with the mapped image before
 using discovered offsets and checking the live probe bytes.
 
 Single-player Practice is the supported scope for checkpoint and tyre writes.
-The windowed runner additionally checks LMU's navigation API for an active local
-Practice session before placement, tyres or rule toggles. The CLI still lacks
-this independent check. Do not describe the absence of EAC as proof that the
-game is in Practice.
+The windowed runner checks LMU's navigation API for an active local Practice
+session before placement, tyres or rule toggles. CLI placement, rule and lap
+writes use the same check. Placement planning requires live track and vehicle
+identity from shared memory. Missing identity refuses placement; checkpoint
+metadata cannot stand in for the loaded session. EAC absence alone does not
+establish Practice.
 
 The window and CLI browser server open the current workspace at `/`; `/lab`
 serves the same interface. The comparison dialog, classic pages and classic

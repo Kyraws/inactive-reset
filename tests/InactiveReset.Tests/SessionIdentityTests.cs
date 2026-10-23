@@ -8,6 +8,18 @@ namespace InactiveReset.Tests;
 /// </summary>
 public class SessionIdentityTests
 {
+    [Fact]
+    public void MissingLiveIdentityCannotBecomeCheckpointIdentity()
+    {
+        Assert.Throws<GateException>(() => SessionIdentity.RequireKnown(null));
+        Assert.Throws<GateException>(() => SessionIdentity.RequireKnown(new("", "Car")));
+        Assert.Throws<GateException>(() => SessionIdentity.RequireKnown(new("Track", " ")));
+        Assert.Throws<GateException>(() => new PlacementService(null!).Plan(
+            Checkpoint("Track", "Car"), CalibrationProfile.Placeholder("Track", "Car")));
+        var identity = new SessionIdentity("Track", "Car");
+        Assert.Equal(identity, SessionIdentity.RequireKnown(identity));
+    }
+
     private static Checkpoint Checkpoint(string track, string vehicle) => new()
     {
         Name = "cp",

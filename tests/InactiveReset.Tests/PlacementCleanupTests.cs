@@ -5,6 +5,45 @@ namespace InactiveReset.Tests;
 
 public sealed class PlacementCleanupTests
 {
+    [Fact]
+    public void ExceptionAfterDriveWaitsForSafeRuleRestoration()
+    {
+        var polls = 0;
+        var restored = false;
+        Assert.Throws<InvalidOperationException>((Action)(() =>
+        {
+            using var scope = new PlacementRestoreScope(true, () => restored = true, () => true,
+                () => PlacementCleanup.WaitForSafeRestore(
+                    () => ++polls < 4 ? PitWaitEnd.Active : PitWaitEnd.Garage,
+                    () => Assert.False(restored), CancellationToken.None, () => { }));
+            throw new InvalidOperationException("arrival read failed after Drive");
+        }));
+        Assert.True(restored);
+        Assert.Equal(4, polls);
+    }
+
+    [Fact]
+    public void SessionReplacementWhileWaitingNeverReceivesOldRules()
+    {
+        var same = true;
+        var restored = false;
+        var scope = new PlacementRestoreScope(true, () => restored = true, () => same, () => same = false);
+        scope.Dispose();
+        Assert.False(restored);
+        Assert.True(scope.SessionChanged);
+    }
+
+    [Fact]
+    public void UnreadableCleanupStateDoesNotRestoreRules()
+    {
+        var restored = false;
+        var scope = new PlacementRestoreScope(true, () => restored = true, () => true,
+            () => throw new MemoryAccessException("pit state unavailable"));
+        Assert.Throws<MemoryAccessException>(scope.Dispose);
+        Assert.False(restored);
+        Assert.True(scope.Pending);
+    }
+
     [Theory]
     [InlineData((int)PitWaitEnd.Cleared)]
     [InlineData((int)PitWaitEnd.Garage)]

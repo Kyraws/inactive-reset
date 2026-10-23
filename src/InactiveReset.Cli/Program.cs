@@ -290,7 +290,7 @@ internal static class Program
     private static int List(string dataDirectory)
     {
         var calibrations = CalibrationProfile.LoadAllForData(dataDirectory);
-        var checkpoints = Checkpoint.LoadAll(Path.Combine(dataDirectory, "checkpoints"));
+        var checkpoints = Checkpoint.LoadAll(Path.Combine(dataDirectory, "checkpoints"), Console.Error.WriteLine);
 
         Console.WriteLine("== calibrations ==");
         if (calibrations.Count == 0)
@@ -367,6 +367,7 @@ internal static class Program
             return 64;
         }
 
+        new LmuSessionClient(dataDirectory: dataDirectory).RequirePracticeAsync().GetAwaiter().GetResult();
         using var session = GameSession.Attach(offsetDirectory, forWriting: true);
         var plan = BuildPlan(session, offsetDirectory, dataDirectory, args[0]);
         PrintPlan(plan);
@@ -486,7 +487,7 @@ internal static class Program
         }
 
         var checkpoint = Checkpoint.Require(Path.Combine(dataDirectory, "checkpoints"), name, live);
-        var identity = live ?? new SessionIdentity(checkpoint.TrackName, checkpoint.VehicleName);
+        var identity = SessionIdentity.RequireKnown(live);
         identity.RequireMatches(checkpoint);
         var calibration = CalibrationProfile.Find(dataDirectory, identity.TrackName, identity.VehicleName)
             ?? CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName);
@@ -701,6 +702,7 @@ internal static class Program
             return 64;
         }
 
+        if (wantsWrite) new LmuSessionClient(dataDirectory: dataDirectory).RequirePracticeAsync().GetAwaiter().GetResult();
         using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite);
         var slot = new LiveStateReader(session).ResolveSlotIndex();
         var lap = new LapValidityController(session);
@@ -761,6 +763,7 @@ internal static class Program
     private static int Rules(string offsetDirectory, string dataDirectory, string[] args)
     {
         var wantsWrite = args.Any(a => a is "--off" or "--on");
+        if (wantsWrite) new LmuSessionClient(dataDirectory: dataDirectory).RequirePracticeAsync().GetAwaiter().GetResult();
         using var session = GameSession.Attach(offsetDirectory, forWriting: wantsWrite);
         var rules = new RulesController(session);
 

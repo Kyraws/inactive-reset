@@ -31,6 +31,18 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     private CancellationTokenSource? _placementCancellation;
     private bool _stopping;
     private readonly LmuSessionClient _sessionMenu = new(dataDirectory: dataDirectory);
+    private readonly Func<GameSession> _readAttachment = () => GameSession.Attach(offsetDirectory, forWriting: false);
+    private readonly Func<GameRunState> _gameRunning = GameLauncher.Running;
+    private const string EacToolsMessage = "Teleporting, tyre preparation and practice-rule changes are disabled while Easy Anti-Cheat (EAC) is on. Close LMU and choose Launch local play to use them.";
+
+    private void RequireMemoryAccess()
+    {
+        if (_gameRunning().Protected) throw new GateException(EacToolsMessage);
+    }
+
+    internal PlacementRunner(string offsetDirectory, string dataDirectory, LmuSessionClient menu,
+        Func<GameSession> readAttachment, Func<GameRunState> gameRunning) : this(offsetDirectory, dataDirectory)
+    { _sessionMenu = menu; _readAttachment = readAttachment; _gameRunning = gameRunning; }
 
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
     // Both calibration directories are resolved from the data directory itself;
@@ -41,10 +53,12 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     public JsonObject State()
     {
         var state = new JsonObject();
+        var protectedGame = _gameRunning().Protected;
 
         try
         {
-            using var session = GameSession.Attach(offsetDirectory, forWriting: false);
+            if (protectedGame) throw new GateException(EacToolsMessage);
+            using var session = _readAttachment();
             state["connected"] = true;
             state["pid"] = session.Process.Id;
             state["build"] = session.ExecutableSha256[..8];
@@ -143,13 +157,16 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         catch (Exception ex)
         {
             state["connected"] = false;
-            state["error"] = ex.Message;
+            if (protectedGame) state["memoryUnavailableReason"] = EacToolsMessage;
+            else state["error"] = ex.Message;
 
         }
 
         state["game"] = Game_();
         state["session"] = Session_();
-        state["checkpoints"] = Checkpoints_();
+        var checkpointErrors = new JsonArray();
+        state["checkpoints"] = Checkpoints_(checkpointErrors);
+        state["checkpointErrors"] = checkpointErrors;
         state["calibrations"] = Calibrations_();
 
         lock (_gate)
@@ -245,7 +262,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     /// </summary>
     private JsonNode? Game_()
     {
-        var running = GameLauncher.Running();
+        var running = _gameRunning();
         var game = new JsonObject
         {
             ["running"] = running.Running,
@@ -347,10 +364,10 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         }
     }
 
-    private JsonArray Checkpoints_()
+    private JsonArray Checkpoints_(JsonArray errors)
     {
         var array = new JsonArray();
-        foreach (var checkpoint in Checkpoint.LoadAll(Checkpoints).OrderBy(c => c.Name))
+        foreach (var checkpoint in Checkpoint.LoadAll(Checkpoints, message => errors.Add((JsonNode)message)).OrderBy(c => c.Name))
         {
             array.Add(new JsonObject
             {
@@ -393,7 +410,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     public async Task<JsonObject> SessionNavigationAsync()
     {
         var result = await _sessionMenu.NavigationAsync();
-        var game = GameLauncher.Running();
+        var game = _gameRunning();
         result["protected"] = game.Protected;
         result["pid"] = game.ProcessId;
         lock (_gate)
@@ -412,8 +429,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         {
             if (_stopping) throw new GateException("The app is closing.");
             if (_running is { IsCompleted: false }) throw new GateException("Wait for the current operation to finish before changing sessions.");
-            var game = GameLauncher.Running();
-            if (!game.Attachable) throw new GateException("Launch LMU for local play without EAC before setting up a session.");
+            var game = _gameRunning();
+            if (!game.Running) throw new GateException("Open LMU and return to its single-player main menu before setting up a session.");
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _running = completion.Task;
             _placementCancellation?.Dispose();
@@ -461,6 +478,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
     public JsonObject SetRules(JsonObject body)
     {
+        RequireMemoryAccess();
         lock (_gate)
         {
             if (_stopping || _running is { IsCompleted: false }) throw new GateException("Wait for the current operation before changing rules.");
@@ -506,6 +524,10 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
     public JsonObject Capture(JsonObject body)
     {
+        var navigation = _sessionMenu.NavigationAsync().GetAwaiter().GetResult();
+        if (navigation["state"]?["gameState"]?.GetValue<string>() != "GSTATE_DYN" ||
+            navigation["loadingStatus"]?["loading"]?.GetValue<bool>() == true)
+            throw new CheckpointException("Load a session and press Drive in LMU before capturing a checkpoint. The menu may still show the previous car position.");
         var quick = body["quick"]?.GetValue<bool>() ?? false;
         var name = quick ? CaptureService.QuickCaptureName : body["name"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
@@ -539,6 +561,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     /// </summary>
     public JsonObject StartPlace(JsonObject body)
     {
+        RequireMemoryAccess();
         var tyreOptions = ReadTyreOptions(body);
         var restoreSpeed = body["restoreSpeed"]?.GetValue<bool>() ?? true;
         var directReset = body["directReset"]?.GetValue<bool>() ?? false;
@@ -583,6 +606,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
 
     public JsonObject StartTyres(JsonObject body)
     {
+        RequireMemoryAccess();
         var options = ReadTyreOptions(body) ?? new TyreResetOptions();
         lock (_gate)
         {
@@ -672,7 +696,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             }
 
             var checkpoint = Checkpoint.Require(Checkpoints, name, live);
-            var identity = live ?? new SessionIdentity(checkpoint.TrackName, checkpoint.VehicleName);
+            var identity = SessionIdentity.RequireKnown(live);
             identity.RequireMatches(checkpoint);
             if (restoreSpeed) RollingMotion.RequireEligible(checkpoint, session.Offsets.Motion is not null, identity);
             if (directReset)

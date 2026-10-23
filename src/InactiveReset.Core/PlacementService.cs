@@ -137,6 +137,10 @@ public sealed record PlacementOutcome
 /// </summary>
 public readonly record struct SessionIdentity(string TrackName, string VehicleName)
 {
+    public static SessionIdentity RequireKnown(SessionIdentity? identity) =>
+        identity is { } known && !string.IsNullOrWhiteSpace(known.TrackName) && !string.IsNullOrWhiteSpace(known.VehicleName)
+            ? known : throw new GateException("Live track and car identity are unavailable. Wait for telemetry before placing a checkpoint.");
+
     public static SessionIdentity? From(SharedMemoryReader reader)
     {
         var snapshot = reader.Read();
@@ -188,7 +192,7 @@ public sealed class PlacementService(GameSession session)
         Checkpoint checkpoint, CalibrationProfile calibration, LearnedRest? learned = null,
         SessionIdentity? sessionIdentity = null)
     {
-        var identity = sessionIdentity ?? new SessionIdentity(checkpoint.TrackName, checkpoint.VehicleName);
+        var identity = SessionIdentity.RequireKnown(sessionIdentity);
         identity.RequireMatches(checkpoint);
         identity.RequireCalibration(calibration);
         if (learned is not null &&
@@ -337,7 +341,19 @@ public sealed class PlacementService(GameSession session)
         if (penalty is null || penalty.After != 0)
             return Failed($"placement was not armed: Flag Rules could not be disabled. {penaltyFailure}", progress);
         using var flags = new PlacementRestoreScope(penalty.Changed,
-            () => new RulesController(_session).RestorePitSpeedingPenalty(penalty), SameSession);
+            () => new RulesController(_session).RestorePitSpeedingPenalty(penalty), SameSession,
+            () =>
+            {
+                PitWaitEnd ReadRestoreState()
+                {
+                    if (!SameSession()) return PitWaitEnd.SessionEnded;
+                    if (reader.ReadControlOwner(slot) == 1) return PitWaitEnd.Garage;
+                    return reader.ReadPitState(slot) == 0 ? PitWaitEnd.Cleared : PitWaitEnd.Active;
+                }
+                if (ReadRestoreState() != PitWaitEnd.Active) return;
+                Report(progress, PlacementPhase.WaitingToClear, "Restoring rules safely; return to the garage or wait for pit state to clear.");
+                PlacementCleanup.WaitForSafeRestore(ReadRestoreState, () => Thread.Sleep(50), cancellation, () => { });
+            });
         if (cancellation.IsCancellationRequested)
             return Failed("cancelled before arming; original Flag Rules restored", progress, cancelled: true);
 

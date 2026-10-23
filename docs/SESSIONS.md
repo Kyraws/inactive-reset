@@ -20,8 +20,14 @@ choices and the selected checkpoint survive navigation.
 6. Select **Start session** once LMU is ready at its main menu. Progress
    appears in the app. Once loaded, switch to LMU and press **Drive**.
 
-Edits save immediately to LMU and read back the game's accepted values. LMU
-controls the available ranges. The summary stays visible while you edit. Refresh
+Numeric and clock edits stay responsive while saving. Rapid +/− clicks combine
+into one final value after a short pause; type a duration or start time directly
+and press Enter or leave the field to save. Other edits save immediately. Every
+write reads back the game's accepted value, and LMU controls the available ranges.
+Start session waits for pending edits to be confirmed. Failed saves keep the
+requested values visible with **Retry save** and **Discard pending edits**;
+discard reads the game's current values rather than undoing confirmed writes.
+The summary stays visible while you edit. Refresh
 from LMU after changing settings in the game. Changing tracks keeps the setup;
 **Use circuit defaults** explicitly replaces session settings, grid and weather.
 
@@ -46,9 +52,33 @@ The corrected return-to-menu sequence reached `GSTATE_SETUP`. These checks
 cover the recorded settings and content, rather than every session combination.
 
 Setup is locked during loading, an active session or a practice-tool operation.
-**Return to menu** asks before ending the loaded session. Setup works only in
-local single-player mode without EAC. Checkpoint placement, tyre preparation
-and practice rule toggles additionally require an active Practice session.
+**Return to menu** asks before ending the loaded session. REST session setup
+works at the single-player main menu with EAC either on or off. Loading,
+multiplayer and active sessions keep editing locked. Checkpoint capture uses
+shared telemetry in either launch mode when LMU exposes a valid position.
+Teleporting, tyre preparation and practice rule toggles require EAC off and an
+active single-player Practice session.
+
+Choose **Launch local play** for all practice tools, or **Launch with EAC** for
+normal online access plus REST session setup and telemetry capture. Both choices
+describe their capabilities before launching. To switch modes, close LMU first;
+the app does not restart a running game. An EAC notice stays visible throughout
+the app and disabled practice actions explain their requirements.
+
+Live checks on 2026-10-23, executable `66942337`, launched through EAC and verified
+REST setup/readback, official-event refresh, solo Practice loading, telemetry
+checkpoint capture, teleport refusal and return to the menu. The original full
+native preset restored exactly. API route discovery reads installed UI/settings
+files under EAC without inspecting the protected process's modules. Online-session
+changes remain blocked; no online race was joined for this validation.
+
+## Official event practice
+
+For official-event practice, use **Overview → Qualifying practice / Race practice**
+or the official entries in **Session presets**. Both reproduce that session's
+conditions in solo Practice, after review. The event library is cached separately
+from personal presets. See [Official scheduled sessions](LAB.md#official-scheduled-sessions)
+for refresh behavior, supported conditions and live-validation limits.
 
 ## Startup prompt and cancellation
 
@@ -87,6 +117,11 @@ It reads live
 setting metadata, all session settings (62 on the tested build), 21 driving
 assists, the vehicle/track catalog and weather nodes. It uses LMU's own relative
 step semantics for session/weather controls and absolute values for assists.
+Direct numeric entry rereads the current setting and calculates one relative
+write on the server. Clock entry changes only the selected start-time field in
+the current native preset, preserving the rest, then confirms readback. The UI
+serializes these saves, keeps newer drafts over older replies, and preserves the
+focused editor node. Saved-plan numeric/time changes use the same direct setter.
 Launching requests the current preset, applies it, generates a save and loads
 that generated save. Unrelated player settings are retained. The obsolete
 `/rest/race/startRace` route is not used.

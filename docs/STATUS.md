@@ -6,6 +6,14 @@ promise. [Architecture](ARCHITECTURE.md) describes the implementation;
 
 ## Validation evidence
 
+EAC access and first-use guidance were checked on 2026-10-23, build 14200 /
+`66942337`. Protected launch, REST local-session editing/start, official-event
+refresh and SDK checkpoint capture passed; internal memory actions remain
+blocked. Original game settings restored exactly. Automated and rendered checks
+cover both launch choices, multiplayer locks and disabled-action explanations,
+including stale SDK data at the menu. See [Local sessions](SESSIONS.md) for scope;
+these checks did not join or modify an online race.
+
 - Historical ordinary-path placement measurements, including correction of the
   lateral-offset model, are retained in the [heading investigation](archive/HEADING_BUG.md).
   Those results do not establish accuracy for every car, setup, track, or build.
@@ -24,16 +32,40 @@ promise. [Architecture](ARCHITECTURE.md) describes the implementation;
 
 | Priority | Finding | Evidence and next step |
 | --- | --- | --- |
-| High | CLI practice writes do not independently check session type | The windowed app now checks local, active Practice before placement, tyres and rule toggles; extend that gate to CLI writes |
-| High | UI placements do not save learning or observations | `PlacementRunner.RunPlacement` loads learned values but never calls `RestLearning.Apply`; align orchestration with the CLI |
-| Medium | Live track/vehicle identity is optional | Both front ends continue after a shared-memory failure; decide whether placement must require identity |
-| Medium | Checkpoint names are used directly as file paths | `CaptureService.Save` appends the name to a path; validate names and containment at the shared save boundary |
+| High | Concurrent application instances can compete over game writes | Runner locks are process-local; add a shared writer lock before allowing multiple windows or CLI writers against the same game |
+| High | UI placements do not save learning or observations | `PlacementRunner.RunPlacement` loads learned values but never calls `RestLearning.Apply`; align orchestration with the CLI after validating settled motion |
 | Medium | Capture and measured rest can include motion | Shared-memory reads are not a single locked snapshot; rest is sampled after a 400 ms delay with player control; validate capture coherence and learning while moving |
 | Medium | A manual ordinary-path calibration can be reused across builds | `PlacementService.Plan` only requires matching build for indexed placement; review staleness policy |
 | Low | Invalid CLI sector input silently falls back to the final sector | `Program.Place` uses the default on failed parsing; reject malformed or missing values |
 | Low | Rule identity depends on display text | `PlacementRunner.State` selects rules with label substrings; separate identity from presentation if changing this flow |
 | Low | Each UI state poll reattaches and hashes the executable | `PlacementRunner.State`; measure before optimising, retaining write-time checks |
 | Low | App build reports a WindowsBase reference conflict | Release solution build emits MSB3277 through WebView2's WPF assembly, although the app uses WinForms; review unused package references |
+
+## Audit fixes (2026-10-16)
+
+CLI placement, rule and lap writes now use the shared active local Practice
+check. Both placement front ends require live track/car identity. Checkpoint
+names are validated as Windows filenames and confined to their save folder;
+library captures use temporary files and refuse concurrent replacement.
+Malformed checkpoints are skipped individually and reported in Activity or CLI
+listing. Exception cleanup waits for a safe Flag Rules restoration point and
+rechecks session ownership after waiting. Scheduled UI polling skips ticks
+while a refresh is active, keeping slow responses visible without overlapping
+background requests. Regression checks cover these changes.
+
+Live audit validation on 2026-10-17 used direct-launch LMU 1.4.2.0 (`66942337`),
+Barcelona and United Autosports 2026 #23:ELMS. A standing garage placement
+returned within 4.3 mm horizontally and 1.1 mm vertically of the capture.
+Cancellation before Drive and cleanup after Drive/garage return restored the
+full original spot entry, padding and readable rules. Main-menu writes and a
+wrong-track checkpoint were refused. Moving restoration and deliberate live
+memory failures were not tested in this pass.
+
+Actual WebView2 validation found and fixed diagnostic-response serialization
+and missing warnings in the Lab Activity/Issues-only views. All four browser
+suites passed (182 checks); Original/Redline layouts and the production page
+against the live game were inspected. These checks cover the recorded setup,
+not every game build, vehicle or track.
 
 ## Direct reset validation (2026-10-16)
 

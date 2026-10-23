@@ -7,6 +7,12 @@ namespace InactiveReset.Core;
 /// <summary>LMU's local menu API. Session changes use the same calls as the installed menu.</summary>
 public sealed class LmuSessionClient
 {
+    private static readonly string[] NumericSettings = ["SESSSET_AI_Strength", "SESSSET_Damage_Multi", "SESSSET_Num_Opponents", "SESSSET_Practice_Length", "SESSSET_Qualify_Length", "SESSSET_WarmUp_Length", "SESSSET_Race_Laps", "SESSSET_race_time", "SESSSET_cuts_allowed", "SESSSET_tires_available_in_garage", "SESSSET_recon_pit_closed", "SESSSET_recon_pit_open"];
+    private static readonly Dictionary<string, string> StartingTimes = new()
+    {
+        ["SESSSET_practice1_starting_time"] = "Practice1StartingTime", ["SESSSET_qualify_starting_time"] = "QualifyingStartingTime",
+        ["SESSSET_race_starting_time"] = "RaceStartingTime", ["SESSSET_warmup_starting_time"] = "WarmupStartingTime",
+    };
     private static readonly HttpClient LocalHttp = new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
     {
         BaseAddress = new Uri("http://127.0.0.1:6397/"),
@@ -29,6 +35,16 @@ public sealed class LmuSessionClient
 
     public async Task<JsonObject> GameStateAsync(CancellationToken cancellation = default) =>
         Object(await RequestAsync(HttpMethod.Get, "/rest/sessions/GetGameState", cancellation: cancellation));
+
+    public async Task<string> AuthenticationTicketAsync(CancellationToken cancellation = default)
+    {
+        // shortcut: this inline RaceOS route has no named menu helper; recheck it when LMU changes authentication.
+        using var response = await _http.GetAsync(new Uri($"http://127.0.0.1:{_routes().Port}/rest/profile/getAuthSessionTicket"), cancellation);
+        if (!response.IsSuccessStatusCode) throw new GateException("LMU could not authenticate with RaceControl. Wait for its main menu and try again.");
+        var value = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellation));
+        return value?["authSessionTicket"]?.GetValue<string>() is { Length: > 0 and < 10000 } ticket
+            ? ticket : throw new GateException("LMU did not provide a RaceControl authentication ticket.");
+    }
 
     public async Task RequirePracticeAsync(CancellationToken cancellation = default)
     {
@@ -84,8 +100,38 @@ public sealed class LmuSessionClient
     public async Task<JsonObject> ChangeAsync(JsonObject body, CancellationToken cancellation = default)
     {
         await RequireMenuAsync(cancellation);
+        string? absoluteKey = null;
+        var absoluteValue = 0;
         switch (Text(body, "action"))
         {
+            case "sessionValue":
+            {
+                var key = Text(body, "key");
+                var clock = StartingTimes.TryGetValue(key, out var field);
+                if (!clock && !NumericSettings.Contains(key)) throw new GateException("This setting does not support direct entry.");
+                var value = Integer(body, "value", clock ? -3 : 0, clock ? 1439 : 10000);
+                var settings = Object(await RequestAsync(HttpMethod.Get, "/rest/sessions", cancellation: cancellation));
+                if (settings[key]?["currentValue"]?.GetValue<double>() is not { } before || !double.IsFinite(before) || before != Math.Truncate(before) || before < -3 || before > 10000)
+                    throw new GateException("This session setting is not available in LMU.");
+                absoluteKey = key; absoluteValue = value;
+                if (value == before) break;
+                if (clock)
+                {
+                    // Clock arrows move one minute per call; the preset sets the requested minute in one write.
+                    var preset = await PresetAsync(cancellation);
+                    if (preset["Player"]?["Race Conditions"] is not JsonObject conditions || !conditions.ContainsKey(field!))
+                        throw new GateException("LMU does not expose this session's start time.");
+                    conditions[field!] = value;
+                    await RequireMenuAsync(cancellation);
+                    await PostAsync("/rest/sessions/SessionPresets/applyPreset", preset, cancellation);
+                }
+                else
+                {
+                    await RequireMenuAsync(cancellation);
+                    await PostAsync("/rest/sessions/settings", new JsonObject { ["sessionSetting"] = key, ["value"] = value - (int)before }, cancellation);
+                }
+                break;
+            }
             case "setting":
             {
                 var key = Text(body, "key");
@@ -119,6 +165,33 @@ public sealed class LmuSessionClient
                 var preset = Text(body, "preset");
                 if (preset is not ("SUNNY" or "CLOUDY" or "RAINY" or "DEFAULT")) throw new GateException("Unknown weather preset.");
                 await PostAsync($"/rest/sessions/weather/{session}/{preset}", null, cancellation);
+                break;
+            }
+            case "practiceConditions":
+            {
+                var time = Integer(body, "time", 0, 1439);
+                var road = Text(body, "road");
+                if (road is not ("green" or "natural" or "preset:LIGHT.RRBIN" or "preset:MEDIUM.RRBIN" or "preset:HEAVY.RRBIN" or "preset:SATURATED.RRBIN"))
+                    throw new GateException("This official session uses an unsupported track condition.");
+                var water = body["waterDepth"]?.GetValue<double>() ?? throw new GateException("The track water depth is missing.");
+                if (!double.IsFinite(water) || water < -0.01 || water > 1) throw new GateException("The track water depth is invalid.");
+                var temperatures = body["loadTemperatures"]?.GetValue<bool>() ?? false;
+                var preset = await PresetAsync(cancellation);
+                if (preset["Player"]?["Race Conditions"] is not JsonObject conditions ||
+                    !conditions.ContainsKey("Practice1StartingTime") || preset["Weather"]?["Practice"]?["Road"] is not JsonObject surface)
+                    throw new GateException("LMU does not expose the required Practice conditions.");
+                conditions["Practice1StartingTime"] = time;
+                surface["RealRoad"] = road;
+                surface["WaterDepth"] = water;
+                surface["LoadTemperaturesFromRealRoadFile"] = temperatures;
+                await PostAsync("/rest/sessions/SessionPresets/applyPreset", preset, cancellation);
+                var readback = await PresetAsync(cancellation);
+                var actual = readback["Weather"]?["Practice"]?["Road"];
+                if (readback["Player"]?["Race Conditions"]?["Practice1StartingTime"]?.GetValue<int>() != time ||
+                    actual?["RealRoad"]?.GetValue<string>() != road ||
+                    actual?["WaterDepth"]?.GetValue<double>() is not { } depth || Math.Abs(depth - water) > 0.000001 ||
+                    actual?["LoadTemperaturesFromRealRoadFile"]?.GetValue<bool>() != temperatures)
+                    throw new GateException("LMU did not confirm the requested Practice time and track conditions. Refresh and review before retrying.");
                 break;
             }
             case "assist":
@@ -180,7 +253,10 @@ public sealed class LmuSessionClient
             }
             default: throw new GateException("Unknown session action.");
         }
-        return await SetupAsync(cancellation);
+        var updatedSetup = await SetupAsync(cancellation);
+        if (absoluteKey is not null && updatedSetup["settings"]?[absoluteKey]?["currentValue"]?.GetValue<double>() != absoluteValue)
+            throw new GateException("LMU did not confirm the requested value. Check its allowed range and try again.");
+        return updatedSetup;
     }
 
     public async Task ReturnToMenuAsync(CancellationToken cancellation = default)

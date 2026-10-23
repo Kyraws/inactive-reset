@@ -1,29 +1,32 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><title>Session editor checks</title>
 <pre id="report">Running…</pre><iframe id="preview" style="width:1100px;height:720px;border:0"></iframe>
-<script>
+<script src="browser-helpers.js"></script><script>
 // Runs the production editor in a real DOM with a fake LMU API. No game writes.
 async function run() {
-  const [html,session,css,labCss,practice,lab]=await Promise.all(['Lab.html','Session.js','App.css','Lab.css','Practice.js','Lab.js'].map(n=>fetch('../src/InactiveReset.Ui/'+n).then(r=>r.text())));
+  const [html,session,css,labCss,practice,official,lab]=await Promise.all(['Lab.html','Session.js','App.css','Lab.css','Practice.js','Lab.official.js','Lab.js'].map(n=>fetch('../src/InactiveReset.Ui/'+n).then(r=>r.text())));
   const frame=document.getElementById('preview');
   const loaded=new Promise(resolve=>frame.onload=resolve);
   frame.srcdoc=html.replace(/<script[^>]*><\/script>/g,'').replace(/<link[^>]*>/g,'').replace('</head>','<style>'+css+labCss+'</style></head>');
-  const script=session+'\n'+practice+'\n'+lab;
+  const script=session+'\n'+practice+'\n'+official+'\n'+lab;
   await loaded;
   const d=frame.contentDocument,w=frame.contentWindow;
   const setting=(value,text='')=>({currentValue:value,stringValue:text});
   const initial={selection:{selectedCar:{id:'car',desc:'Team One',fullPathTree:'WEC 2026, GT3, BMW M4',isOwned:true},trackInfo:{id:'track',trackName:'Daytona',trackLength:'5.7',type:'Road Course'},classesSelection:['GT3'],fullGrid:false},settings:{SESSSET_Practice_Length:setting(60),SESSSET_Num_Opponents:setting(0),SESSSET_AI_Strength:setting(100,'100%'),SESSSET_AI_Aggression:setting(1,'Medium'),SESSSET_Finish_Criteria:setting(2,'Time'),SESSSET_race_time:setting(20),SESSSET_Race_Laps:setting(10),SESSSET_Grid_Position:setting(0,'Random'),SESSSET_weather:setting(4,'Scripted'),SESSSET_flag_rules:setting(2,'Full')},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:0,RACE:1},weather:{PRACTICE:{START:{WNV_SKY:setting(1,'Light clouds'),WNV_TEMPERATURE:setting(20,'20 °')}},QUALIFY:{},RACE:{}},assists:{DRIVEAIDS_auto_wipers:{...setting(1,'On'),minValue:0,maxValue:1,stepValue:1},DRIVEAIDS_steering_help:{...setting(0,'Off'),minValue:0,maxValue:3,stepValue:1}}};
   const catalog={cars:[initial.selection.selectedCar,{id:'other',desc:'Team Two',fullPathTree:'WEC 2026, GT3, BMW M4',isOwned:true},{id:'locked',desc:'Locked',fullPathTree:'WEC 2026, Hypercar, Ferrari',isOwned:false}],tracks:[{id:'track',name:'Daytona',shortName:'Daytona',owned:true},{id:'locked-track',name:'Locked',shortName:'Locked',owned:false}]};
+  initial.settings.SESSSET_practice1_starting_time=setting(-1,'Default (10:05 AM)');
   let state={state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_SETUP',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false},pid:123};
-  let posts=[],fail=false;
-  const fakeFetch=async(path,options)=>{
+  let posts=[],fail=false,holdValueSave=null,holdSetupRead=null;
+  const fakeFetch=async(path,options)=>{if(path.startsWith('/api/official-sessions'))return {ok:true,json:async()=>({schema:1,fetchedAt:new Date().toISOString(),events:[],warnings:[]})};
     const body=options?.body?JSON.parse(options.body):null;
     if(body){posts.push(body);if(fail)return {ok:false,json:async()=>({error:'Fixture rejected change'})};}
-    const result=path==='/api/lab/preferences'?{schema:1,theme:'midnight',density:'comfortable',pins:[],cars:[],tracks:[],checkpoints:[],plans:[]}:path==='/api/state'?{connected:true,game:{running:true},checkpoints:[]}:path.endsWith('/catalog')?catalog:path.endsWith('/state')?state:structuredClone(initial);
+    if(body?.action==='sessionValue'){const gate=holdValueSave;if(gate)await gate;initial.settings[body.key].currentValue=body.value;}
+    const setupSnapshot=path==='/api/session/setup'?structuredClone(initial):null;if(setupSnapshot&&holdSetupRead)await holdSetupRead;
+    const result=path==='/api/lab/preferences'?{schema:1,theme:'midnight',density:'comfortable',pins:[],cars:[],tracks:[],checkpoints:[],plans:[]}:path==='/api/state'?{connected:true,game:{running:true},checkpoints:[]}:path.endsWith('/catalog')?catalog:path.endsWith('/state')?state:setupSnapshot||structuredClone(initial);
     return {ok:true,json:async()=>result};
   };
-  const ui=new w.Function('fetch','setInterval','clearInterval',script+'\nreturn {request,loadSetup,poll,switchSection,change,startSession,row,stepper,raceLengthSummary,setState(v){navigation=v;gameRunning=true;serverBusy=!!v.operationBusy;renderNavigation();}};')(fakeFetch,()=>0,()=>{});
-  await new Promise(r=>setTimeout(r,20));
+  const ui=new w.Function('fetch','setInterval','clearInterval',script+'\nreturn {request,loadSetup,poll,launchGame,launchLocal,queueSessionValue,flushSessionValues,discardSessionValues,setOffline(){navigation=null;setup=null;catalog=null;gameRunning=false;gameProtected=false;renderNavigation();},switchSection,change,startSession,row,stepper,raceLengthSummary,setState(v){navigation=v;gameRunning=true;serverBusy=!!v.operationBusy;renderNavigation();}};')(fakeFetch,()=>0,()=>{});
+  await until(()=>w.getComputedStyle(d.body).visibility==='visible'&&d.getElementById('carSelect'),'session initialization');
   ui.switchSection('selection');
   await ui.request('/api/session/setup');await ui.loadSetup();await ui.poll();ui.setState(state);
   let count=0;const check=(v,m)=>{if(!v)throw Error(m);count++;};
@@ -31,6 +34,45 @@ async function run() {
   check(!d.getElementById('startButton').disabled,'Ready main menu enables start automatically');
   check(d.querySelectorAll('#carSelect option').length===2,'Only owned cars in team selection');
   check(!d.querySelector('#trackSelect option[value="locked-track"]'),'Unowned tracks cannot be selected');
+  ui.switchSection('sessions');
+  const durationKey='SESSSET_Practice_Length',durationInput=()=>d.getElementById('value-'+durationKey);
+  const valuePosts=()=>posts.filter(p=>p.action==='sessionValue');
+  const beforeRapid=valuePosts().length,liveDurationNode=durationInput();durationInput().focus();
+  for(let i=0;i<7;i++)d.querySelector('[aria-label="Increase Practice duration"]').click();
+  check(durationInput().value==='67'&&valuePosts().length===beforeRapid,'Rapid clicks update locally without one request per click');
+  check(!durationInput().disabled&&d.getElementById('startButton').disabled&&!d.getElementById('sessionSaveNotice').hidden,'Numeric edits stay enabled while launch waits for confirmation');
+  await ui.flushSessionValues();
+  check(valuePosts().length===beforeRapid+1&&valuePosts().at(-1).value===67&&durationInput().value==='67','A rapid sequence saves its final absolute value once');
+  check(d.activeElement===liveDurationNode&&durationInput()===liveDurationNode,'Saving preserves the actual numeric editor node and focus');
+  let releaseValue;holdValueSave=new Promise(r=>releaseValue=r);
+  ui.queueSessionValue(durationKey,70);const firstSave=ui.flushSessionValues();
+  await until(()=>valuePosts().at(-1)?.value===70,'slow value save started');
+  durationInput().focus();ui.queueSessionValue(durationKey,76);
+  check(!durationInput().disabled&&!d.querySelector('[aria-label="Increase Practice duration"]').disabled&&durationInput().value==='76','Edits remain responsive while a prior save is in flight');
+  holdValueSave=null;releaseValue();await firstSave;
+  check(durationInput().value==='76'&&d.getElementById('startButton').disabled,'An older response does not overwrite the newer draft or unlock launch');
+  await ui.flushSessionValues();check(initial.settings[durationKey].currentValue===76,'The newer value is saved after the earlier request finishes');
+  const clock=d.getElementById('value-SESSSET_practice1_starting_time');clock.value='14:35';clock.dispatchEvent(new w.Event('change',{bubbles:true}));await ui.flushSessionValues();
+  check(valuePosts().at(-1).key==='SESSSET_practice1_starting_time'&&valuePosts().at(-1).value===875,'Clock entry saves the requested minute directly');
+  d.querySelector('[aria-label="Use track default Start time"]').click();await ui.flushSessionValues();
+  check(initial.settings.SESSSET_practice1_starting_time.currentValue===-1,'Clock Default restores the circuit default');
+  fail=true;ui.queueSessionValue(durationKey,90);await ui.flushSessionValues();
+  check(durationInput().value==='90'&&!d.getElementById('retrySessionSave').hidden&&d.getElementById('startButton').disabled,'Failed saves preserve the requested value and offer retry without allowing a stale launch');
+  fail=false;d.getElementById('retrySessionSave').click();await until(()=>d.getElementById('sessionSaveNotice').hidden,'retry confirmed');
+  check(initial.settings[durationKey].currentValue===90,'Retry confirms the retained value');
+  fail=true;ui.queueSessionValue(durationKey,100);await ui.flushSessionValues();fail=false;await ui.discardSessionValues();
+  check(durationInput().value==='90'&&d.getElementById('sessionSaveNotice').hidden,'Discard restores confirmed values rather than retaining the unsaved display');
+  ui.queueSessionValue(durationKey,60);await ui.flushSessionValues();
+  ui.queueSessionValue(durationKey,80);ui.setState({...state,state:{...state.state,gameState:'GSTATE_DYN',navigationState:'NAV_EVENT',gameSession:'PRACTICE1'}});
+  const postsBeforeMenuLoss=valuePosts().length;await ui.flushSessionValues();
+  check(valuePosts().length===postsBeforeMenuLoss&&d.getElementById('sessionSaveText').textContent.includes('main menu'),'Leaving the menu keeps pending values without submitting unsafe writes');
+  ui.setOffline();ui.setState(state);await ui.loadSetup();
+  check(durationInput().value==='80','Pending values remain recoverable after LMU closes and its setup is reloaded');
+  await ui.discardSessionValues();
+  let releaseSetup;holdSetupRead=new Promise(r=>releaseSetup=r);const staleSetup=ui.loadSetup();
+  ui.queueSessionValue(durationKey,65);await ui.flushSessionValues();holdSetupRead=null;releaseSetup();await staleSetup;
+  check(durationInput().value==='65','A setup refresh started before editing cannot overwrite the confirmed edit');
+  ui.queueSessionValue(durationKey,60);await ui.flushSessionValues();
   ui.switchSection('sessions');
   check(d.querySelector('[aria-label="Decrease Race laps"]').closest('fieldset').disabled,'Time mode disables lap count');
   const numeric=JSON.parse(d.querySelector('[aria-label="Decrease Practice duration"]').dataset.change);
@@ -61,6 +103,17 @@ async function run() {
   ui.setState({...state,state:{...state.state,gameState:'GSTATE_DYN',navigationState:'NAV_EVENT',gameSession:'PRACTICE1'}});
   check(d.getElementById('value-SESSSET_Practice_Length').disabled,'Loaded session locks setup');
   check(!!d.querySelector('[data-dialog="menuDialog"]'),'Loaded session offers explicit return to menu');
+  ui.setState({...state,protected:true});
+  check(!d.getElementById('startButton').disabled && !d.getElementById('value-SESSSET_Practice_Length').disabled,'EAC permits REST setup and starting at the single-player main menu');
+  check(!d.getElementById('accessNotice').hidden && d.getElementById('accessTitle').textContent.includes('EAC is on') && d.getElementById('accessText').textContent.includes('Launch local play'),'EAC restrictions are visible with a clear recovery step');
+  const beforeEacStart=posts.length;await ui.startSession();check(posts.slice(beforeEacStart).some(p=>p.action==='start'),'EAC single-player Start dispatches through the existing REST path');
+  ui.setState({...state,protected:true,state:{...state.state,settingMode:'SETTING_MULTIPLAYER'}});
+  check(d.getElementById('startButton').disabled && d.getElementById('stateBanner').textContent.includes('multiplayer') && d.getElementById('accessText').textContent.includes('single-player main menu'),'Online mode explains where session setup is available without requiring EAC off');
+  ui.setOffline();
+  check(!d.getElementById('launchChoices').hidden && d.getElementById('launchChoices').textContent.includes('Online racing is unavailable'),'First launch explains both modes before choosing');
+  await ui.launchGame('eac');check(posts.at(-1).mode==='eac' && d.getElementById('launchModeBadge').textContent==='EAC ON','Launch with EAC sends the protected launch mode and updates its label');
+  const launchCount=posts.length;await ui.launchGame('direct');check(posts.length===launchCount,'Choosing another mode never restarts a running game');
+  ui.setOffline();await ui.launchLocal();check(posts.at(-1).mode==='direct','Launch local play remains the direct launch for all practice tools');
   document.getElementById('report').textContent='PASS: '+count+' session editor checks';
 }
 run().catch(e=>{document.getElementById('report').textContent='FAIL: '+e.stack;});

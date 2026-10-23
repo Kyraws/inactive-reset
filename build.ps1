@@ -11,7 +11,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('build', 'test', 'ship', 'package', 'clean')]
+    [ValidateSet('build', 'test', 'browser', 'test-local', 'ship', 'package', 'clean')]
     [string] $Task = 'build',
 
     [ValidateSet('Debug', 'Release')]
@@ -78,8 +78,22 @@ switch ($Task) {
     }
 
     'test' {
-        Invoke-Step "test ($Configuration)" { dotnet test $solution -c $Configuration --nologo }
-        Show-BuildOutput $Configuration
+        Invoke-Step "test ($Configuration)" {
+            dotnet test $solution -c $Configuration --nologo --filter 'Category!=LocalGame' --logger 'trx;LogFileName=unit.trx' --results-directory (Join-Path $artifacts 'TestResults')
+        }
+        & $PSCommandPath -Task browser -Configuration $Configuration
+    }
+
+    'browser' {
+        Invoke-Step 'browser checks (WebView2)' {
+            dotnet run --project (Join-Path $root 'tests/InactiveReset.BrowserTests/InactiveReset.BrowserTests.csproj') -c $Configuration --no-launch-profile
+        }
+    }
+
+    'test-local' {
+        Invoke-Step 'local game compatibility fixtures (read-only)' {
+            dotnet test $solution -c $Configuration --nologo --filter 'Category=LocalGame' --logger 'trx;LogFileName=local.trx' --results-directory (Join-Path $artifacts 'TestResults')
+        }
     }
 
     'ship' {
@@ -97,7 +111,7 @@ switch ($Task) {
             throw 'Close the running app before shipping.'
         }
 
-        Invoke-Step 'test (Release)' { dotnet test $solution -c Release --nologo }
+        & $PSCommandPath -Task test -Configuration Release
 
         if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 
@@ -194,6 +208,8 @@ switch ($Task) {
             Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
             $global:LASTEXITCODE = 0
         }
+
+        & (Join-Path $root 'tests/package-smoke.ps1') -Zip $zip
 
         Write-Host ''
         Write-Host "Packaged $zip" -ForegroundColor Green
