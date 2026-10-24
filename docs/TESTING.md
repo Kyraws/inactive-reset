@@ -29,6 +29,9 @@ file actions, preset management, Controls and summary resizing. Populated layout
 are checked at 1040×680 and 1280×800, including ten events and both practice buttons.
 Assertions detect overflow and clipped actions; rendered screenshots are retained.
 Backend/HTTP regressions cover map validation/cache and checkpoint file integrity.
+Responsive smoke checks emulate exact CSS viewports in a smaller native host,
+so CI desktop limits cannot clamp the requested test size. Screenshots capture
+the full emulated viewport.
 
 `.\build.cmd package` runs the repeatable suite, publishes and packages the app,
 then extracts the ZIP outside the checkout. Its smoke check runs CLI help/list

@@ -190,26 +190,30 @@ internal static class Program
                     await core.ExecuteScriptAsync("setPage('practice')");
                     return "First launch, both EAC modes, multiplayer lock, per-action explanations and recovery";
                 });
+                // CI desktops can constrain native windows; keep the host smaller than every tested viewport.
+                form.ClientSize = new Size(800, 560);
                 foreach (var (width, height) in new[] { (1100, 720), (900, 600) })
                     foreach (var style in new[] { "original", "redline" })
                         await Run($"layout-{style}-{width}", async () =>
                         {
-                            var previousWidth = form.ClientSize.Width;
-                            var previousViewport = await core.ExecuteScriptAsync("document.documentElement.clientWidth");
-                            form.ClientSize = new Size(width, height);
+                            await core.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride",
+                                JsonSerializer.Serialize(new { width, height, deviceScaleFactor = 1, mobile = false }));
+                            await WaitFor($"document.documentElement.clientWidth==={width} && document.documentElement.clientHeight==={height}",
+                                $"Viewport did not reach {width}x{height}");
                             await core.ExecuteScriptAsync($"document.body.dataset.style='{style}';document.body.dataset.theme='midnight';document.body.dataset.density='compact'");
-                            if (previousWidth != width)
-                                await WaitFor($"document.documentElement.clientWidth>0 && document.documentElement.clientWidth!=={previousViewport}", "Viewport did not resize");
                             await Check("document.documentElement.scrollWidth<=document.documentElement.clientWidth+2", "Horizontal overflow");
                             await Check("getComputedStyle(document.getElementById('practicePanel')).display!=='none'", "Practice panel hidden");
                             await core.ExecuteScriptAsync("setPage('setup','sessions')");
                             await Check("document.querySelector('input[type=time][data-session-value]')!==null && document.documentElement.scrollWidth<=document.documentElement.clientWidth+2", "Direct time editor is missing or causes overflow");
                             await Check("document.getElementById('editor').scrollWidth<=document.getElementById('editor').clientWidth+2 && document.getElementById('editor').clientWidth>400", "Builder content overflows or has insufficient space");
-                            using (var screenshot = File.Create(Path.Combine(output, $"session-edits-{style}-{width}.png")))
-                                await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
+                            using var screenshot = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot",
+                                JsonSerializer.Serialize(new { format = "png", captureBeyondViewport = true, clip = new { x = 0, y = 0, width, height, scale = 1 } })));
+                            File.WriteAllBytes(Path.Combine(output, $"session-edits-{style}-{width}.png"),
+                                Convert.FromBase64String(screenshot.RootElement.GetProperty("data").GetString()!));
                             await core.ExecuteScriptAsync("setPage('practice')");
                             return "No horizontal overflow; Practice remains reachable";
                         });
+                await core.CallDevToolsProtocolMethodAsync("Emulation.clearDeviceMetricsOverride", "{}");
                 if (host.Menu.Writes != 0) throw new Exception("Browser smoke checks unexpectedly changed game settings");
                 await Navigate("about:blank"); // Stop page polling before disposing the isolated server and data.
             }
