@@ -45,6 +45,23 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     { _sessionMenu = menu; _readAttachment = readAttachment; _gameRunning = gameRunning; }
 
     private string Checkpoints => Path.Combine(dataDirectory, "checkpoints");
+    private readonly CheckpointLibrary _library = new(Path.Combine(dataDirectory, "checkpoints"));
+
+    public Task<JsonObject> TrackMapAsync(string id) => _sessionMenu.TrackMapAsync(id);
+
+    public JsonObject ManageCheckpoint(JsonObject body)
+    {
+        lock (_gate)
+        {
+            if (_stopping || _running is { IsCompleted: false }) throw new GateException("Wait for the current operation before changing checkpoints.");
+            var action = body["action"]?.GetValue<string>();
+            if (action == "undo") return new() { ["ok"] = true, ["id"] = _library.Undo(body["token"]?.GetValue<string>() ?? "") };
+            var id = body["id"]?.GetValue<string>() ?? "";
+            if (action == "delete") return new() { ["ok"] = true, ["token"] = _library.Delete(id) };
+            if (action is "rename" or "copy") return new() { ["ok"] = true, ["id"] = _library.RenameOrCopy(id, body["name"]?.GetValue<string>() ?? "", action == "copy") };
+            throw new GateException("Unknown checkpoint action.");
+        }
+    }
     // Both calibration directories are resolved from the data directory itself;
     // see CalibrationProfile.LoadAllForData.
 
@@ -379,6 +396,9 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["speedKmh"] = checkpoint.SpeedKmh,
                 ["rollingEligible"] = RollingMotion.EligibleCapture(checkpoint.LocalVelocityMetresPerSecond),
                 ["gear"] = checkpoint.Gear,
+                ["quick"] = checkpoint.Name.Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase),
+                ["x"] = checkpoint.Pose.Position.X,
+                ["z"] = checkpoint.Pose.Position.Z,
             });
         }
         return array;
@@ -523,6 +543,15 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     }
 
     public JsonObject Capture(JsonObject body)
+    {
+        lock (_gate)
+        {
+            if (_stopping || _running is { IsCompleted: false }) throw new GateException("Wait for the current operation before capturing a checkpoint.");
+            return CaptureCore(body);
+        }
+    }
+
+    private JsonObject CaptureCore(JsonObject body)
     {
         var navigation = _sessionMenu.NavigationAsync().GetAwaiter().GetResult();
         if (navigation["state"]?["gameState"]?.GetValue<string>() != "GSTATE_DYN" ||

@@ -86,7 +86,7 @@ function officialPlan(event,session){
 }
 function reviewOfficialPreset(id){
   for(const event of officialSessions.events||[])for(const session of event.sessions||[])if(officialPresetId(event,session)===id){
-    try{const target=officialPlan(event,session),intents=planIntents(target),weather=intents.findIndex(i=>i.type==='weather');intents.splice(weather<0?intents.length:weather,0,{type:'practiceConditions',...target.practiceConditions});const inherited=session.realRoad==='natural'?' Starting grip uses the event’s '+officialRoadName(target.practiceConditions.road)+' base. Additional rubber or water carried over from online traffic is not reproduced.':'';if(reviewPlan(event.title+' · '+session.type,intents,'Solo Practice using this session’s time, surface, five weather points and supported simulation rules.'+inherited+' Online BoP, fixed setups and tyre allocation are not copied.'))pendingPlan.official=true;}
+    try{const target=officialPlan(event,session),intents=planIntents(target),weather=intents.findIndex(i=>i.type==='weather');intents.splice(weather<0?intents.length:weather,0,{type:'practiceConditions',...target.practiceConditions});const inherited=session.realRoad==='natural'?' Starting grip uses the event’s '+officialRoadName(target.practiceConditions.road)+' base. Additional rubber or water carried over from online traffic is not reproduced.':'';if(reviewPlan(event.title+' · '+session.type,intents,'Solo Practice using this session’s time, surface, five weather points and supported simulation rules.'+inherited+' Online BoP, fixed setups and tyre allocation are not copied.')){pendingPlan.official=true;pendingPlan.source={kind:'official',id,name:event.title+' / '+session.type};}}
     catch(e){notify(e.message,true);}return;
   }
 }

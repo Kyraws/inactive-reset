@@ -81,13 +81,62 @@ internal static class Program
                     }
                 }
 
-                foreach (var page in new[] { "lab-ui", "checkpoint-ui", "session-ui", "input-bindings-ui" })
+                foreach (var page in new[] { "lab-ui", "redline-ui", "checkpoint-ui", "session-ui", "input-bindings-ui" })
                     await Run(page, async () =>
                     {
                         await Navigate("https://ui.test/tests/" + page + ".html");
                         await WaitFor("(()=>{const t=document.getElementById('report')?.textContent||'';return /^(PASS|FAIL)/.test(t)||/checks passed$/.test(t)})()", "Suite did not finish");
                         var report = JsonSerializer.Deserialize<string>(await core.ExecuteScriptAsync("document.getElementById('report').textContent"))!;
                         if (report.StartsWith("FAIL")) throw new Exception(report);
+                        if (page == "redline-ui")
+                        {
+                            await core.ExecuteScriptAsync("document.getElementById('preview').contentWindow.redlineTestUi.enableWeekend()");
+                            foreach (var (width, height) in new[] { (1040, 680), (1280, 800) })
+                            {
+                                await core.ExecuteScriptAsync($"Object.assign(document.getElementById('preview').style,{{width:'{width}px',height:'{height}px'}})");
+                                foreach (var section in new[] { "selection", "sessions", "weather", "grid", "rules" })
+                                {
+                                    await core.ExecuteScriptAsync($"document.getElementById('preview').contentWindow.redlineTestUi.setPage('setup','{section}')");
+                                    await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),p=d.querySelector('[data-builder]:not([hidden])');return e.scrollHeight<=e.clientHeight+2 && p.scrollHeight<=p.clientHeight+2;})()", $"Builder {section} needs scrolling at {width}x{height}: " + await core.ExecuteScriptAsync("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),p=d.querySelector('[data-builder]:not([hidden])');return JSON.stringify({editor:[e.clientHeight,e.scrollHeight],panel:[p.clientHeight,p.scrollHeight]});})()"));
+                                }
+                                foreach (var screen in new[] { "practice", "library", "presets", "settings", "activity", "home", "official" })
+                                {
+                                    await core.ExecuteScriptAsync($"document.getElementById('preview').contentWindow.redlineTestUi.setPage('{screen}')");
+                                    await Check("(()=>{const e=document.getElementById('preview').contentDocument.getElementById('editor');return e.scrollHeight<=e.clientHeight+2;})()", $"Page {screen} needs scrolling at {width}x{height}");
+                                    if (screen == "practice")
+                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),p=d.querySelector('.tyre-toolbar');return p.scrollHeight<=p.clientHeight+2 && ['capBtn','tyreResetBtn'].every(id=>d.getElementById(id).getBoundingClientRect().bottom<=e.getBoundingClientRect().bottom);})()", $"Practice actions need scrolling at {width}x{height}");
+                                    if (screen == "settings")
+                                    {
+                                        await Check("(()=>{const e=document.getElementById('preview').contentDocument.getElementById('editor');return e.scrollHeight<=e.clientHeight+2;})()", $"Input bindings need scrolling at {width}x{height}");
+                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),b=d.querySelector('[data-input=defaults]');return b.getBoundingClientRect().bottom<=e.getBoundingClientRect().bottom && b.getBoundingClientRect().bottom<=d.getElementById('inputBindingsPanel').getBoundingClientRect().bottom;})()", $"Input binding footer is clipped at {width}x{height}");
+                                    }
+                                    if (screen == "library")
+                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor');return [...d.querySelectorAll('#libraryPreview button')].every(b=>b.getBoundingClientRect().bottom<=e.getBoundingClientRect().bottom);})()", $"Checkpoint actions are clipped at {width}x{height}");
+                                    if (screen is "home" or "official")
+                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,root=d.getElementById(d.body.dataset.page==='home'?'officialEvents':'officialWorkspaceEvents'),cards=[...root.querySelectorAll('.official-event')];return cards.length===10 && cards.every(card=>[...card.querySelectorAll('[data-official-preset]')].length===2 && [...card.querySelectorAll('[data-official-preset]')].every(b=>{const r=b.getBoundingClientRect(),c=card.getBoundingClientRect();return r.height>=25 && r.bottom<=c.bottom+1 && r.left>=c.left && r.right<=c.right+1;}));})()", $"Official practice buttons are clipped at {width}x{height}");
+                                    if (screen == "home")
+                                    {
+                                        await Check("(()=>{const e=document.getElementById('preview').contentDocument.getElementById('officialEvents');return e.scrollHeight<=e.clientHeight+2;})()", $"The ten-event Overview needs scrolling at {width}x{height}");
+                                        await core.ExecuteScriptAsync("document.getElementById('preview').contentWindow.redlineTestUi.setProtectedForLayout(true)");
+                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('officialEvents');return !d.getElementById('accessNotice').hidden && e.scrollHeight<=e.clientHeight+2;})()", $"The EAC notice crowds out Overview actions at {width}x{height}");
+                                        await core.ExecuteScriptAsync("document.getElementById('preview').contentWindow.redlineTestUi.setProtectedForLayout(false)");
+                                    }
+                                    if (width == 1040 && screen is "practice" or "library" or "settings" or "home" or "official")
+                                    {
+                                        await core.ExecuteScriptAsync("document.getElementById('preview').contentDocument.getElementById('labToast').hidden=true");
+                                        using var fitScreenshot = File.Create(Path.Combine(output, $"redline-fit-{screen}-{width}.png"));
+                                        await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, fitScreenshot);
+                                    }
+                                }
+                            }
+                            await core.ExecuteScriptAsync("Object.assign(document.getElementById('preview').style,{width:'1280px',height:'800px'})");
+                            foreach (var screen in new[] { "setup", "library", "practice", "presets" })
+                            {
+                                await core.ExecuteScriptAsync($"document.getElementById('preview').contentWindow.redlineTestUi.setPage('{screen}')");
+                                using var screenshot = File.Create(Path.Combine(output, "redline-" + screen + ".png"));
+                                await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
+                            }
+                        }
                         return report;
                     });
 
@@ -155,6 +204,7 @@ internal static class Program
                             await Check("getComputedStyle(document.getElementById('practicePanel')).display!=='none'", "Practice panel hidden");
                             await core.ExecuteScriptAsync("setPage('setup','sessions')");
                             await Check("document.querySelector('input[type=time][data-session-value]')!==null && document.documentElement.scrollWidth<=document.documentElement.clientWidth+2", "Direct time editor is missing or causes overflow");
+                            await Check("document.getElementById('editor').scrollWidth<=document.getElementById('editor').clientWidth+2 && document.getElementById('editor').clientWidth>400", "Builder content overflows or has insufficient space");
                             using (var screenshot = File.Create(Path.Combine(output, $"session-edits-{style}-{width}.png")))
                                 await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
                             await core.ExecuteScriptAsync("setPage('practice')");

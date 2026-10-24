@@ -7,7 +7,7 @@ From the repository root in PowerShell:
 .\build.cmd test -Configuration Release
 ```
 
-This runs C# unit/HTTP integration tests and all four actual-WebView2 suites,
+This runs C# unit/HTTP integration tests and all five actual-WebView2 suites,
 plus a production-page and layout smoke check. The isolated test host uses fake
 menu responses and refuses native memory attachment, so an installed/running
 LMU is not required. Test data uses unique temporary folders.
@@ -23,6 +23,12 @@ Run `.\build.cmd test-local -Configuration Release` for read-only mapped-image
 and installed-menu compatibility checks. Missing fixtures are reported as skips;
 those skips do not establish build compatibility. Direct `dotnet test` without
 a filter still includes both categories.
+
+The Redline suite covers builder/weather, map preview versus selection, checkpoint
+file actions, preset management, Controls and summary resizing. Populated layouts
+are checked at 1040×680 and 1280×800, including ten events and both practice buttons.
+Assertions detect overflow and clipped actions; rendered screenshots are retained.
+Backend/HTTP regressions cover map validation/cache and checkpoint file integrity.
 
 `.\build.cmd package` runs the repeatable suite, publishes and packages the app,
 then extracts the ZIP outside the checkout. Its smoke check runs CLI help/list

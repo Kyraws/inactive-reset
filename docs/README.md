@@ -10,6 +10,7 @@ an offline test does not establish live compatibility.
 | [Architecture](ARCHITECTURE.md) | Components, discovery, placement, and data flow |
 | [Local sessions](SESSIONS.md) | Session editor, launch workflow and startup prompt |
 | [Experimental Lab](LAB.md) | Current workspace, appearance and practice controls |
+| [Circuit maps and library](CIRCUIT_MAPS.md) | Layout geometry, checkpoint preview, file management and offline maps |
 | [Placement and rules](PLACEMENT.md) | Current sequence, restoration, and lap timing |
 | [Tyres](TYRES.md) | Live tyre view, physics rules and build-specific engine evidence |
 | [Status](STATUS.md) | Known implementation gaps and validation limits |

@@ -169,6 +169,7 @@ public sealed class LmuApiRoutesTests
         var routes = LmuApiRoutes.Load(LocalMenuFactAttribute.InstallRoot!);
         Assert.Equal("127.0.0.1", routes.Resolve(HttpMethod.Get, "/navigation/state").Host);
         Assert.Equal(64, routes.SourceSha256.Length);
+        Assert.Contains("/track/example/trackmap", routes.Resolve(HttpMethod.Get, "/rest/race/track/example/trackmap").AbsolutePath);
     }
 }
 

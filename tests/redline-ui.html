@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Redline workspace checks</title><pre id="report">Running…</pre><iframe id="preview" style="width:1280px;height:800px;border:0"></iframe>
+<script src="browser-helpers.js"></script><script>
+async function run(){
+ const base='../src/InactiveReset.Ui/';
+ const names=['Lab.html','App.css','Lab.css','Lab.workspace.css','Session.js','Practice.js','Lab.official.js','Lab.js','Lab.inputs.js','Lab.workspace.js'];
+ const [html,css,labCss,workspaceCss,...scripts]=await Promise.all(names.map(n=>fetch(base+n).then(r=>r.text())));
+ const frame=document.getElementById('preview'),ready=new Promise(r=>frame.onload=r);
+ frame.srcdoc=html.replace(/<script[^>]*><\/script>/g,'').replace(/<link[^>]*>/g,'').replace('</head>','<style>'+css+labCss+workspaceCss+'</style></head>');await ready;
+ const w=frame.contentWindow,d=frame.contentDocument,errors=[];
+ w.chrome={webview:{postMessage(){}}};
+ w.addEventListener('error',e=>errors.push(e.message));w.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
+ const setting=(n,text=String(n))=>({currentValue:n,stringValue:text,numStepsTotal:100});
+ const track={id:'layout',owned:true,shortName:'Barcelona',name:'Barcelona GP',sceneDesc:'BARCELONAELMS'};
+ const car={id:'car',isOwned:true,desc:'Team Car',fullPathTree:'2026, GT3, Mercedes-AMG LMGT3'};
+ let prefs={schema:1,style:'redline',theme:'midnight',density:'comfortable',pins:[],cars:[],tracks:[],checkpoints:[],plans:[]};
+ let setup={selection:{selectedCar:car,trackInfo:track,classesSelection:['GT3'],fullGrid:false},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:1,RACE:0},settings:{SESSSET_Practice_Length:setting(45),SESSSET_WarmUp_Length:setting(10),SESSSET_weather:setting(4,'Scripted'),SESSSET_AI_Strength:setting(95,'95%'),SESSSET_Num_Opponents:setting(0),SESSSET_flag_rules:setting(2,'Full')},assists:{},weather:{PRACTICE:Object.fromEntries(['START','NODE_25','NODE_50','NODE_75','FINISH'].map(n=>[n,{WNV_RAIN_CHANCE:setting(0,'0%'),WNV_TEMPERATURE:setting(24,'24°C')}])),QUALIFY:{},RACE:{}}};
+ for(const key of ['Qualify_Length','race_time','Race_Laps','practice1_starting_time','qualify_starting_time','warmup_starting_time','race_starting_time','private_prac','private_qual','Finish_Criteria','formation','Grid_Position','pract1_realroad_init','pract1_realroad_wet','pract1_realroad_temperatures','realroad_timescale_practice','qual1_realroad_init','qual1_realroad_wet','qual1_realroad_temperatures','realroad_timescale_qualify','race_realroad_init','race_realroad_wet','race_realroad_temperatures','realroad_timescale_race','timescaled_weather','AI_Aggression','Damage_Multi','Mech_Failures','Fuel_Usage','Tire_Wear','tire_warmers','tires_available_in_garage','keep_tire_inv_on_track_change','cut_rules','cuts_allowed','blue_flags','parc_ferme'])setup.settings['SESSSET_'+key]||=setting(1);
+ for(const fields of Object.values(setup.weather.PRACTICE))for(const key of ['WNV_SKY','WNV_HUMIDITY','WNV_WINDSPEED','WNV_WINDDIRECTION'])fields[key]=setting(0);
+ let checkpoints=[{id:'a',name:'Turn 1',track:'Barcelona',vehicle:'Team Car',lapDistance:400,x:50,z:0,speedKmh:100,gear:3,rollingEligible:true},{id:'b',name:'Entry',track:'Barcelona',vehicle:'Other Car',lapDistance:800,x:100,z:80,speedKmh:70,gear:2,rollingEligible:true},{id:'q',name:'Quick capture',quick:true,track:'Barcelona',vehicle:'Team Car',lapDistance:200,x:0,z:50,speedKmh:90,gear:3,rollingEligible:true},{id:'c',name:'Other track',track:'Spa',vehicle:'Car',lapDistance:300,x:0,z:0}];
+ const native=()=>({connected:true,game:{running:true},session:{track:'Barcelona',vehicle:'Team Car',capturable:true},checkpoints,inGarage:true,tyreRules:{inGarage:true},rollingStartSupported:true,phase:'Idle',busy:false,log:[]});
+ const map={id:'layout',track,points:[{type:0,x:0,z:0},{type:0,x:100,z:0},{type:0,x:100,z:100},{type:0,x:0,z:100},{type:1,x:-5,z:0},{type:1,x:-5,z:100},{type:149,x:40,z:70}]};
+ let writes=[],managed=[],deleted;
+ const events=Array.from({length:10},(_,i)=>({id:'event'+i,category:i<7?'beginner':i<9?'weekly':'special',title:i%2?'Long-distance multiclass championship rehearsal':'Official GT Sprint',content:{track:{name:i%2?'Circuit de Barcelona-Catalunya — Grand Prix':'Bahrain International Circuit — Outer',subItems:[]}},times:[],sessions:['Qualifying','Race'].map(type=>({type,duration:type==='Race'?'45m':'15m',timeOfDay:'15h',realRoad:'green',weather:[]}))}));
+ async function fake(path,opts){
+   const body=opts?.body?JSON.parse(opts.body):null;let value={};
+   if(path==='/api/lab/preferences'){if(body){prefs=structuredClone(body);value={ok:true};}else value=prefs;}
+   else if(path==='/api/state')value=native();
+   else if(path==='/api/session/setup')value=setup;
+   else if(path==='/api/session/catalog')value={cars:[car],tracks:[track]};
+   else if(path==='/api/session/state')value={pid:123,state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_SETUP',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false}};
+   else if(path==='/api/track-maps')value={tracks:[track]};
+   else if(path.startsWith('/api/track-map?'))value=map;
+   else if(path.startsWith('/api/official-sessions'))value={events,warnings:[],fetchedAt:new Date().toISOString()};
+   else if(path==='/api/session/action'){writes.push(body);if(body.action==='sessionValue')setup.settings[body.key]=setting(body.value);value=setup;}
+   else if(path==='/api/checkpoints/manage'){
+     managed.push(body);
+     if(body.action==='delete'){deleted=checkpoints.find(c=>c.id===body.id);checkpoints=checkpoints.filter(c=>c.id!==body.id);value={ok:true,token:'undo'};}
+     else if(body.action==='undo'){checkpoints.push(deleted);value={ok:true,id:deleted.id};}
+     else{const source=checkpoints.find(c=>c.id===body.id),copy={...source,id:'new',quick:false,name:body.name};if(body.action==='rename')checkpoints=checkpoints.filter(c=>c.id!==source.id);checkpoints.push(copy);value={ok:true,id:copy.id};}
+   }
+   return {ok:true,json:async()=>structuredClone(value)};
+ }
+ const ui=new w.Function('fetch','setInterval','clearInterval',scripts.join('\n')+'\nreturn {setPage,loadSetup,renderCheckpoints,renderLibrary,mapSvg,inspectPreset,snapshotPlan,renderPlans,manageCheckpoint,undoCheckpoint,updateWorkspace,getPrefs:()=>labPreferences,getPreview:()=>libraryPreviewId,setProtectedForLayout(value){gameProtected=value;updateControls();},enableWeekend(){setup.amounts={PRACTICE:1,QUALIFY:1,WARMUP:1,RACE:1};renderContent();}};')(fake,()=>0,()=>{});
+ w.dispatchEvent(new w.CustomEvent('input-bindings',{detail:{bindings:Object.fromEntries(['capture','teleport','standing','previous','next'].map((action,i)=>[action,{keyboard:{keyCode:67+i,modifiers:3},wheel:null}])),devices:[]}}));
+ let count=0;const check=(ok,message)=>{if(!ok)throw Error(message);count++;};
+ await until(()=>d.querySelector('[data-builder]')&&d.body.dataset.style==='redline','Workspace initialization');
+ ui.setPage('setup','sessions');
+ check(d.querySelectorAll('[data-builder]').length===5,'Builder combines all five groups');
+ check(d.querySelectorAll('.builder-tabs [role=tab]').length===5&&d.querySelectorAll('[data-builder]:not([hidden])').length===1,'One builder tab is visible at a time');
+ check(d.querySelectorAll('[data-weather-session]').length===1&&!d.querySelector('[data-weather-session=WARMUP]'),'Weather shows only enabled supported sessions');
+ check(!d.querySelector('[data-bind=game]')&&!d.querySelector('[data-action=place-state]')&&!d.body.textContent.includes('Compact practice'),'No simulated state or compact utility');
+ check(!d.body.textContent.includes('Race engineer')&&!d.body.textContent.includes('Mandatory'),'Unsupported prototype settings omitted');
+ check(writes.length===0,'Initialization and preview never write to game');
+ ui.renderCheckpoints(native());ui.setPage('library');
+ await until(()=>d.querySelector('#libraryMap svg'),'Real geometry rendered');
+ check(d.querySelectorAll('#checkpointCards article').length===2,'Library groups named captures by circuit and excludes quick slots');
+ check(d.querySelectorAll('#libraryMap .map-marker').length===2,'Saved world coordinates become map markers');
+ const selected=d.getElementById('cp').value;d.querySelector('#checkpointCards [data-preview-checkpoint=b]').click();
+ check(ui.getPreview()==='b'&&d.getElementById('cp').value===selected,'Map preview does not change destination');
+ check(!d.getElementById('practicePanel').hidden===false,'Preview stays in library');
+ d.querySelector('button[data-map-checkpoint=b]').click();check(d.getElementById('cp').value==='b'&&!d.getElementById('practicePanel').hidden,'Explicit selection opens Practice without moving car');
+ check(writes.length===0,'Map selection performs no game write');
+ await ui.manageCheckpoint('copy','q');d.getElementById('checkpointEditName').value='Permanent';d.getElementById('checkpointEditForm').requestSubmit();
+ await until(()=>!d.getElementById('checkpointEdit').open,'Permanent copy saved');
+ check(managed[0].action==='copy'&&checkpoints.some(c=>c.id==='q')&&checkpoints.some(c=>c.name==='Permanent'),'Quick capture saved as permanent copy');
+ await ui.manageCheckpoint('delete','a');check(!checkpoints.some(c=>c.id==='a'),'Delete reaches backend');await ui.undoCheckpoint();check(checkpoints.some(c=>c.id==='a'),'Undo restores deleted capture');
+ prefs=ui.getPrefs();prefs.plans.push({id:'p',name:'My Practice',target:ui.snapshotPlan()});ui.renderPlans();ui.inspectPreset('p');
+ check(d.getElementById('presetDetails').open&&d.getElementById('presetDetailsBody').textContent.includes('Practice duration'),'Preset drawer exposes actual saved controls');
+ check(d.querySelectorAll('.preset-table-row').length===1,'Personal presets use the new table');
+ d.getElementById('presetDetails').close();d.querySelector('[data-duplicate-preset=p]').click();await until(()=>ui.getPrefs().plans.length===2,'Preset duplicated');
+ check(ui.getPrefs().plans[1].target.settings.SESSSET_Practice_Length===45,'Duplicate preserves configuration');
+ ui.setPage('presets');check(d.getElementById('editor').scrollWidth<=d.getElementById('editor').clientWidth+2,'Preset table has no internal horizontal overflow');
+ ui.setPage('settings');check(w.getComputedStyle(d.getElementById('inputBindingsPanel')).display!=='none'&&!d.querySelector('[data-settings-tab],[data-style-choice],button[data-theme],button[data-density]'),'Controls open directly without appearance settings');
+ ui.setPage('setup');const handle=d.getElementById('summaryHandle');handle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check(handle.getAttribute('aria-valuenow')==='304','Summary resize supports keyboard and persistence');
+ check(d.querySelector('#sectionNav .rail-link').classList.contains('active'),'Unified builder remains highlighted for every group');
+ check(errors.length===0,'No unhandled errors: '+errors.join('; '));
+ check(d.getElementById('editor').scrollWidth<=d.getElementById('editor').clientWidth+2,'Builder has no internal horizontal overflow');
+ check(writes.length===0,'All browsing and file operations leave game settings untouched');
+ w.redlineTestUi=ui;
+ document.getElementById('report').textContent='PASS '+count+' Redline checks passed';
+}
+run().catch(e=>document.getElementById('report').textContent='FAIL '+e.stack);
+</script></html>

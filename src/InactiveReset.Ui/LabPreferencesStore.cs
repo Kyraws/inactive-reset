@@ -35,13 +35,20 @@ public sealed class LabPreferencesStore(string dataDirectory)
         return new JsonObject { ["ok"] = true };
     }
 
-    private static JsonObject Defaults() => JsonNode.Parse("""{"schema":1,"theme":"midnight","density":"comfortable","pins":["SESSSET_Num_Opponents","SESSSET_AI_Strength","SESSSET_weather"],"cars":[],"tracks":[],"checkpoints":[],"plans":[]}""")!.AsObject();
+    private static JsonObject Defaults() => JsonNode.Parse("""{"schema":1,"theme":"midnight","style":"redline","density":"comfortable","pins":["SESSSET_Num_Opponents","SESSSET_AI_Strength","SESSSET_weather"],"cars":[],"tracks":[],"checkpoints":[],"plans":[]}""")!.AsObject();
 
     public static void Validate(JsonObject value)
     {
         if (value.ToJsonString().Length > 512_000 || value["schema"]?.ToJsonString() != "1") Invalid();
         if (Text(value["theme"]) is not ("midnight" or "daylight") || Text(value["density"]) is not ("comfortable" or "compact")) Invalid();
         if (value.ContainsKey("style") && Text(value["style"]) is not ("original" or "redline")) Invalid();
+        if (value["summaryWidth"] is { } width && (!double.TryParse(width.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var pixels) || !double.IsFinite(pixels) || pixels is < 240 or > 440)) Invalid();
+        if (value["mapLayouts"] is { } mappings)
+        {
+            if (mappings is not JsonObject layouts || layouts.Count > 200) Invalid();
+            foreach (var (track, layout) in (JsonObject)mappings)
+                if (track.Length is < 1 or > 256 || Text(layout) is not { Length: <= 128 } id || id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_'))) Invalid();
+        }
         foreach (var key in new[] { "pins", "cars", "tracks", "checkpoints" })
         {
             if (value[key] is not JsonArray list || list.Count > 200) Invalid();

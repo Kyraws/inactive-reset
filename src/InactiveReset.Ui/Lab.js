@@ -21,18 +21,15 @@ function persistPreferences(){
   preferencesWrites=preferencesWrites.then(async()=>{try{await request('/api/lab/preferences',snapshot);return true;}catch(e){notify('Your Lab choices could not be saved. '+e.message,true);return false;}});
   return preferencesWrites;
 }
-function effectiveTheme(){return labPreferences.style==='redline'?'midnight':labPreferences.theme;}
+function effectiveTheme(){return 'midnight';}
 function applyAppearance(){
- const racing=labPreferences.style==='redline';document.body.dataset.style=racing?'redline':'original';document.body.dataset.theme=effectiveTheme();document.body.dataset.density=labPreferences.density;
+ labPreferences.style='redline';labPreferences.theme='midnight';labPreferences.density='comfortable';
+ document.body.dataset.style='redline';document.body.dataset.theme='midnight';document.body.dataset.density='comfortable';
  for(const img of document.querySelectorAll('.brand-logo')){const src=brandLogoUrl(img.dataset.brand);if(img.getAttribute('src')===src)continue;img.hidden=true;img.nextElementSibling.hidden=false;img.onload=()=>{img.hidden=false;img.nextElementSibling.hidden=true;};img.src=src;}
- for(const b of document.querySelectorAll('[data-theme]')){b.classList.toggle('active',b.dataset.theme===effectiveTheme());b.disabled=racing;}
- for(const b of document.querySelectorAll('[data-density]'))b.classList.toggle('active',b.dataset.density===labPreferences.density);
- for(const b of document.querySelectorAll('[data-style-choice]')){const selected=b.dataset.styleChoice===(labPreferences.style||'original');b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected));}
- for(const b of document.querySelectorAll('button[data-theme]'))b.title=racing?'Available in Original style':'';
- document.querySelector('.lab-brand small').textContent=racing?'ONE MORE LAP. THEN WE GO.':'THE PRACTICE LAB';
+ document.querySelector('.lab-brand small').textContent='REDLINE / PRACTICE WORKSPACE';
 }
 function setPage(page,nextSection){
-  const panels={home:'homePanel',setup:'setupPanel',practice:'practicePanel',library:'libraryPanel',activity:'activityPanel',settings:'settingsPanel',presets:'presetsPanel'};
+  const panels={home:'homePanel',setup:'setupPanel',practice:'practicePanel',library:'libraryPanel',activity:'activityPanel',settings:'settingsPanel',presets:'presetsPanel',official:'officialPanel'};
   if(!panels[page])return;
   labPage=page;for(const id of Object.values(panels))$(id).hidden=id!==panels[page];
   document.body.dataset.page=page;
@@ -40,10 +37,11 @@ function setPage(page,nextSection){
   $('sessionSummary').hidden=$('summaryMeta').hidden=document.querySelector('.dock-journal').hidden=$('setupDock').hidden;
   $('dockEyebrow').textContent=$('setupDock').hidden?'YOUR PRACTICE':'YOUR SESSION';
   if(nextSection)baseSwitchSection(nextSection);
-  for(const b of document.querySelectorAll('.rail-link'))b.classList.toggle('active',b.dataset.page===page || page==='setup' && b.dataset.section===section);
+  for(const b of document.querySelectorAll('.rail-link'))b.classList.toggle('active',b.dataset.page===page || page==='setup' && !!b.dataset.section);
   if(['practice','library','activity'].includes(page))refresh();else{clearInterval(timer);timer=null;period=0;}
   if(page==='presets'){renderPlans();renderOfficialSessions();}if(page==='library')renderLibrary();if(page==='activity')renderLabActivity();
   $('editor').scrollTop=0;updateLabControls();
+  if(typeof updateWorkspace==='function')updateWorkspace();
 }
 const baseSwitchSection=switchSection;
 switchSection=next=>setPage('setup',next);
@@ -79,6 +77,7 @@ function updateLabControls(){
   $('undoButton').disabled=locked||!lastUndo;
   renderAccessMessage();
   updateSessionValueControls();
+  if(typeof updateWorkspace==='function')updateWorkspace();
 }
 function renderAccessMessage(){
   renderMetrics();
@@ -92,7 +91,7 @@ function renderAccessMessage(){
     :gameProtected?'Easy Anti-Cheat is active. Events, saved presets and checkpoint capture remain available when LMU provides a car position. '+(online?'You are in multiplayer. Open LMU’s single-player main menu to edit or start a local session. ':'You can edit and start local sessions from LMU’s single-player main menu. ')+'To teleport or prepare tyres, close LMU and choose Launch local play, then load single-player Practice.'
     :online?'Events and saved data remain available. Session editing needs LMU’s single-player main menu; teleporting and tyre preparation need single-player Practice.'
     :'Choose an official event or build a session. Review and apply it, press Start session, then switch to LMU and press Drive. Teleporting and tyre preparation work only in single-player Practice. For online racing, close LMU first and choose Launch with EAC.';
-  $('accessNotice').hidden=gameRunning&&!gameProtected&&!online&&labPage!=='home';
+  $('accessNotice').hidden=gameRunning&&!gameProtected&&!online;
   $('launchChoices').hidden=gameRunning;
   $('launchLocalChoice').disabled=$('launchEacChoice').disabled=gameRunning||launching||saving||starting;
 }
@@ -135,7 +134,7 @@ change=async function(body){if(body.action==='assist'){notify('Driving assists a
 const baseCheckpoints=renderCheckpoints;
 renderCheckpoints=function(s){labState=s;baseCheckpoints(s);$('libraryCount').textContent=(s.checkpoints||[]).length;
  const list=(s.checkpoints||[]).filter(c=>c.track.toLowerCase()===(s.session?.track||'').toLowerCase());
- $('destinationList').innerHTML=list.map(c=>`<button class="destination-option ${$('cp').value===c.id?'active':''}" data-pick-checkpoint="${escapeHtml(c.id)}" ${s.busy?'disabled':''} aria-pressed="${$('cp').value===c.id}"><strong>${escapeHtml(c.name)}</strong><span>${Math.round(c.lapDistance||0).toLocaleString()} m</span></button>`).join('')||'<p class="empty-note">'+(s.session?'No captures for this track yet.':'Load Practice to see destinations.')+'</p>';if(labPage==='library')renderLibrary();};
+ $('destinationList').innerHTML=list.map(c=>`<button class="destination-option ${$('cp').value===c.id?'active':''}" data-pick-checkpoint="${escapeHtml(c.id)}" ${s.busy?'disabled':''} aria-pressed="${$('cp').value===c.id}"><strong>${escapeHtml(c.name)}</strong><span>${Math.round(c.lapDistance||0).toLocaleString()} m</span></button>`).join('')||'<p class="empty-note">'+(s.session?'No captures for this track yet.':'Load Practice to see destinations.')+'</p>';if(labPage==='library')renderLibrary();if(typeof renderPracticeManagement==='function')renderPracticeManagement();};
 const baseActivity=renderActivity;
 renderActivity=function(s){baseActivity(s);labState=s;$('operationRibbon').hidden=!s.busy;$('operationText').textContent=s.phase==='Armed'?'LMU is ready. Press Drive in the game.':s.phaseMessage||'An operation is in progress.';if(labPage==='activity')renderLabActivity();updateLabControls();};
 function renderLibrary(){
@@ -238,13 +237,11 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.page)setPage(b.dataset.page);if(b.dataset.goto)setPage('setup',b.dataset.goto);
   if(b.dataset.close){const d=$(b.dataset.close);if(d.id==='planDialog'&&applyingPlan){cancelPlan=true;return;}d.close();}
-  if(b.dataset.styleChoice){labPreferences.style=b.dataset.styleChoice;applyAppearance();persistPreferences();}
-  if(b.dataset.theme){labPreferences.theme=b.dataset.theme;applyAppearance();persistPreferences();}if(b.dataset.density){labPreferences.density=b.dataset.density;applyAppearance();persistPreferences();}
   if(b.hasAttribute('data-favourite-cars')){favouriteCarsOnly=!favouriteCarsOnly;renderContent();}
   if(b.dataset.favCar)toggleFavourite('cars',b.dataset.favCar);if(b.dataset.favTrack)toggleFavourite('tracks',b.dataset.favTrack);if(b.dataset.favCheckpoint)toggleFavourite('checkpoints',b.dataset.favCheckpoint);
   if(b.dataset.car&&modelKey(catalog.cars.find(c=>c.id===b.dataset.car)||{})!==modelKey(currentCar()||{}))change({action:'car',id:b.dataset.car});if(b.dataset.track)change({action:'track',id:b.dataset.track});
   if(b.dataset.target)queueSessionValue(b.dataset.target,Number(b.dataset.value));
-  if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);reviewPlan(p.name,planIntents(p.target));}catch(err){notify(err.message,true);}}
+  if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);if(reviewPlan(p.name,planIntents(p.target)))pendingPlan.source={kind:'personal',id:p.id,name:p.name};}catch(err){notify(err.message,true);}}
   if(b.dataset.deletePlan){const p=labPreferences.plans.find(p=>p.id===b.dataset.deletePlan);if(p&&confirm('Delete saved preset “'+p.name+'”?')){const before=clone(labPreferences.plans);labPreferences.plans=labPreferences.plans.filter(v=>v.id!==p.id);if(!await persistPreferences())labPreferences.plans=before;renderPlans();}}
   if(b.dataset.weatherCopy){const source=setup.weather[weatherSession]||{},intents=[];if(b.dataset.weatherCopy==='points'){for(const node of Object.keys(source))if(node!==weatherNode)for(const [key,v] of Object.entries(source[weatherNode]||{}))intents.push({type:'weather',session:weatherSession,node,key,value:v.currentValue});}else{for(const [node,fields] of Object.entries(source))for(const [key,v] of Object.entries(fields))intents.push({type:'weather',session:b.dataset.weatherCopy,node,key,value:v.currentValue});}reviewPlan('Copy weather conditions',intents);}
   if(b.dataset.tyrePreset)tyrePreset(b.dataset.tyrePreset);if(b.dataset.renamePlan)editPreset(b.dataset.renamePlan);if(b.dataset.replacePlan)editPreset(b.dataset.replacePlan,true);
@@ -270,6 +267,7 @@ $('confirmSavePlan').addEventListener('click',async()=>{
   p.target.assists={};if(old)labPreferences.plans=labPreferences.plans.map(v=>v.id===p.id?p:v);else labPreferences.plans.push(p);
   if(!await persistPreferences()){labPreferences.plans=before;return;}
   renderPlans();$('savePlanDialog').close();notify('Session preset saved.');
+  if(typeof builderPreset!=='undefined'&&old&&builderPreset?.id===old.id){builderPreset={kind:'personal',id:p.id,name:p.name,baseline:clone(p.target)};updateWorkspace();}
  }catch(e){labPreferences.plans=before;notify(e.message,true);}finally{$('confirmSavePlan').disabled=false;}
 });
 

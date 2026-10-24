@@ -1,218 +1,133 @@
-# Lab 02 — experimental UI
+# Practice workspace
 
-The Lab workspace is the application interface. Open `inactive-reset-ui.exe` from the release ZIP. The classic pages and comparison dialog have been removed.
+The desktop app uses Redline with a fixed dark appearance. Open
+`inactive-reset-ui.exe`; the browser UI serves the same workspace.
 
-## Launch mode and first use
+## Launch and access
 
-**Launch local play** starts without EAC and allows the full toolset in
-single-player Practice. **Launch with EAC** supports online racing in LMU,
-single-player session setup through REST, and checkpoint capture through shared
-telemetry. Teleporting, tyre preparation and practice memory writes stay disabled
-with EAC. The app never attaches to the protected game.
+- **Launch local play:** EAC off; memory actions require active single-player
+  Practice. Online racing is unavailable.
+- **Launch with EAC:** online racing in LMU, local-session setup through REST,
+  and valid SDK checkpoint capture. Memory actions remain disabled.
+- Setup requires the single-player main menu in either mode. Loading,
+  multiplayer and active sessions lock editing. Dismiss LMU's startup prompt
+  manually. Close LMU before switching launch modes.
+- Capture needs an active session and valid current pose. Menu/loading guards
+  reject stale telemetry left behind after a session ends.
 
-The first screen explains both choices. A launch-mode badge and persistent EAC
-notice show what is available; disabled actions explain why and how to unlock
-them. Session editing requires the single-player main menu in either mode.
-Switching modes requires closing LMU first. Capture saves a position; selecting
-a checkpoint does not move the car. Quick capture replaces its track/car slot,
-while a named capture stays in the library.
+## Session builder and layout
 
-Capture is disabled at the main menu and during loading: LMU can leave its last
-car position in telemetry after returning to the menu. Both capture actions wait
-for an active session, and the server rechecks before saving.
+The five tabs are Car & circuit, Weekend, Conditions, Competition and Rules.
+Content, ranges and accepted labels come from LMU. Model cards group seasons
+while keeping distinct Evo/regulation variants; livery and layout remain separate.
+Weekend uses horizontal rows. Conditions holds per-session surface controls and
+five-point weather for enabled Practice, Qualifying and Race. There is no separate
+Warmup forecast. Driving assists stay in LMU and are excluded from all presets,
+including old imports.
 
-## What to try
+Builder edits save immediately with readback. Numeric/time edits coalesce while
+typing; failed saves retain drafts with retry/discard. Start waits for confirmed
+settings. See [Local sessions](SESSIONS.md) for the launch sequence.
 
-With LMU focused, **Ctrl+Alt+C** saves and selects **Quick capture**. Each press
-replaces the previous quick capture for that track and car; named library
-checkpoints are kept. The Practice **Quick capture** button does the same thing.
-**Ctrl+Alt+R** teleports to the selected destination with captured facing, speed
-and gear; **Ctrl+Alt+Shift+R** makes a standing teleport. Speed restoration still
-requires the capture car and an eligible straight, approximately level capture.
-Quick capture is stored on disk and survives restarting the app.
+Main views fit at 1040×680 and 1280×800. Long lists scroll within panels;
+dialogs/additional controls can scroll. Builder tabs support arrow keys. Setting
+notes remain accessible and appear on hover. The summary resizes by dragging or
+Left/Right keys and becomes a drawer at narrow widths. Overview fits ten event
+cards with both practice buttons visible. Controls opens bindings directly;
+appearance/density selectors and compact utility mode are removed. Old appearance
+preferences remain readable but do not affect presentation.
 
-Live check on 2026-10-16, LMU build 14200, solo Barcelona Mercedes #62:
-Ctrl+Alt+C replaced the quick slot at 67.72 km/h in second gear; Ctrl+Alt+R
-used that automatically selected capture and completed at an observed
-66.51 km/h in second gear. Turning-state restoration was not added or tested.
+## Personal presets
 
-| Area | Experiment |
-| --- | --- |
-| Navigation | One rail for the dashboard, five builder sections, Practice, library, Activity and settings |
-| Overview | Official scheduled events, separate qualifying/race practice presets, and direct links to Practice tools, presets and the session builder |
-| Car browser | Installed manufacturer-logo cards grouped across seasons, class/season filters, model favourites and full season/team/livery selection; distinct Evo names and LMP2 regulations stay separate |
-| Circuit selection | Circuit names from catalog metadata; separate layout/event-configuration list and favourite layouts |
-| Session presets | Dedicated manager: save, review/reuse, rename, update from current session, delete, search and import/export; includes car, layout, session rules, class selection and Scripted weather |
-| Conditions | Five-point forecast chart with rain percentages and temperature; reviewed copying between points or sessions |
-| Controls | Switch-style boolean controls, duration shortcuts and reviewed undo for the latest simple edit |
-| Practice | Explicit selectable destination buttons; consolidated all-wheel and individual condition/temperature controls; fresh/warm/worn/game-temperature choices and generated checkpoint names |
-| Library | All captured tracks, search, name/track/distance sorting, favourites and selection on the loaded track |
-| Activity | Operation ribbon, fixed next-step panel, issue filtering and report export |
-| Appearance | Midnight/Daylight themes; Compact reduces row heights, typography, navigation, cards and page spacing |
+Save up to 40 presets in the validated, atomically replaced 512 KB
+`data/ui-lab.json`. Presets retain car, layout, rules, session counts, class/grid
+selection and Scripted weather, rather than specific generated AI entries.
 
-Driving-assist editing and keyboard-shortcut navigation are removed from Lab. Presets never capture or apply driving assists, including old imported presets that contain them.
+The manager supports search, details, rename, duplicate, update, delete and
+import/export, including individual export. The builder shows the applied source
+and whether settings differ from its baseline. Restore opens a review; Update
+saves the confirmed setup. Save a personal copy to retain edits to official sources.
 
-Blank tyre-temperature fields delegate to LMU’s starting temperature, including its warmer setting and selected compound. Enter a number to override that wheel, or use the all-wheel field to fill four temperatures. No fixed warm/cold temperature is presented as a universal default.
+Review works offline; applying requires the local main menu. Writes are sequential
+with readback. Failure stops remaining requests; cancellation finishes the pending
+request. Confirmed changes remain in LMU. Applying never starts a session. Undo
+covers the latest simple setting/session-count edit, not a whole plan. Unknown
+content/settings are refused; controls requiring over 64 individual steps need
+manual adjustment. Saving/importing succeeds only after persistence.
 
-Plans can be reviewed offline. Applying requires LMU's local main menu and uses
-the existing guarded API actions. Changes are sequential, with readback after
-each write. A failure stops the remaining requests; cancellation finishes the
-pending request before stopping. Already confirmed changes remain in LMU.
-Review the current setup before retrying. Plans do not launch a session by
-themselves. Startup prompt dismissal remains manual.
+## Official scheduled sessions
 
-Saved plans retain the opponent class selection and grid source, rather than
-specific generated AI entries. Unknown or unavailable settings/content are
-refused by the existing game API gates. Controls that need more than 64 individual
-steps must be adjusted manually. Undo covers a simple setting, or session
-count edit; it is not a rollback of a complete plan.
+Overview and Official races list RaceControl daily, weekly and special events.
+While LMU runs, its Steam ticket authenticates automatic refresh at most every
+15 minutes after success; Refresh events updates immediately. Tokens stay in
+memory. The app does not register for or join online events.
 
-Lab choices live in the fixed `data/ui-lab.json` file. The store validates sizes and types and replaces the file atomically. It
-accepts at most 40 plans within a 512 KB preference file. Saving/importing a plan
-reports success after the file write is confirmed. Changing tyre choices only
-prepares the requested values; **Prepare tyres** or **Place checkpoint** applies
-them through the existing practice tools.
+Qualifying/Race conditions are cached separately in `data/official-sessions.json`,
+outside the personal-preset limit. Failed categories retain saved entries and
+report the failure. Hosted/community events are excluded; alternating configurations
+stay separate. Saved presets remain available offline.
+
+Qualifying practice and Race practice review **solo Practice with zero AI**.
+Matching uses the exact installed scene and an owned eligible car, retaining the
+current eligible livery. Time, duration, surface/water/temperature source, five
+weather points and exposed simulation multipliers are copied. Online BoP, fixed
+setups, tyre allocation and traffic-created rubber/water are not reproduced.
+Applying opens the builder; Start session remains separate.
+
+Online Natural grip inherits earlier sessions. Solo presets use the last explicit
+earlier surface and retain RealRoad progression. Bahrain Outer LMGT3 Fixed was
+Heavy then Natural in the 2026-10-23 source: both solo presets therefore start
+Heavy with Normal progression. Heavy is an initial condition, not frozen evolution.
+Unresolved inherited baselines are refused rather than guessed as Green.
+
+## Practice and checkpoint library
+
+Capture saves a pose; selecting a destination never moves the car. Quick capture
+replaces its track/car slot and survives restart. Named captures stay separate;
+Save as named copies the saved quick slot without recapturing the current car.
+The library separates preview from selection and provides circuit/car filters,
+favourites, rename, delete and one-operation undo. See
+[Circuit maps and library](CIRCUIT_MAPS.md) for geometry, caching and recovery.
+
+Normal teleport restores speed/gear for an eligible straight, approximately level
+moving capture in the capture car. Standing teleport can reuse another car's pose
+on the matching track. Actual ownership/state chooses garage placement with a
+Drive handoff or experimental on-track reset. See [Placement](PLACEMENT.md).
+
+Tyre preparation sets independent FL/FR/RL/RR condition and optional initial heat
+through the garage. Blank heat delegates to LMU; the all-wheel slider's zero
+clears overrides. Editing choices does not apply them. Prepare tyres or Apply on
+garage teleport uses the guarded handoff. On-track reset preserves fitted tyres
+and refuses conditioning. See [Tyres](TYRES.md) for verified scope.
 
 ## Keyboard and wheel assignments
 
-Open **Lab settings → Keyboard & wheel buttons** in the desktop app. Each action
-can have one keyboard shortcut and one controller button. Choose **Assign key**
-and press a shortcut, or **Assign button** and release/press the wheel button.
-Escape or **Cancel assignment** cancels; learning times out after 15 seconds.
-Clear either binding independently or restore defaults. Duplicate bindings and
-keyboard shortcuts reserved by another app are refused. Use a modifier with a
-key, or an unmodified F1–F24 key.
+Open **Controls** in the desktop app. Each action accepts one keyboard shortcut
+and one controller button. Assign key learns a shortcut; Assign button learns a
+released-then-pressed wheel/button-box input. Escape/Cancel or 15 seconds stops
+learning. Clear independently or restore defaults. Duplicates and reserved
+shortcuts are refused. Use a modifier or F1–F24.
 
-| Action | Default shortcut |
+| Action | Default |
 | --- | --- |
 | Quick capture | Ctrl+Alt+C |
 | Teleport with speed and gear | Ctrl+Alt+R |
 | Standing teleport | Ctrl+Alt+Shift+R |
-| Previous speed-ready checkpoint | Ctrl+Alt+Up |
-| Next speed-ready checkpoint | Ctrl+Alt+Down |
+| Previous / Next speed-ready checkpoint | Ctrl+Alt+Up / Down |
 
-Previous/Next includes Quick capture and other checkpoints on the loaded track,
-captured in the loaded car, with an eligible moving capture and forward gear.
-It sorts by lap distance, then name/ID, and wraps at either end. The Practice
-Previous/Next buttons use the same list. Cycling selects the teleport destination;
-it does not move the car. Other destinations remain available manually for
-standing teleport. Background input refreshes the list before cycling because
-WebView polling can be throttled while LMU is foreground.
+Previous/Next wraps through eligible moving captures for the loaded track/car,
+including Quick capture, ordered by lap distance then name/ID. It selects without
+teleporting. Background input refreshes eligibility while LMU has focus.
 
-Bindings are saved atomically in `data/input-bindings.json`. Actions dispatch
-only with LMU focused, but Windows reserves keyboard shortcuts while the desktop
-app runs. Controller bindings use device path and button number. Disconnected
-bindings are retained and marked disconnected. Reconnecting with a button held
-does not trigger an action. An initial report establishes a baseline, so a button
-box that sends no neutral report may need a second press when first connected.
-Axes and hat switches are not assignable.
+Bindings are atomically saved in `data/input-bindings.json`. Dispatch requires
+LMU focus, although Windows reserves shortcuts while the app runs. Controller
+bindings retain device path/button across disconnection. Reconnect/held-button
+baselines prevent accidental triggers; devices without a neutral report may need
+a second press. Axes/hats are unsupported. Read-only Raw Input does not acquire
+the wheel exclusively or send force feedback. Native rebinding/focus checks passed;
+physical wheel testing was deferred.
 
-Wheel input uses read-only [Windows Raw Input](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-raw-input)
-and HID button reports, including buttons above 32. It does not acquire the wheel
-exclusively or send force-feedback commands. On 2026-10-16 the owner confirmed
-the wheel was disconnected and explicitly deferred hardware verification.
-Native F8 rebinding, foreground gating and Next selection passed live checks;
-automated tests cover persistence/conflicts, held/reconnected buttons, independent
-reports, settings UI, list filtering/order/wraparound and teleport selection.
-
-## Validation
-
-282 .NET tests passed with one local-capture check skipped. The browser suites
-passed 52 Lab checks, 23 session-editor checks and 38 checkpoint checks. Lab
-checks cover review without writes, relative/absolute settings, no-op changes,
-failure/partial progress, cancellation, inactive-menu gates, offline review,
-owned cars, active-model livery preservation, bulk tyre choices, library filters
-and theme/density switching. Preference tests cover round-trip persistence,
-invalid input, plan limits and preservation after rejected writes.
-
-All Lab pages were rendered in WebView2 at 1280×800 and the 1040×680 minimum;
-both themes were inspected. Loaded-layout checks used captured metadata as a
-visual fixture. No new live session combinations were run for this experiment.
-
-## Official scheduled sessions
-
-Overview lists official daily, weekly and special events from RaceControl. When
-LMU is running, the app uses its normal Steam authentication ticket to refresh
-events automatically, at most every 15 minutes after a successful sync. **Refresh
-events** requests an update immediately. Authentication tokens remain in memory.
-No registration or online joining is performed.
-
-Each event's Qualifying and Race conditions are saved separately in
-`data/official-sessions.json` and listed in **Session presets**. These are solo
-Practice presets, so checkpoint tools remain available. They do not use the
-40 personal-preset slots. Refresh replaces the current official list; a failed
-category keeps its previous presets, marked as saved data. Cached presets remain
-available when RaceControl or LMU is unavailable. Hosted/community events are
-excluded. Alternating configurations within the same daily series remain separate.
-
-**Qualifying practice**, **Race practice** and **Use preset** open a review. The
-app matches the exact installed track scene and an owned eligible vehicle,
-keeping the selected livery when eligible. It copies the session duration, start
-time, track surface/water/temperature source, all five weather points and exposed
-time/RealRoad/fuel/tyre/damage multipliers and tyre warmers. Practice is the only
-enabled session, with zero AI. Driving assists stay unchanged. Online BoP, fixed
-setups and tyre allocation are not reproduced. After applying, the session page
-opens with **Start session** available; applying does not launch by itself.
-
-Online `natural` grip inherits the previous session. A standalone preset instead
-uses the last explicit starting surface in the event's earlier sessions and keeps
-the event's RealRoad progression rate. For Bahrain Outer LMGT3 Fixed, live source
-data on 2026-10-23 specifies Heavy for Practice, then Natural for Qualifying/Race:
-both solo presets therefore start Heavy with Normal (1×) progression. Heavy sets
-the initial rubber; it does not freeze evolution. Extra rubber/water accumulated
-by online traffic cannot be reconstructed from this configuration. Presets show
-the inherited baseline and the review explains this limit. An unresolved source
-is not guessed as Green; old caches refresh before using inherited grip.
-
-Live checks on 2026-10-23, directly launched LMU build 14200, retrieved ten events
-and twenty qualifying/race presets. All matched the installed catalog. An LMGT3
-Fixed Race preset at Bahrain Outer read back its solo session counts, duration,
-time, rules and thirty weather values; the original complete native preset was
-restored exactly. These checks validate menu configuration, not an on-track weather
-simulation or online equivalence. The weekly listing returned HTTP 500; daily and
-special-event import succeeded, and the app reports the partial failure.
-
-## Logo and layout polish (2026-10-10)
-
-Manufacturer artwork is read directly from the user’s installed `Bin/UI.zip`, under `start/images/manufacturer/Brand=*.svg`. No game artwork is bundled or extracted into this repository. Light mode uses Dark logo variants where supplied; other logos retain a dark backing for visibility. Missing artwork falls back to the manufacturer name. The cache refreshes when the archive changes. Both ZIP path separators are supported.
-
-Active controls, hover/focus states, native widgets and selections now follow the theme. Compact uses five car columns (four at the minimum window), puts livery selection above the model list, places session/rule groups side by side, and keeps the main Practice controls visible. The main tyre controls remain visible at the minimum window without the repetitive tyre summary.
-
-Validation: full .NET suite passed 280 tests with 1 skipped before the ZIP separator correction; both logo path/theme regression cases passed afterward. Browser suites passed 46 Lab, 23 session and 38 checkpoint checks, including light-theme contrast. All 35 current model cards loaded genuine installed logos in the light-theme visual check. No game settings or tyre writes were exercised.
-
-Final minimum-window measurement (1040×680): Compact Practice has no main-panel scrolling; Prepare tyres is visible. Sessions, rules and settings also fit. The full car list still scrolls when all models are shown; class/season/search filters reduce it. Both light and dark logo loading were visually verified.
-
-## Garage styles (2026-10-10)
-
-Settings now offers Original and Redline. Original preserves the existing interface and its saved Midnight/Daylight choice. Redline is dark only, with local SVG tyre artwork, chequered accents, red paint and race-plate typography. Switching back restores the Original theme. The style is saved with existing Lab preferences; older preference files default to Original.
-
-The Practice rules block is removed. Both styles retain the compact controls.
-The official-event Overview scrolls when its event list exceeds the window height.
-
-Validation: 282 .NET tests passed, 1 skipped; browser suites passed 52 Lab, 23 session and 38 checkpoint checks. Redline and restored Original Daylight were visually inspected in WebView2. No game session or tyre writes were performed.
-
-All-wheel initial heat uses a slider with numbered guides. Zero clears all four temperature overrides and selects Game default; explicit slider values use 1–150°C. Individual fields remain independent. The redundant Link condition values checkbox is removed.
-
-## Appearance loading and Practice cleanup (2026-10-16)
-
-Lab stays hidden until its saved appearance is ready. Clicking IR returns to
-Overview without reloading, preserving the theme and current controls. Theme
-changes hide the previous manufacturer logo until its replacement loads.
-Practice omits the session-settings summary and edit history; sidebar guidance
-is shorter and appears when needed. The experimental speed/gear detail is in
-the control tooltip.
-
-Validation: 65 Lab, 56 checkpoint and 23 session-editor browser checks passed
-in WebView2, including delayed preference loading, load failure recovery and IR
-navigation. The desktop build passed. No game-memory behavior changed.
-
-## Single interface (2026-10-16)
-
-The comparison button, dialog, classic HTML, old shell styles and classic launch
-option are removed. Both desktop and CLI browser entry points use the current
-workspace. Shared session and practice scripts remain; saved data is unchanged.
-
-Validation: 67 Lab, 56 checkpoint and 23 session-editor checks passed in WebView2.
-A localhost test verified the built root page, its assets and removal of the old
-session page. The Release solution build passed; both styles were inspected at
-the minimum window size. Live driving was not repeated.
+Activity retains progress, cancellation, diagnostics, issue filtering and export.
+Manufacturer logos come from installed `Bin/UI.zip`, with a text fallback; game
+artwork is not distributed. See [Status](STATUS.md) and [Testing](TESTING.md) for
+validation and remaining limits.

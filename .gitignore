@@ -41,6 +41,9 @@ dumps/
 # Agent scratch: issues and specs (see AGENTS.md). Working notes, not history.
 .scratch/
 
+# Local Windows environment cache
+/%SystemDrive%/
+
 # Machine-local agent permissions
 .claude/settings.local.json
 

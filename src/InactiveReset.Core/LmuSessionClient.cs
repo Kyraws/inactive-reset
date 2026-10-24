@@ -36,6 +36,34 @@ public sealed class LmuSessionClient
     public async Task<JsonObject> GameStateAsync(CancellationToken cancellation = default) =>
         Object(await RequestAsync(HttpMethod.Get, "/rest/sessions/GetGameState", cancellation: cancellation));
 
+    public async Task<JsonObject> TrackMapAsync(string id, CancellationToken cancellation = default)
+    {
+        if (id.Length is < 1 or > 128 || id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
+            throw new GateException("Invalid track identity.");
+        var tracks = Array(await RequestAsync(HttpMethod.Get, "/rest/race/track", cancellation: cancellation));
+        var track = tracks.OfType<JsonObject>().SingleOrDefault(t => t["id"]?.GetValue<string>() == id)
+            ?? throw new GateException("This layout is not in LMU's installed catalog.");
+        var points = Array(await RequestAsync(HttpMethod.Get, $"/rest/race/track/{id}/trackmap", cancellation: cancellation));
+        ValidateTrackMap(points);
+        return new JsonObject { ["id"] = id, ["track"] = track.DeepClone(), ["points"] = points.DeepClone(), ["fetchedAt"] = DateTimeOffset.UtcNow.ToString("O") };
+    }
+
+    public static void ValidateTrackMap(JsonArray points)
+    {
+        if (points.Count is < 3 or > 100000) throw new GateException("LMU returned an invalid circuit map.");
+        var main = 0;
+        foreach (var point in points)
+        {
+            if (point is not JsonObject p || p["type"] is not JsonValue type || !type.TryGetValue<int>(out var kind) || kind < 0)
+                throw new GateException("LMU returned an unsupported map waypoint.");
+            foreach (var axis in new[] { "x", "z" })
+                if (p[axis] is not JsonValue number || !number.TryGetValue<double>(out var value) || !double.IsFinite(value) || Math.Abs(value) > 1000000)
+                    throw new GateException("LMU returned an invalid map coordinate.");
+            if (kind == 0) main++;
+        }
+        if (main < 3) throw new GateException("This map has no circuit outline.");
+    }
+
     public async Task<string> AuthenticationTicketAsync(CancellationToken cancellation = default)
     {
         // shortcut: this inline RaceOS route has no named menu helper; recheck it when LMU changes authentication.

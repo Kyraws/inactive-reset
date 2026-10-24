@@ -279,6 +279,7 @@ async function refreshState(request) {
   document.getElementById('launchEac').disabled = !g.canLaunchProtected || !!g.running;
 
   schedule(s.busy ? 250 : 700);
+  if (typeof updateWorkspace === 'function') updateWorkspace();
 }
 
 async function toggle(which, enable) {

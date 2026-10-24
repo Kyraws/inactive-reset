@@ -56,6 +56,11 @@ session/checkpoint behavior used by `Lab.html` and `Lab.js`; both use the shared
 `App.css` controls. Session actions share the runner's operation lock and
 cancellation with practice transactions. Practice progress remains in the fixed
 summary panel.
+`Lab.workspace.js` and `Lab.workspace.css` implement the unified Redline builder,
+map/library workspace and preset drawers using those existing actions.
+`CircuitMapStore` caches validated, layout-specific REST geometry;
+`CheckpointLibrary` handles confined file operations without rewriting capture
+payloads. Capture and library mutations share the runner lock with placements.
 `LmuSessionClient` reads and edits the current local menu setup, then starts it
 through preset/apply/generate-save/load-save calls. It requires a local main
 menu and explicit startup-prompt confirmation; it does not attach to game

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -20,11 +20,12 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
 {
     private readonly PlacementRunner _runner = new(offsetDirectory, dataDirectory);
     private readonly LabPreferencesStore _labPreferences = new(dataDirectory);
+    private readonly CircuitMapStore _maps = new(dataDirectory, id => new LmuSessionClient(dataDirectory: dataDirectory).TrackMapAsync(id));
     private readonly OfficialSessionsStore _officialSessions = new(dataDirectory, new LmuSessionClient(dataDirectory: dataDirectory).AuthenticationTicketAsync);
     private readonly LmuBrandAssets _brandAssets = new(() => Path.Combine(GameLauncher.Locate(dataDirectory).Root, "Bin", "UI.zip"));
 
     internal Server(PlacementRunner runner, string dataDirectory, int port, OfficialSessionsStore? officialSessions = null) : this("unused", dataDirectory, port)
-    { _runner = runner; if (officialSessions is not null) _officialSessions = officialSessions; }
+    { _runner = runner; _maps = new(dataDirectory, runner.TrackMapAsync); if (officialSessions is not null) _officialSessions = officialSessions; }
 
     public string Url => $"http://127.0.0.1:{port}/";
     public Task StopAsync() => _runner.StopAsync();
@@ -78,6 +79,13 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         try
         {
             var path = context.Request.Url?.AbsolutePath ?? "/";
+            if (path == "/api/track-maps" && context.Request.HttpMethod == "GET")
+            { SendJson(context, new JsonObject { ["tracks"] = _maps.List() }); return; }
+            if (path == "/api/track-map" && context.Request.HttpMethod == "GET")
+            {
+                SendJson(context, await _maps.ReadAsync(context.Request.QueryString["id"] ?? "", context.Request.QueryString["refresh"] == "true"));
+                return;
+            }
             if (path.StartsWith("/api/brands/", StringComparison.Ordinal) && context.Request.HttpMethod == "GET")
             {
                 string? logo;
@@ -87,7 +95,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 SendText(context, logo ?? "", "image/svg+xml");
                 return;
             }
-            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
+            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
             if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
                 (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
             {
@@ -103,6 +111,12 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/lab.css":
                     SendText(context, UiAssets.Read("Lab.css"), "text/css");
+                    break;
+                case "/lab.workspace.css":
+                    SendText(context, UiAssets.Read("Lab.workspace.css"), "text/css");
+                    break;
+                case "/lab.workspace.js":
+                    SendText(context, UiAssets.Read("Lab.workspace.js"), "text/javascript");
                     break;
                 case "/lab.js":
                     SendText(context, UiAssets.Read("Lab.js"), "text/javascript");
@@ -171,6 +185,9 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/api/capture":
                     SendJson(context, _runner.Capture(ReadBody(context)));
+                    break;
+                case "/api/checkpoints/manage":
+                    SendJson(context, _runner.ManageCheckpoint(ReadBody(context)));
                     break;
                 default:
                     context.Response.StatusCode = 404;

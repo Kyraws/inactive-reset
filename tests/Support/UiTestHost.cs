@@ -101,6 +101,7 @@ internal sealed class TestMenu : HttpMessageHandler
                 "/rest/options/settings" => JsonNode.Parse("""{"DRIVEAIDS_steering_help":{"minValue":0,"maxValue":3,"stepValue":1,"currentValue":0,"valueType":"LONG"}}"""),
                 "/rest/sessions/getAllVehicles" => JsonNode.Parse("""[{"id":"car","desc":"Test car","isOwned":true,"fullPathTree":"2026, GT3, Test car"}]"""),
                 "/rest/race/track" => JsonNode.Parse("""[{"id":"track","name":"Test track","shortName":"Test track","owned":true}]"""),
+                "/rest/race/track/track/trackmap" => JsonNode.Parse("""[{"type":0,"x":0,"z":0},{"type":0,"x":100,"z":0},{"type":0,"x":100,"z":100}]"""),
                 _ => throw new InvalidOperationException($"Unexpected fixture GET {path}"),
             };
         }

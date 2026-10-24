@@ -130,7 +130,7 @@ public sealed class CaptureService(SharedMemoryReader reader)
         };
     }
 
-    internal static void ValidateName(string name)
+    public static void ValidateName(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100 ||
             name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.EndsWith('.') || name.EndsWith(' '))

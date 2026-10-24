@@ -12,7 +12,7 @@ internal sealed class LmuApiRoutes
 {
     // shortcut: named helper shapes are required; add verified shapes when the menu's bundling changes them.
     private sealed record Spec(string Logical, string Helper, string Call, string Payload,
-        string[]? Dynamic = null);
+        string[]? Dynamic = null, bool Optional = false);
     private static readonly Spec[] Specs =
     [
         new("/navigation/state", "getState", "getJson", "config"),
@@ -26,6 +26,7 @@ internal sealed class LmuApiRoutes
         new("/rest/sessions/getAllVehicles", "getAllVehicles", "getJson", ""),
         // The client reads the catalog at the same track resource used for selection.
         new("/rest/race/track", "postTrack", "postText", "id2"),
+        new("/rest/race/track/{track}/trackmap", "getTrackMap", "getJson", "", ["trackId"], Optional: true),
         new("/rest/sessions/settings", "postSessionSetting", "postJsonAndGetJson", "{sessionSetting,value:stepValue}"),
         new("/rest/sessions/{session}/sessions", "postSessionAmount", "postJson", "amount", ["sessionType.toLowerCase()"]),
         new("/rest/sessions/weather/{session}/{node}/{key}", "postWeatherSetting", "postJsonAndGetJson", "setting.value", ["setting.sessionType", "setting.node", "setting.key"]),
@@ -111,6 +112,7 @@ internal sealed class LmuApiRoutes
                     var end = End(tokens, start, "{", "}");
                     functions.Add(tokens.GetRange(start + 1, end - start - 1));
                 }
+                if (functions.Count == 0 && spec.Optional) continue;
                 if (functions.Count != 1) throw Refuse($"missing or ambiguous {spec.Helper} helper");
                 var body = functions[0];
                 var locals = Declarations(body);
@@ -161,7 +163,8 @@ internal sealed class LmuApiRoutes
             if (!match.Success) continue;
             var expected = spec.Call == "getJson" ? HttpMethod.Get : HttpMethod.Post;
             if (method != expected && !(spec.Helper == "postTrack" && method == HttpMethod.Get)) throw Refuse("unexpected request method");
-            var path = Regex.Replace(_routes[spec.Logical], @"\{(\w+)\}", m =>
+            if (!_routes.TryGetValue(spec.Logical, out var recovered)) throw Refuse("this menu does not expose the requested capability");
+            var path = Regex.Replace(recovered, @"\{(\w+)\}", m =>
             {
                 var value = match.Groups[m.Groups[1].Value].Value;
                 if (value is "." or "..") throw Refuse("invalid route parameter");
