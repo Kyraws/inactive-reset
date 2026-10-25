@@ -1,11 +1,11 @@
-﻿# Domain documentation
+# Domain documentation
 
-This repository has one glossary, [CONTEXT.md](../../CONTEXT.md), and one current
+This repository has one glossary, [CONTEXT.md](../CONTEXT.md), and one current
 [documentation index](../README.md).
 
 Before exploring an area, read the glossary and the relevant current guide.
 Read relevant decisions in `docs/adr/` if that directory exists. Historical
-investigations in `docs/archive/` are evidence with a recorded scope, not current
+investigations in `docs/research/` are evidence with a recorded scope, not current
 requirements.
 
 Use the glossary's terms, particularly the distinctions between pit state, pit

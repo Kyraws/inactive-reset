@@ -9,7 +9,7 @@
   },
   "executable_sha256": "0F6DCAC1524A3802C8F950B44DE4CA83ACB8C836DCD70253A875C36F3EFA144C",
   "format_version": 2,
-  "lock_reason": "Measured on 2026-08-22 at Circuit de Barcelona with Richard Mille AF Corse 2025 #50:ELMS on build 0F6DCAC1 (LMU 1.4.1.3): 0.000500 m horizontal and +0.000883 m vertical error at cp-023328. These constants are build-specific. Historical diagnosis and measurements are preserved in docs/archive/HEADING_BUG.md; this result does not establish accuracy on other builds or combinations.",
+  "lock_reason": "Measured on 2026-08-22 at Circuit de Barcelona with Richard Mille AF Corse 2025 #50:ELMS on build 0F6DCAC1 (LMU 1.4.1.3): 0.000500 m horizontal and +0.000883 m vertical error at cp-023328. These constants are build-specific. Historical diagnosis and measurements are preserved in docs/research/PLACEMENT_EVIDENCE.md; this result does not establish accuracy on other builds or combinations.",
   "locked": false,
   "note": "D and H are measured for THIS track and vehicle only. Never reuse them for another combination.",
   "placements_attempted": 7,

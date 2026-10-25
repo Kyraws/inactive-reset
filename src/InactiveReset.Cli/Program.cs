@@ -1,4 +1,4 @@
-﻿using InactiveReset.Core;
+using InactiveReset.Core;
 using InactiveReset.Ui;
 
 namespace InactiveReset.Cli;
@@ -94,7 +94,7 @@ internal static class Program
             "serve" => Serve(offsets, data, rest),
             "launch" => Launch(data, rest),
             // `dump` and `reanchor` are maintainer tools and deliberately absent.
-            // They live in src\InactiveReset.Reanchor, which is never published:
+            // They live in tools\InactiveReset.Reanchor, which is never published:
             // users consume offset profiles, they do not produce them.
             "dump" or "reanchor" => MaintainerOnly(args[0]),
             _ => Unknown(args[0]),
@@ -112,12 +112,12 @@ internal static class Program
             $"""
             `{verb}` is not part of the shipped tool.
 
-              Offset profiles are published, not derived on your machine. If LMU
-              updated, run the app: it will offer to fetch the profile for the
-              new build. If no profile exists yet, it has not been published yet.
+              The app discovers offsets locally from the running game and caches
+              them per executable build. Unsupported code or layouts require a
+              compatibility update; no profile download is needed.
 
-              Producing profiles is src\InactiveReset.Reanchor, which ships to
-              nobody.
+              Maintainer analysis lives in tools\InactiveReset.Reanchor and is
+              not included in release packages.
             """);
         return 2;
     }

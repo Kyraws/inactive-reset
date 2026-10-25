@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -17,7 +17,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InactiveReset.Ui", "src\Ina
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InactiveReset.App", "src\InactiveReset.App\InactiveReset.App.csproj", "{D8BBAFDF-ABC7-4DFF-9695-1F529142C286}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InactiveReset.Reanchor", "src\InactiveReset.Reanchor\InactiveReset.Reanchor.csproj", "{12F97C34-6504-4F84-A872-29C545C1D734}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InactiveReset.Reanchor", "tools\InactiveReset.Reanchor\InactiveReset.Reanchor.csproj", "{12F97C34-6504-4F84-A872-29C545C1D734}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

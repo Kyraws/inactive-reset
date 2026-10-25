@@ -26,13 +26,23 @@ function Start-Cli([string[]] $Arguments) {
 
 try {
     Expand-Archive -LiteralPath $zipPath -DestinationPath $smokeRoot
-    foreach ($relative in 'inactive-reset.exe','inactive-reset-ui.exe','offsets/shared-memory.json','data/profiles-default') {
+    foreach ($relative in 'inactive-reset.exe','inactive-reset-ui.exe','offsets/shared-memory.json','data/profiles-default',
+        'README.md','docs/CONTRIBUTING.md','docs/CONTEXT.md','docs/research/README.md') {
         if (!(Test-Path -LiteralPath (Join-Path $smokeRoot $relative))) { throw "Package is missing $relative" }
     }
     $layout = Get-Content -Raw -LiteralPath (Join-Path $smokeRoot 'offsets/shared-memory.json') | ConvertFrom-Json
     if ($layout.layoutSize -le 0) { throw 'Packaged SDK layout is invalid.' }
     if (Test-Path -LiteralPath (Join-Path $smokeRoot 'data/checkpoints')) { throw 'Package includes user checkpoints.' }
     if (Get-ChildItem -LiteralPath (Join-Path $smokeRoot 'offsets') -Filter '*.auto.json') { throw 'Package includes local build caches.' }
+    foreach ($document in Get-ChildItem -LiteralPath $smokeRoot -Recurse -File -Filter *.md) {
+        $markdown = [IO.File]::ReadAllText($document.FullName)
+        foreach ($link in [regex]::Matches($markdown, '\]\(([^\s)]+)\)')) {
+            $target = $link.Groups[1].Value.Split('#')[0]
+            if (!$target -or $target -match '^[a-zA-Z][a-zA-Z0-9+.-]*:') { continue }
+            $path = Join-Path $document.DirectoryName ([Uri]::UnescapeDataString($target))
+            if (!(Test-Path -LiteralPath $path)) { throw "Broken packaged documentation link: $($document.Name) -> $target" }
+        }
+    }
 
     foreach ($arguments in @(@('--help'), @('list'))) {
         $process = Start-Cli $arguments
@@ -70,7 +80,7 @@ try {
         $asset = $client.GetStringAsync($base.TrimEnd('/') + $match.Groups[1].Value).GetAwaiter().GetResult()
         if ([string]::IsNullOrWhiteSpace($asset)) { throw ('Empty packaged asset: ' + $match.Groups[1].Value) }
     }
-    @{passed=$true;checks=@('required files','SDK layout','no user data/caches','CLI help/list','HTTP startup','embedded page/assets')} |
+    @{passed=$true;checks=@('required files','SDK layout','no user data/caches','documentation links','CLI help/list','HTTP startup','embedded page/assets')} |
         ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $output 'results.json')
     Write-Host 'Package smoke passed from an extracted ZIP outside the repository.'
 } catch {

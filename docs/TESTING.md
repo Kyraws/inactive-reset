@@ -200,7 +200,7 @@ The suite does not establish successful live placement, penalty suppression,
 pit-state clearing, lap timing, or the native window's closing behaviour. Tests of
 outcome messages do not establish that the game produced those outcomes.
 
-Use the live verification procedure in [Contributing](../CONTRIBUTING.md) for
+Use the live verification procedure in [Contributing](CONTRIBUTING.md) for
 process and engine behaviour. Record which dump cases ran and which were
 skipped when reporting results.
 

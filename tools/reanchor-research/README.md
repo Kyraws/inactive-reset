@@ -1,4 +1,4 @@
-﻿# Discovery-resource scripts
+# Discovery-resource scripts
 
 `build-discovery-seeds.py` generates the instruction anchors embedded in Core.
 It is a maintainer tool requiring Python and Capstone; users need neither.
@@ -15,9 +15,8 @@ relevant local captures. Update `AutomaticOffsets.ResolverVersion` when changing
 discovery resources so existing caches are rebuilt. Unique offline matches are
 not a substitute for a production-path live test.
 
-## Archived prototypes
+## Retired prototypes
 
-[archive/](archive/README.md) preserves `stranchor.py`, `callgraph.py`, and
-`anchors3.py`. They are standalone historical experiments with hardcoded local
-capture paths and no project callers. They remain available as research
-references, but are not automatic discovery dependencies or supported workflows.
+The hardcoded string/caller/RTTI experiments were superseded. Their useful
+techniques and limitations are retained in
+[discovery evidence](../../docs/research/DISCOVERY_EVIDENCE.md).

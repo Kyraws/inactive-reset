@@ -47,10 +47,6 @@ dumps/
 # Machine-local agent permissions
 .claude/settings.local.json
 
-# Private handoff notes: machine-local paths and session gotchas. The durable
-# content lives in docs/ARCHITECTURE.md, which IS tracked.
-HANDOFF.md
-
 # IDE
 .vs/
 .idea/

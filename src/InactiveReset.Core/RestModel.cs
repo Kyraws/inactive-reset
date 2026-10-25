@@ -42,7 +42,7 @@ public readonly record struct RestConstants(float Forward, float Lateral, RestSo
 ///
 /// <para><b>Evidence.</b> Coefficients fitted to three cars at Circuit de
 /// Barcelona on build 0F6DCAC1, residuals under 1.7 mm, then validated blind on
-/// a fourth that had never been calibrated: 2.4 mm. See docs/archive/HEADING_BUG.md.</para>
+/// a fourth that had never been calibrated: 2.4 mm. See docs/research/PLACEMENT_EVIDENCE.md.</para>
 ///
 /// <para><b>Limits.</b> One track, one session, one setup. The settle is
 /// physical, so ride height, surface or slope may move these. They are per

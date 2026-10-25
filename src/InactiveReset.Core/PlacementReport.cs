@@ -137,7 +137,7 @@ public static class PlacementReport
 
     /// <summary>
     /// Below this, the placement landed where it was aimed. Above it something
-    /// is wrong -- see docs/archive/HEADING_BUG.md. This used to be where the documented
+    /// is wrong -- see docs/research/PLACEMENT_EVIDENCE.md. This used to be where the documented
     /// heading error was explained away as expected, which is precisely how a
     /// 1.07 m miss from an unsigned L survived a full session of placements
     /// without being read as a defect. The threshold is not a tolerance on the

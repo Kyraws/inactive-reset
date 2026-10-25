@@ -1,7 +1,7 @@
-﻿# Project glossary
+# Project glossary
 
-Terms used by the current implementation. See [Architecture](docs/ARCHITECTURE.md)
-and [Placement and rules](docs/PLACEMENT.md) for behaviour and limitations.
+Terms used by the current implementation. See [Architecture](ARCHITECTURE.md)
+and [Placement and rules](PLACEMENT.md) for behaviour and limitations.
 
 | Term | Meaning |
 | --- | --- |

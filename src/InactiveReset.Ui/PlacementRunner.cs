@@ -142,7 +142,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             // Show the live value, not an assumption about the last write.
             //
             // NOTE: this is the penalty, not the car's pit limiter, which this
-            // tool never touches. See CONTEXT.md; the two were confused for as
+            // tool never touches. See docs/CONTEXT.md; the two were confused for as
             // long as this control was labelled "Pit Limiter".
             state["pitSpeedingPenalty"] = new JsonObject
             {

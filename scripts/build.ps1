@@ -1,14 +1,3 @@
-<#
-.SYNOPSIS
-    Build, test, ship, and clean Inactive Reset.
-
-.EXAMPLE
-    .\build.ps1              # build (Debug)
-    .\build.ps1 test         # build + run tests
-    .\build.ps1 ship         # Release single-file app + CLI into dist\
-    .\build.ps1 package      # ship, then zip a self-contained release
-    .\build.ps1 clean        # delete artifacts\ and dist\
-#>
 [CmdletBinding()]
 param(
     [ValidateSet('build', 'test', 'browser', 'test-local', 'ship', 'package', 'clean')]
@@ -19,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root      = $PSScriptRoot
+$root      = Split-Path $PSScriptRoot -Parent
 $solution  = Join-Path $root 'InactiveReset.sln'
 $artifacts = Join-Path $root 'artifacts'
 $dist      = Join-Path $root 'dist'
@@ -31,14 +20,6 @@ function Invoke-Step {
     if ($LASTEXITCODE -ne 0) { throw "$Name failed (exit $LASTEXITCODE)" }
 }
 
-<#
-Report where a build put its executables.
-
-Nothing lands beside its project any more: Directory.Build.props sets
-UseArtifactsOutput, so everything goes under artifacts\bin\<project>\<config>,
-where <config> gains a _win-x64 suffix for the two self-contained apps. These
-are runnable but NOT self-contained single files -- that is what `ship` makes.
-#>
 function Show-BuildOutput {
     param([string] $Configuration)
 
@@ -181,11 +162,12 @@ switch ($Task) {
         }
 
         Invoke-Step 'stage documents' {
-            foreach ($file in 'README.md', 'CONTRIBUTING.md', 'CONTEXT.md', 'LICENSE', 'NOTICE') {
+            foreach ($file in 'README.md', 'LICENSE', 'NOTICE') {
                 Copy-Item (Join-Path $root $file) $stage -Force
             }
             # Keep README's relative documentation links usable in the ZIP.
-            $guides = Get-ChildItem (Join-Path $root 'docs') -Recurse -File -Filter *.md
+            $guides = Get-ChildItem (Join-Path $root 'docs') -Recurse -File -Filter *.md |
+                Where-Object { $_.FullName -notmatch '\\archive\\' }
             foreach ($guide in $guides) {
                 $relative = $guide.FullName.Substring($root.Length + 1)
                 $destination = Join-Path $stage $relative
@@ -194,7 +176,8 @@ switch ($Task) {
             }
             Copy-Item -LiteralPath (Join-Path $root 'docs\media') -Destination (Join-Path $stage 'docs\media') -Recurse -Force
             foreach ($relative in 'tools\README.md', 'tools\observer\README.md',
-                'tools\reanchor-research\README.md', 'tools\reanchor-research\archive\README.md') {
+                'tools\reanchor-research\README.md', 'tools\InactiveReset.Reanchor\README.md',
+                'tests\LIVE_CHECKLIST.md') {
                 $destination = Join-Path $stage $relative
                 New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
                 Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $destination -Force

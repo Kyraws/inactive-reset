@@ -1,4 +1,4 @@
-﻿# Native observers
+# Native observers
 
 Maintainer-only instruments for observing natural LMU engine calls. These DLLs
 install detours inside the game and pass calls through without changing the
@@ -12,8 +12,7 @@ before hooking. Exit LMU to unload an observer; there is no supported hot unload
 These instruments are not part of the production placement path or release ZIP.
 Their signatures and saved-dump tests have build-specific limits. Earlier call
 traces, candidate addresses, and conclusions are preserved in the
-[observer notes](../../docs/archive/OBSERVER_NOTES.md) and
-[reader investigation](../../docs/archive/D9B92CA9_READER_RESEARCH.md).
+[discovery evidence](../../docs/research/DISCOVERY_EVIDENCE.md).
 
 ## Build
 

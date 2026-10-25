@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <!-- Explicit tracked fixtures; never copy generated local *.auto.json caches. -->
-    <None Include="..\..\offsets\0F6DCAC1.json;..\..\offsets\1AC2F605.json;..\..\offsets\tyre-physics-66942337.json;..\..\offsets\motion-layout-66942337.json;..\..\offsets\shared-memory.json"
+    <None Include="..\Fixtures\offsets\0F6DCAC1.json;..\Fixtures\offsets\1AC2F605.json;..\Fixtures\offsets\tyre-physics-66942337.json;..\Fixtures\offsets\motion-layout-66942337.json;..\..\offsets\shared-memory.json"
           Link="offsets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\InactiveReset.Core\InactiveReset.Core.csproj" />
     <ProjectReference Include="..\..\src\InactiveReset.Ui\InactiveReset.Ui.csproj" />
@@ -22,7 +22,7 @@
       techniques decide whether a published profile is right, which makes them
       worth pinning even though the tool itself never ships.
     -->
-    <ProjectReference Include="..\..\src\InactiveReset.Reanchor\InactiveReset.Reanchor.csproj" />
+    <ProjectReference Include="..\..\tools\InactiveReset.Reanchor\InactiveReset.Reanchor.csproj" />
   </ItemGroup>
 
 </Project>

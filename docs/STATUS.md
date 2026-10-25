@@ -56,7 +56,7 @@ Details: [Local sessions](SESSIONS.md),
 [Official scheduled sessions](LAB.md#official-scheduled-sessions),
 [Placement](PLACEMENT.md), [Tyres](TYRES.md). Historical ordinary-path heading
 measurements and the maintainer-only `66942337` experiment remain in
-[the archive](archive/README.md); neither establishes general production accuracy.
+[research evidence](research/README.md); neither establishes general production accuracy.
 
 ## Remaining support boundaries
 

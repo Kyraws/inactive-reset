@@ -6,11 +6,11 @@ reproduce the result.
 
 ## Before changing code
 
-Read the [architecture](docs/ARCHITECTURE.md), [placement sequence](docs/PLACEMENT.md),
-[known limitations](docs/STATUS.md), and [glossary](CONTEXT.md). The
-[archive](docs/archive/README.md) contains historical evidence, not current
+Read the [architecture](ARCHITECTURE.md), [placement sequence](PLACEMENT.md),
+[known limitations](STATUS.md), and [glossary](CONTEXT.md). The
+[research summary](research/README.md) contains historical evidence, not current
 implementation requirements. Agent implementation issues live under `.scratch/`
-as described in [the issue guide](docs/agents/issue-tracker.md).
+as described in [the issue guide](agents/issue-tracker.md).
 
 ## Build and test
 
@@ -26,7 +26,7 @@ Build the solution through the wrapper so its x64 mapping is applied. `test`
 runs portable C# and actual WebView2 checks; Windows needs the WebView2 Runtime.
 `package` tests Release, publishes the App and CLI, creates the ZIP and smoke
 tests the extracted package outside the checkout. The research
-project and native observers are not shipped. See [developer tools](tools/README.md)
+project and native observers are not shipped. See [developer tools](../tools/README.md)
 for their separate requirements.
 
 Use `build.cmd test-local -Configuration Release` for read-only compatibility
@@ -34,7 +34,7 @@ checks needing an LMU install or private mapped-game dumps. Check skips and
 record which captures were used; a green suite without those inputs does not
 validate a new game build. SDK headers and runtime dumps must remain outside
 version control. Existing historical offset JSONs are regression inputs.
-See [Testing](docs/TESTING.md) for coverage, capture paths, and focused commands.
+See [Testing](TESTING.md) for coverage, capture paths, and focused commands.
 
 ## Reporting a problem
 
@@ -55,7 +55,7 @@ Do not infer live success from instruction matches or mathematical residuals.
 ## Updating documentation
 
 Update current guides when code changes. Keep them concise, use repository
-paths as evidence, and state implementation limits. Archive superseded
-investigations rather than mixing their conclusions into current instructions.
+paths as evidence, and state implementation limits. Consolidate useful historical
+evidence into `docs/research/` and remove superseded investigations.
 Label planned behaviour as planned. Claims about accuracy or compatibility need
 recorded test conditions; avoid universal promises.

@@ -502,7 +502,7 @@ public sealed class PlacementService(GameSession session)
     /// that assumption by putting the car mid-lap. The engine spends the rest of
     /// the lap waiting for a sector line that is already behind the car, and
     /// discards the start/finish crossing entirely -- no lap, no time, no
-    /// promotion. Measured, not inferred: see docs/archive/LAP_VALIDITY.md.
+    /// promotion. Measured, not inferred: see docs/research/PLACEMENT_EVIDENCE.md.
     ///
     /// Like the pit-flag clear, never allowed to fail a placement that already
     /// succeeded.

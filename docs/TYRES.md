@@ -3,7 +3,7 @@
 Captures store four-wheel telemetry in FL/FR/RL/RR order: surface, carcass and
 inner-layer temperatures in Celsius, raw wear, fitted compounds, flat tyres and
 detached wheels. Surface and inner channels are physical left/centre/right.
-The compact UI leaves live tyre viewing to the game. Its Tyres panel prepares all four fitted tyres
+The workspace leaves live tyre viewing to the game. Its Tyres panel prepares all four fitted tyres
 in the garage. FL, FR, RL and RR each have condition (0–100%) and optional initial
 heat (0–150°C). Set 100% for a fresh tyre; lower values request that wheel's
 remaining condition. Unchecked heat uses the game's initial temperature for that
@@ -122,5 +122,5 @@ thermal writers and every damage suppression gate are not yet fully mapped.
 Local mapped image, disassembly, probe code and live comparisons are retained
 under `.scratch/tyre-state/`; proprietary SDK headers and memory dumps are not
 distributed. The verified 1.4.2.0 profile remains in
-`offsets/tyre-physics-66942337.json` as dated evidence. Runtime discovery writes
-an ignored `tyre-physics-<full-hash>.auto.json` cache beside it.
+`tests/Fixtures/offsets/tyre-physics-66942337.json` as dated evidence. Runtime discovery writes
+an ignored `tyre-physics-<full-hash>.auto.json` cache under `offsets/`.

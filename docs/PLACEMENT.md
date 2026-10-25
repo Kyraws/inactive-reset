@@ -79,7 +79,7 @@ results separately.
 
 Track-limit flags can re-arm on session initialisation or garage return. Check
 their displayed values again. The sector/pit-flag diagnosis is retained in the
-[lap-validity investigation](archive/LAP_VALIDITY.md); its addresses and
+[lap-validity investigation](research/PLACEMENT_EVIDENCE.md); its addresses and
 measurements describe the recorded builds. Forcing the final sector is not a
 guarantee of accurate intermediate splits.
 

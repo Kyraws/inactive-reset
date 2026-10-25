@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>InactiveReset.Reanchor</RootNamespace>
+    <AssemblyName>inactive-reset-reanchor</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\InactiveReset.Core\InactiveReset.Core.csproj" />
+  </ItemGroup>
+
+</Project>
