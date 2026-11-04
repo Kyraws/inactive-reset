@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using InactiveReset.TestSupport;
+using InactiveReset.Core;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -85,6 +86,27 @@ public sealed class UiServerTests
         var state = await State(host);
         Assert.Equal("Valid checkpoint", Assert.Single(state["checkpoints"]!.AsArray())!["name"]!.GetValue<string>());
         Assert.Contains("broken.json", Assert.Single(state["checkpointErrors"]!.AsArray())!.GetValue<string>());
+        Assert.Equal(0, host.Menu.Writes);
+    }
+
+    [Theory]
+    [InlineData(0.11587092f, true)]
+    [InlineData(0.33538005f, false)]
+    [InlineData(0.7f, false)]
+    public async Task StateReportsCaptureEligibilityAndTheRejectionReason(float vertical, bool eligible)
+    {
+        await using var host = new UiTestHost();
+        CaptureService.Save(new Checkpoint
+        {
+            Name = "Moving", TrackName = "Test track", VehicleName = "Test car", Gear = 3,
+            Pose = new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
+            LocalVelocityMetresPerSecond = new(0.010204315f, vertical, -31.852272f),
+        }, Path.Combine(host.DataDirectory, "checkpoints"));
+        var state = await State(host);
+        var checkpoint = Assert.Single(state["checkpoints"]!.AsArray())!;
+        Assert.Equal(eligible, checkpoint["rollingEligible"]!.GetValue<bool>());
+        if (eligible) Assert.Null(checkpoint["rollingIssue"]);
+        else Assert.Contains("vertical", checkpoint["rollingIssue"]!.GetValue<string>());
         Assert.Equal(0, host.Menu.Writes);
     }
 

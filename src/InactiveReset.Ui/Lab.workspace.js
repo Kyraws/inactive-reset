@@ -41,6 +41,11 @@ function updateWorkspace(){
     button.disabled=action==='capture'?$('quickCaptureButton').disabled:$(action==='place'?'placeBtn':'standingBtn').disabled;
   }
   $('primaryPracticeLabel').textContent=labState?.inGarage===false?'Reset on track':'Place checkpoint';
+  const motionHint=$('practiceMotionHint');
+  motionHint.textContent=$('placeBtn').disabled
+    ? practiceAccessIssue()||speedRestorationIssue()||$('placeHint').textContent
+    : $('restoreSpeedHint').textContent;
+  motionHint.hidden=!motionHint.textContent;
   $('captureShortcut').textContent=practiceShortcut('capture','Ctrl+Alt+C')+' · replace quick slot';
   $('builderSave').disabled=$('savePlanButton').disabled;
   for(const b of document.querySelectorAll('[data-checkpoint-action]'))b.disabled=checkpointMutation||!!labState?.busy;

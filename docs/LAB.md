@@ -94,6 +94,14 @@ moving capture in the capture car. Standing teleport can reuse another car's pos
 on the matching track. Actual ownership/state chooses garage placement with a
 Drive handoff or experimental on-track reset. See [Placement](PLACEMENT.md).
 
+When speed/gear restoration is unavailable, the explanation below the Practice
+action cards identifies missing speed data, insufficient speed, sideways or
+vertical motion, or a separate launch/build/car restriction. Motion rejections
+include the recorded magnitude and allowed limit in m/s. The same explanation
+appears in the selected-checkpoint summary. The inline explanation remains
+visible when that drawer is closed. `RollingMotion.CaptureIssue` supplies the capture check and its reason;
+the capture limits in [Placement](PLACEMENT.md#experimental-rolling-start) are unchanged.
+
 Tyre preparation sets independent FL/FR/RL/RR condition and optional initial heat
 through the garage. Blank heat delegates to LMU; the all-wheel slider's zero
 clears overrides. Editing choices does not apply them. Prepare tyres or Apply on

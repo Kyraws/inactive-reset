@@ -17,7 +17,8 @@ async function run(){
  for(const key of ['Qualify_Length','race_time','Race_Laps','practice1_starting_time','qualify_starting_time','warmup_starting_time','race_starting_time','private_prac','private_qual','Finish_Criteria','formation','Grid_Position','pract1_realroad_init','pract1_realroad_wet','pract1_realroad_temperatures','realroad_timescale_practice','qual1_realroad_init','qual1_realroad_wet','qual1_realroad_temperatures','realroad_timescale_qualify','race_realroad_init','race_realroad_wet','race_realroad_temperatures','realroad_timescale_race','timescaled_weather','AI_Aggression','Damage_Multi','Mech_Failures','Fuel_Usage','Tire_Wear','tire_warmers','tires_available_in_garage','keep_tire_inv_on_track_change','cut_rules','cuts_allowed','blue_flags','parc_ferme'])setup.settings['SESSSET_'+key]||=setting(1);
  for(const fields of Object.values(setup.weather.PRACTICE))for(const key of ['WNV_SKY','WNV_HUMIDITY','WNV_WINDSPEED','WNV_WINDDIRECTION'])fields[key]=setting(0);
  let checkpoints=[{id:'a',name:'Turn 1',track:'Barcelona',vehicle:'Team Car',lapDistance:400,x:50,z:0,speedKmh:100,gear:3,rollingEligible:true},{id:'b',name:'Entry',track:'Barcelona',vehicle:'Other Car',lapDistance:800,x:100,z:80,speedKmh:70,gear:2,rollingEligible:true},{id:'q',name:'Quick capture',quick:true,track:'Barcelona',vehicle:'Team Car',lapDistance:200,x:0,z:50,speedKmh:90,gear:3,rollingEligible:true},{id:'c',name:'Other track',track:'Spa',vehicle:'Car',lapDistance:300,x:0,z:0}];
- const native=()=>({connected:true,game:{running:true},session:{track:'Barcelona',vehicle:'Team Car',capturable:true},checkpoints,inGarage:true,tyreRules:{inGarage:true},rollingStartSupported:true,phase:'Idle',busy:false,log:[]});
+ let driving=false;
+ const native=()=>({connected:true,game:{running:true},session:{track:'Barcelona',vehicle:'Team Car',capturable:true},checkpoints,inGarage:!driving,tyreRules:{inGarage:!driving},rollingStartSupported:true,phase:'Idle',busy:false,log:[]});
  const map={id:'layout',track,points:[{type:0,x:0,z:0},{type:0,x:100,z:0},{type:0,x:100,z:100},{type:0,x:0,z:100},{type:1,x:-5,z:0},{type:1,x:-5,z:100},{type:149,x:40,z:70}]};
  let writes=[],managed=[],deleted;
  const events=Array.from({length:10},(_,i)=>({id:'event'+i,category:i<7?'beginner':i<9?'weekly':'special',title:i%2?'Long-distance multiclass championship rehearsal':'Official GT Sprint',content:{track:{name:i%2?'Circuit de Barcelona-Catalunya — Grand Prix':'Bahrain International Circuit — Outer',subItems:[]}},times:[],sessions:['Qualifying','Race'].map(type=>({type,duration:type==='Race'?'45m':'15m',timeOfDay:'15h',realRoad:'green',weather:[]}))}));
@@ -27,7 +28,7 @@ async function run(){
    else if(path==='/api/state')value=native();
    else if(path==='/api/session/setup')value=setup;
    else if(path==='/api/session/catalog')value={cars:[car],tracks:[track]};
-   else if(path==='/api/session/state')value={pid:123,state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_SETUP',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false}};
+   else if(path==='/api/session/state')value={pid:123,state:{settingMode:'SETTING_GRANDPRIX',gameState:driving?'GSTATE_DYN':'GSTATE_SETUP',gameSession:'PRACTICE1',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false}};
    else if(path==='/api/track-maps')value={tracks:[track]};
    else if(path.startsWith('/api/track-map?'))value=map;
    else if(path.startsWith('/api/official-sessions'))value={events,warnings:[],fetchedAt:new Date().toISOString()};
@@ -40,7 +41,7 @@ async function run(){
    }
    return {ok:true,json:async()=>structuredClone(value)};
  }
- const ui=new w.Function('fetch','setInterval','clearInterval',scripts.join('\n')+'\nreturn {setPage,loadSetup,renderCheckpoints,renderLibrary,mapSvg,inspectPreset,snapshotPlan,renderPlans,manageCheckpoint,undoCheckpoint,updateWorkspace,getPrefs:()=>labPreferences,getPreview:()=>libraryPreviewId,setProtectedForLayout(value){gameProtected=value;updateControls();},enableWeekend(){setup.amounts={PRACTICE:1,QUALIFY:1,WARMUP:1,RACE:1};renderContent();}};')(fake,()=>0,()=>{});
+ const ui=new w.Function('fetch','setInterval','clearInterval',scripts.join('\n')+'\nreturn {poll,refresh,setPage,loadSetup,renderCheckpoints,renderLibrary,mapSvg,inspectPreset,snapshotPlan,renderPlans,manageCheckpoint,undoCheckpoint,updateWorkspace,getPrefs:()=>labPreferences,getPreview:()=>libraryPreviewId,setProtectedForLayout(value){gameProtected=value;updateControls();},enableWeekend(){setup.amounts={PRACTICE:1,QUALIFY:1,WARMUP:1,RACE:1};renderContent();}};')(fake,()=>0,()=>{});
  w.dispatchEvent(new w.CustomEvent('input-bindings',{detail:{bindings:Object.fromEntries(['capture','teleport','standing','previous','next'].map((action,i)=>[action,{keyboard:{keyCode:67+i,modifiers:3},wheel:null}])),devices:[]}}));
  let count=0;const check=(ok,message)=>{if(!ok)throw Error(message);count++;};
  await until(()=>d.querySelector('[data-builder]')&&d.body.dataset.style==='redline','Workspace initialization');
@@ -51,6 +52,17 @@ async function run(){
  check(!d.querySelector('[data-bind=game]')&&!d.querySelector('[data-action=place-state]')&&!d.body.textContent.includes('Compact practice'),'No simulated state or compact utility');
  check(!d.body.textContent.includes('Race engineer')&&!d.body.textContent.includes('Mandatory'),'Unsupported prototype settings omitted');
  check(writes.length===0,'Initialization and preview never write to game');
+ driving=true;await ui.poll();await ui.refresh();ui.setPage('practice');
+ const activeCheckpoint=checkpoints.find(c=>c.id===d.getElementById('cp').value);
+ activeCheckpoint.rollingEligible=false;activeCheckpoint.rollingIssue='Captured vertical motion is 0.335 m/s; maximum at this speed is 0.159 m/s.';
+ await ui.refresh();
+ const motionHint=d.getElementById('practiceMotionHint');
+ check(d.querySelector('[data-practice-action=place]').disabled&&motionHint.textContent.includes('0.335')&&motionHint.textContent.includes('0.159'),'Disabled reset explains the actual measured motion next to the action cards');
+ frame.style.width='800px';await new Promise(r=>w.requestAnimationFrame(r));
+ check(!motionHint.hidden&&w.getComputedStyle(motionHint).display!=='none'&&motionHint.getBoundingClientRect().width>0,'Rejection reason stays visible at 800px with the summary drawer closed');
+ activeCheckpoint.rollingEligible=true;delete activeCheckpoint.rollingIssue;await ui.refresh();
+ check(!d.querySelector('[data-practice-action=place]').disabled&&motionHint.textContent.includes('restore automatically'),'Eligible capture enables reset and updates its explanation');
+ frame.style.width='1280px';driving=false;await ui.poll();await ui.refresh();
  ui.renderCheckpoints(native());ui.setPage('library');
  await until(()=>d.querySelector('#libraryMap svg'),'Real geometry rendered');
  check(d.querySelectorAll('#checkpointCards article').length===2,'Library groups named captures by circuit and excludes quick slots');
