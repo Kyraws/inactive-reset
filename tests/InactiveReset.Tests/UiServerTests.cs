@@ -91,7 +91,7 @@ public sealed class UiServerTests
 
     [Theory]
     [InlineData(0.11587092f, true)]
-    [InlineData(0.33538005f, false)]
+    [InlineData(0.33538005f, true)]
     [InlineData(0.7f, false)]
     public async Task StateReportsCaptureEligibilityAndTheRejectionReason(float vertical, bool eligible)
     {

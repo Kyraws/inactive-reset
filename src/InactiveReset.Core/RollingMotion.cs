@@ -70,10 +70,10 @@ public static class RollingMotion
             throw new GateException("Player/session state or SDK time changed during physics pause.");
     }
 
-    // Keep the established capture bounds and use the same check for the gate
-    // and its explanation. This describes recorded motion, not road contact.
+    // Experimental heuristic; live reset validation is still required. Preserve
+    // the recorded velocity and retain bounds at low and high forward speeds.
     private static double VerticalCaptureLimit(Vec3 velocity) =>
-        Math.Max(0.05, Math.Abs((double)velocity.Z) * 0.005);
+        Math.Min(0.5, Math.Max(0.05, Math.Abs((double)velocity.Z) * 0.02));
 
     public static string? CaptureIssue(Vec3? velocity)
     {

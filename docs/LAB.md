@@ -100,7 +100,7 @@ vertical motion, or a separate launch/build/car restriction. Motion rejections
 include the recorded magnitude and allowed limit in m/s. The same explanation
 appears in the selected-checkpoint summary. The inline explanation remains
 visible when that drawer is closed. `RollingMotion.CaptureIssue` supplies the capture check and its reason;
-the capture limits in [Placement](PLACEMENT.md#experimental-rolling-start) are unchanged.
+the capture limits are described in [Placement](PLACEMENT.md#experimental-rolling-start).
 
 Tyre preparation sets independent FL/FR/RL/RR condition and optional initial heat
 through the garage. Blank heat delegates to LMU; the all-wheel slider's zero

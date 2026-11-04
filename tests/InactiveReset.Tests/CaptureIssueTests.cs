@@ -7,16 +7,12 @@ namespace InactiveReset.Tests;
 public sealed class CaptureIssueTests
 {
     [Fact]
-    public void RoadAtlantaCaptureExplainsVerticalRejectionWithoutChangingEligibility()
+    public void ExperimentalToleranceAdmitsTheRecordedRoadAtlantaVelocity()
     {
         // Observed capture: 114.67 km/h, third gear. No reset was performed.
         var velocity = new Vec3(0.010204315f, 0.33538005f, -31.852272f);
-        Assert.False(RollingMotion.EligibleCapture(velocity));
-        var issue = RollingMotion.CaptureIssue(velocity);
-        Assert.NotNull(issue);
-        Assert.Contains("vertical", issue);
-        Assert.Contains("0.335 m/s", issue);
-        Assert.Contains("0.159 m/s", issue);
+        Assert.True(RollingMotion.EligibleCapture(velocity));
+        Assert.Null(RollingMotion.CaptureIssue(velocity));
     }
 
     [Theory]
@@ -49,7 +45,7 @@ public sealed class CaptureIssueTests
         {
             Name = "capture", TrackName = "Track", VehicleName = "Car",
             Pose = new(new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
-            LocalVelocityMetresPerSecond = new(0.010204315f, 0.33538005f, -31.852272f),
+            LocalVelocityMetresPerSecond = new(0.010204315f, 0.7f, -31.852272f),
         };
         var error = Assert.Throws<GateException>(() =>
             RollingMotion.RequireEligible(checkpoint, true, new("Track", "Car")));
@@ -65,9 +61,9 @@ public sealed class CaptureIssueTests
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
-            var issue = RollingMotion.CaptureIssue(new(0, 0.33538005f, -31.852272f));
-            Assert.Contains("0.335 m/s", issue);
-            Assert.Contains("0.159 m/s", issue);
+            var issue = RollingMotion.CaptureIssue(new(0, 0.7f, -31.852272f));
+            Assert.Contains("0.700 m/s", issue);
+            Assert.Contains("0.500 m/s", issue);
         }
         finally { CultureInfo.CurrentCulture = original; }
     }

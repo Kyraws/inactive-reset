@@ -39,12 +39,55 @@ public sealed class RollingMotionTests
     }
 
     [Fact]
-    public void SmallVerticalComponentScalesWithForwardSpeedWithoutAllowingSideslipOrBouncing()
+    public void SmallVerticalComponentScalesWithForwardSpeedWithoutAllowingSideslipOrLargeBounces()
     {
         Assert.True(RollingMotion.EligibleCapture(new(0.010424137f, 0.07474714f, -16.163006f)));
         Assert.False(RollingMotion.EligibleCapture(new(0.06f, 0.07474714f, -16.163006f)));
-        Assert.False(RollingMotion.EligibleCapture(new(0, 0.09f, -16.163006f)));
+        Assert.True(RollingMotion.EligibleCapture(new(0, 0.30f, -16.163006f)));
+        Assert.False(RollingMotion.EligibleCapture(new(0, 0.33f, -16.163006f)));
         Assert.False(RollingMotion.EligibleCapture(new(0, 0.06f, -2)));
+    }
+
+    [Fact]
+    public void RecordedRoadAtlantaCaptureAcceptsSmallHeaveAndPreservesAllVelocityComponents()
+    {
+        var velocity = new Vec3(0.010204315f, 0.33538005f, -31.852272f);
+        var pose = new RecordedPose(new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1));
+        Assert.True(RollingMotion.EligibleCapture(velocity));
+        Assert.Null(RollingMotion.CaptureIssue(velocity));
+        var payload = RollingMotion.BuildPayload(velocity, pose);
+        Assert.Equal(velocity.Y, BitConverter.ToSingle(payload, 4));
+        Assert.Equal(velocity.Y, BitConverter.ToSingle(payload, 16));
+        Assert.Equal(velocity.Z, BitConverter.ToSingle(payload, 20));
+    }
+
+    [Theory]
+    [InlineData(0.5f, -25f, true)]
+    [InlineData(-0.5f, -25f, true)]
+    [InlineData(0.501f, -25f, false)]
+    [InlineData(-0.501f, -25f, false)]
+    [InlineData(0.501f, -100f, false)]
+    [InlineData(0.049f, -2f, true)]
+    [InlineData(0.051f, -2f, false)]
+    public void VerticalToleranceHasAnAbsoluteCapAndKeepsTheLowSpeedBound(float vertical, float forward, bool eligible)
+    {
+        Assert.Equal(eligible, RollingMotion.EligibleCapture(new(0, vertical, forward)));
+    }
+
+    [Fact]
+    public void CaptureRejectionReportsTheMeasuredComponentAndApplicableLimit()
+    {
+        var issue = RollingMotion.CaptureIssue(new(0, 0.7f, -31.852272f));
+        Assert.Contains("vertical", issue);
+        Assert.Contains("0.700", issue);
+        Assert.Contains("0.500", issue);
+        Assert.Contains("sideways", RollingMotion.CaptureIssue(new(0.06f, 0, -20)));
+        Assert.Contains("No recorded speed", RollingMotion.CaptureIssue(null));
+        var checkpoint = new Checkpoint { Name = "bounce", TrackName = "Track", VehicleName = "Car",
+            Pose = new(new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
+            LocalVelocityMetresPerSecond = new(0, 0.7f, -31.852272f) };
+        Assert.Equal(issue, Assert.Throws<GateException>(() =>
+            RollingMotion.RequireEligible(checkpoint, true, new("Track", "Car"))).Message);
     }
 
     [Fact]
