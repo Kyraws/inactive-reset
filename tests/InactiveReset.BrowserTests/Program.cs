@@ -157,6 +157,44 @@ internal static class Program
                     return "Real HTTP page, assets, startup, library, diagnostic filters and disconnected action gates";
                 });
 
+                await Run("recording-selection", async () =>
+                {
+                    var directory = Path.Combine(host.DataDirectory, "recordings");
+                    Directory.CreateDirectory(directory);
+                    var identity = new InactiveReset.Core.RecordingIdentity("game.exe", new string('A', 64), "sdk", "track", "car", 1, 123);
+                    var sample = new InactiveReset.Core.TelemetrySnapshot("track", "car",
+                        new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)), 0, 2, 10.125,
+                        LocalVelocityMetresPerSecond: new(0, 0, -10))
+                    { Details = new(1, 10, 5, true, 0, 0, new Dictionary<string, double?>(), [], null) { IdentityMatches = true } };
+                    File.WriteAllLines(Path.Combine(directory, "part.jsonl"), new[] {
+                        new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: identity, SegmentId: "segment"),
+                        new InactiveReset.Core.TimelineEntry("sample", 42, 1, Identity: identity, SegmentId: "segment", Sample: sample),
+                        new InactiveReset.Core.TimelineEntry("sample", 43, 2, Identity: identity, SegmentId: "segment", Sample: sample with { ElapsedTime = 20.125, LapDistance = 100, Pose = sample.Pose with { Position = new(8, 2, 7) } })
+                    }.Select(e => JsonSerializer.Serialize(e)));
+                    await core.ExecuteScriptAsync("setPage('practice');document.querySelector('#timelineRecording').closest('details').open=true;loadRecordings()");
+                    await WaitFor("document.getElementById('timelineRecording').options.length===2", "Recording list did not load");
+                    await core.ExecuteScriptAsync("savedMapTracks.push({id:'timeline-test',name:'track'});circuitMaps.set('timeline-test',{points:[{type:0,x:0,z:0},{type:0,x:10,z:0},{type:0,x:10,z:10},{type:0,x:0,z:10}]})");
+                    await core.ExecuteScriptAsync("document.getElementById('timelineRecording').value='segment';document.getElementById('timelineTime').value='10.12';selectTimelineSample()");
+                    await WaitFor("document.getElementById('timelineSelection').textContent.includes('10.125 s')", "Exact selected timestamp missing");
+                    await core.ExecuteScriptAsync("document.querySelector('#timelineRestorationScope>summary').click()");
+                    await Check("document.getElementById('timelineRestorationScope').open && ['zero angular motion','recorded wheel rates are not restored','suspension configuration present at reset time'].every(text=>document.getElementById('timelineRestorationScope').textContent.includes(text))", "Recorded reset does not explain chassis and wheel restoration limits");
+                    await core.ExecuteScriptAsync("document.querySelector('#timelineRestorationScope>summary').click()");
+                    await Check("!!document.querySelector('#timelineMap .map-marker.selected') && document.getElementById('timelineSelection').textContent.includes('0 m')", "Recorded timestamp has no circuit position preview or lap distance");
+                    await Check("document.getElementById('timelineSelection').textContent.includes('36.00 km/h') && document.getElementById('timelineStanding').disabled && document.getElementById('timelineReset').disabled", "Speed display or disconnected reset gate failed");
+                    using (var screenshot = File.Create(Path.Combine(output, "recording-selection.png")))
+                        await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
+                    await Check("document.getElementById('timelineRecording').selectedOptions[0].textContent.includes('Recording 1') && document.getElementById('timelineRecording').selectedOptions[0].textContent.includes('2 samples')", "Recording label lacks readable identity and sample count");
+                    await core.ExecuteScriptAsync("window.firstRecordedMarker=document.querySelector('#timelineMap .map-marker').getAttribute('transform');chooseTimelineRecording()");
+                    await WaitFor("!document.getElementById('timelineScrub').disabled && timelineSelection?.Sequence===42", "Recording time range did not initialize");
+                    await core.ExecuteScriptAsync("document.getElementById('timelineScrub').value='20.125';scrubTimeline();selectTimelineSample()");
+                    await WaitFor("timelineSelection?.Sequence===43", "Browsing time did not resolve the new exact sample");
+                    await Check("document.querySelector('#timelineMap .map-marker').getAttribute('transform')!==window.firstRecordedMarker && document.getElementById('timelineSelection').textContent.includes('100 m')", "Time browsing did not move the position preview");
+                    await core.ExecuteScriptAsync("document.getElementById('timelineTime').value='11';document.getElementById('timelineTime').dispatchEvent(new Event('input'))");
+                    await Check("timelineSelection===null", "Editing timestamp retained an obsolete selection");
+                    await core.ExecuteScriptAsync("document.querySelector('#timelineRecording').closest('details').open=false");
+                    return "Real HTTP list and exact sample selection, speed display, reset gate and edit invalidation";
+                });
+
                 await Run("first-use-access", async () =>
                 {
                     async Task Capture(string name)

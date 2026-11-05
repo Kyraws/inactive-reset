@@ -42,6 +42,12 @@ async function api(path, body) {
 }
 
 function renderStatus(s) {
+  updateTimelineButtons(s);
+  const recorder = document.getElementById('recorderStatus');
+  if (recorder && s.recorder) {
+    const r = s.recorder;
+    recorder.textContent = 'Telemetry recorder: ' + r.state + ' · ' + r.samples + ' fresh frames · ' + r.dropped + ' dropped entries' + (r.error || r.reason ? ' · ' + (r.error || r.reason) : '');
+  }
   const status = document.getElementById('status');
   status.textContent = s.game?.protected ? 'EAC on · capture and saved destinations available' : s.connected ? 'Local play · ' + ((s.inGarage ?? s.tyreRules?.inGarage) === true ? 'garage' : 'session loaded') : s.game?.running ? 'Waiting for LMU' : 'LMU not running';
   status.className = 'connection' + (s.connected ? ' ready' : '');
@@ -427,3 +433,73 @@ document.getElementById('freshOnPlace').checked = !!practicePreferences.apply;
 updateTyreSettings();
 refresh();
 schedule(700);
+
+let timelineSelection = null;
+let timelineRequest = 0;
+let timelineRecordings = [];
+function clearTimelineSelection() {
+  timelineRequest++;
+  timelineSelection = null;
+  if (typeof renderTimelineMap === 'function') renderTimelineMap();
+  document.getElementById('timelineSelection').textContent = 'Select a sample to see its exact timestamp and speed.';
+  updateTimelineButtons(destinationState);
+}
+function updateTimelineButtons(s) {
+  const standing = document.getElementById('timelineStanding');
+  const rolling = document.getElementById('timelineReset');
+  if (!standing || !rolling) return;
+  const blocked = !timelineSelection || !s.connected || s.game?.protected ||
+    (s.busy && s.phase !== 'WaitingToClear');
+  standing.disabled = blocked;
+  rolling.disabled = blocked || !!timelineSelection?.RollingUnavailableReason || !s.rollingStartSupported;
+}
+async function loadRecordings() {
+  clearTimelineSelection();
+  const rows = await api('/api/recordings/list');
+  if (rows.error) { showNotice(rows.error); return; }
+  const select = document.getElementById('timelineRecording');
+  select.replaceChildren(new Option('Choose a recording segment', ''));
+  timelineRecordings = rows;
+  document.getElementById('timelineScrub').disabled = true;
+  document.getElementById('timelineRange').textContent = '';
+  rows.forEach((row, i) => select.add(new Option('Recording ' + (i + 1) + ' · ' + row.Identity.Track + ' / ' + row.Identity.Vehicle + ' · ' + row.Start.toFixed(2) + '–' + row.End.toFixed(2) + ' s · ' + row.Samples + ' samples', row.SegmentId)));
+}
+async function selectTimelineSample() {
+  clearTimelineSelection();
+  const request = timelineRequest;
+  const recording = document.getElementById('timelineRecording').value;
+  const input = document.getElementById('timelineTime');
+  if (!recording || input.value === '' || !input.checkValidity()) { showNotice('Choose a recording and enter a nonnegative simulation time.'); return; }
+  const result = await api('/api/recordings/select', {recording, timestamp:Number(input.value)});
+  if (request !== timelineRequest) return;
+  if (result.error) { showNotice(result.error); return; }
+  timelineSelection = result;
+  document.getElementById('timelineScrub').value = result.Timestamp;
+  if (typeof renderTimelineMap === 'function') renderTimelineMap();
+  document.getElementById('timelineSelection').textContent = 'Sample ' + result.Sequence + ' at ' + result.Timestamp + ' s · ' + result.SpeedKmh.toFixed(2) + ' km/h · gear ' + result.Checkpoint.Gear + ' · ' + Math.round(result.Checkpoint.LapDistance) + ' m along lap. ' + (result.RollingUnavailableReason || 'Eligible recorded motion; live reset gates still apply.');
+  updateTimelineButtons(destinationState);
+}
+async function resetTimelineSample(standing) {
+  if (!timelineSelection) return;
+  if (practiceAccessIssue()) { showNotice(practiceAccessIssue()); return; }
+  const result = await api('/api/place', {recording:timelineSelection.SegmentId, sequence:timelineSelection.Sequence, restoreSpeed:!standing});
+  if (result.error) showNotice(result.error);
+  refresh();
+}
+function chooseTimelineRecording() {
+  clearTimelineSelection();
+  const row = timelineRecordings.find(r => r.SegmentId === document.getElementById('timelineRecording').value);
+  const slider = document.getElementById('timelineScrub');
+  slider.disabled = !row || row.Start === row.End;
+  document.getElementById('timelineRange').textContent = row ? row.Start + '–' + row.End + ' s · ' + (row.End - row.Start).toFixed(2) + ' seconds recorded · ' + row.Samples + ' samples' : '';
+  if (!row) return;
+  slider.min = row.Start;
+  slider.max = row.End;
+  slider.value = row.Start;
+  document.getElementById('timelineTime').value = row.Start;
+  selectTimelineSample();
+}
+function scrubTimeline() {
+  document.getElementById('timelineTime').value = document.getElementById('timelineScrub').value;
+  clearTimelineSelection();
+}

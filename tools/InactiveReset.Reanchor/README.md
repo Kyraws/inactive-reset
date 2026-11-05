@@ -2,6 +2,281 @@
 
 Maintainer-only experiments; current application behavior is documented in [Placement](../../docs/PLACEMENT.md).
 
+## Read-only suspension observations
+
+```powershell
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-layout <mapped-image> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-snapshot <full-build-sha256> <checkpoint.json> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-snapshot <full-build-sha256> <checkpoint.json> <new-report.jsonl> --window
+```
+
+`suspension-layout` is offline. It resolves 29 observation instruction contracts
+and checks their relationships with the existing motion layout. The input must
+use mapped PE coordinates (file offset equals RVA), not ordinary disk section
+offsets. The report's hash identifies the input bytes, not a live executable.
+Anchor `sourceRva` metadata is historical provenance only; discovery searches
+executable sections and never uses it as a fallback address.
+
+`suspension-snapshot` opens read-only process rights. It requires the requested
+full executable hash, the checkpoint's track/car (and build when present), active
+player control in local Practice, EAC absence and current motion/suspension code
+proofs. It reads twelve linked bodies, chassis membership, aggregate/origin state,
+four wheel identities, attachment descriptors, output gates and derived values.
+Pointers become capture-local body IDs; output is diagnostic JSON, not a restore
+payload. Output files must be new. There is no arm, pause, write, reset or learning
+path. Environment overrides for offsets/data are the same as the other probes.
+
+SDK time must first progress. The snapshot then requires equal SDK time around
+the native reads, at most 25 ms, and unchanged topology, mode/gates and wheel
+geometry flags. It retries timing refusals at most three times in the same
+read-only attachment; topology/context failures stop immediately. These checks
+**do not establish atomic native state**. UTC, monotonic timestamps/frequency and
+both SDK samples are retained. Constraint/solver history and tyre contact state
+are explicitly unavailable. Native values remain observations even when output
+gates suppress the corresponding SDK channel to zero.
+
+Body and wheel state are acquired in bounded bulk blocks, with monotonic
+start/end timestamps. Body blocks are reread after collection; `ChangedBodyIds`
+identifies any differences (aggregate ID -1). `BodyBlocksUnchanged` reports
+byte equality across those reads, not an atomic tick guarantee. Window samples
+that pass SDK-time/topology checks may still report changed native blocks and
+must not be treated as coherent restoration data. The reread adds no game writes
+or pause. The diagnostic does not extrapolate body poses to manufacture agreement.
+
+`--window` observes for 45 seconds in one read-only attachment, with a 200-ms
+delay between observations. Context/menu checks add overhead; no sampling rate
+is promised. Incremental JSONL retains a header, accepted samples, exhausted
+timing refusals and a completion/abort record. Accepted samples retain internal
+timing retries. Context/topology errors and backwards SDK time abort; timing
+refusals alone may continue. Interrupted files retain complete lines without a
+successful completion record.
+
+Semantics come from the historical runtime-derived `e7ad9129...` carrier studied
+on 2026-11-04. Offline carrier matching and synthetic refusal/coherence tests
+passed. One stationary read-only snapshot passed on build `66942337`, Bahrain
+Paddock / TF Sport 2026 #2:LM on 2026-11-04; body geometry reproduced native
+deflection and SDK wheel Y closely. A subsequent moving window retained 122
+observations, 116 moving, up to 172.2 km/h. Body-geometry/native deflection differed
+by up to 12.5 mm despite accepted time brackets: moving read evidence, not a
+coherent restoration-state validation. Native update phasing/read skew,
+solver/contact completeness and restoration remain unresolved.
+Matching code on another build does not
+establish complete physics compatibility. Follow-up bulk/reread captures showed
+that the largest geometry outliers coincided with changed native body blocks;
+even unchanged rereads do not synchronize native state to SDK telemetry.
+The normal SDK recorder and restoration capabilities are unchanged.
+
+## Owned-pause suspension observation
+
+### Embedded tyre model observations
+
+```powershell
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-tyre-model-layout <mapped-image> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-tyre-model-state <full-build-sha256> <checkpoint.json> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-paused-tyre-model-state <full-build-sha256> <checkpoint.json> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-tyre-table-layout <mapped-image> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-tyre-table-state <full-build-sha256> <checkpoint.json> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-paused-tyre-table-state <full-build-sha256> <checkpoint.json> <new-report.json>
+```
+
+The layout command is offline only. The state command attaches read-only and
+takes one bounded observation, with no retry or pause. It shares the existing
+Practice/EAC/build/car/track/driver/player/progressing-time gates and requires
+three uniquely discovered functions to match their complete proof bytes before
+and after capture. Existing motion offsets must agree with that code convention.
+
+Each of four wheels records its capture-local linked spin-body ID, separate
+embedded tyre-body pose/motion/inertia plus force/torque, the full inline control
+word, its masked slot index and eight slots. Each slot separates twelve raw
+16-bit words from nine finite doubles labelled by byte offset. Word meanings
+and scalar units remain partly unresolved; words are never dereferenced.
+Live pointers and untyped model blocks are not exported. Embedded body IDs
+12..15 are wheel-local, following linked IDs 0..11; they are not persistent IDs.
+
+Topology is discovered before state reads. State blocks and topology/clocks are
+reread exactly; short reads, nonfinite state, invalid body matrices/inertia,
+overlapping allocations, foreign spin bodies and all changes refuse capture.
+Decoding uses verified local copies after the equal-SDK-time/25-ms bracket.
+Native/SDK phase differences are retained, not corrected. Reports never replace
+existing files; acquisition refusals retain their role/offset when available.
+
+The paused variant **writes only the pause flag** and requires explicit owner
+authorization, fresh driving readiness and no competing writer. It extends the
+owned-pause joint/body diagnostic with two tyre acquisitions. Every raw tyre
+block, including unexported bytes and native membership, must agree across the
+pair. There are no paused retries; existing owned cleanup and flag-zero readback
+remain mandatory. Additional code/API work contributes to pause duration; no
+hard maximum is promised. Cancellation or acquisition failure attempts cleanup.
+
+Offline validation: 110 focused Release tests passed; three exact function
+proofs resolved on the historical carrier. One owner-authorized paused variant
+passed live on 2026-11-04 at 153.02 km/h, build `66942337`, Bahrain Paddock /
+TF Sport 2026 #2:LM: four embedded bodies/32 slots, 22+24+3 checks, exact paired
+state and flag-zero cleanup after a recorded 570.7-ms acquire-to-release interval.
+Later SDK-only progression was observed. Native time remained 2.5 ms ahead of
+SDK. The unpaused tyre command has not been live-tested. Allocated contact tables,
+other model history and safe reconstruction remain
+outside this capture: complete-model/contact-state flags remain false. The
+production SDK recorder, reset gates, recovery and learned-rest are unchanged.
+
+The separate **table variants** add three full-function proofs for allocation,
+cell evolution and coefficient initialization. After verifying exact live counts
+(72 state entries, 504 records, 648 descriptor pointers per tyre), they copy both
+state arrays, the record allocation and descriptor table in bounded bulk reads.
+All ranges must be canonical, aligned and non-overlapping across wheels and the
+existing observed graph. Every descriptor must point to its exact expected
+state-array or record entry; the diagnostic never follows arbitrary descriptor
+targets. Each tyre exports two 72-row arrays and 504 numeric record prefixes,
+twelve doubles per row, with 72 groups of nine local region/index references.
+Unclassified record metadata and native addresses are not exported.
+
+All table headers, full buffers (including unexported bytes) and descriptor
+pointers are compared exactly on reread and, when paused, across the pair. Slot
+indices are checked against the proved 72 groups; unknown trailing slot words
+remain uninterpreted. Decoding/graph validation uses verified local copies
+outside the timing bracket. Counts, graph, flags/metadata, short reads, invalid
+numeric state and code failures stop; no retry is added. The table byte budget
+is 624,384 bytes per four-tyre pass before rereads and existing state/headers;
+the 25-ms gate remains unchanged. Pause duration still has no hard maximum.
+
+Table validation: 140 focused Release tests pass, and actual-carrier discovery
+passes 3 existing tyre-model + 3 new table checks. One newly owner-authorized
+paused table capture passed live on 2026-11-04 at 168.76 km/h on the same build/
+car/track: 31,104 finite allocated scalars and 2,592 descriptor targets per
+observation, exact paired state, 22+24+3+3 checks, flag-zero cleanup after a
+recorded 610.3-ms acquire-to-release interval, and later SDK progression. Native
+time stayed 5 ms ahead of SDK. The unpaused table command remains untested live.
+Further pause execution requires new owner authorization/readiness. CompleteModelStateAvailable and
+TyreContactStateAvailable remain false: record prefixes are not complete contact
+history, and no model configuration restore or suspension reconstruction is
+validated. Production restoration behavior is unchanged.
+
+### Original owned-pause body observation
+
+```powershell
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-paused-snapshot <full-build-sha256> <checkpoint.json> <new-report.json>
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-paused-constraint-state <full-build-sha256> <checkpoint.json> <new-report.json>
+```
+
+This separate maintainer command **writes the physics-pause flag**. Obtain
+explicit owner approval before execution and run with no other placement/probe
+writer. It shares the read-only command's Practice/EAC/build/car/code gates and
+requires active driving with progressing SDK time before acquiring its own
+pause. An existing driver pause is refused. It sets/verifies the pause, waits
+25 ms, takes a native/SDK observation, waits another 25 ms and rereads. All
+observed native state except host read timestamps must agree; SDK time must
+remain unchanged. There is no paused window mode or retry.
+
+The new JSON report retains observations, SDK phase, identity and timed pause/
+cleanup events, including failures. Ctrl+C requests cancellation and owned
+cleanup. Unlike a partial motion write, a read failure always attempts resume;
+changed context or failed readback can prevent cleanup and require recovery.
+Only successful cleanup plus final flag-zero readback yields success. Menu/API
+checks and runtime overhead add to the pause duration; there is no hard maximum.
+No body, suspension, gear, assist, reset or learning writes occur. Stable paused
+reads do not establish complete solver/contact state or restoration support.
+The constraint-state variant additionally resolves the 22 inventory and 24 joint
+state proofs before pausing and rechecks them afterward while still paused.
+It captures all supported joint blocks/topology twice, requiring exact bytes
+and addresses to agree across the pair, including unexported callback/header
+bytes. Each joint acquisition retains the equal-SDK-time/25-ms gate. No retries
+are allowed under pause. Both decoded inventories and acquisition brackets are
+retained; full raw blocks/pointers are compared locally rather than exported.
+Neither variant applies speed or body translation; those remain in the existing
+production reset. This diagnostic establishes no new restoration capability.
+Offline focused tests passed. One owner-approved live acquisition passed on
+2026-11-04, build `66942337`, Bahrain Paddock / TF Sport 2026 #2:LM, at 169.20 km/h.
+Two observations matched, SDK/native clocks aligned and geometry/native
+deflection residual was at most 0.023335 mm. Recorded acquire-to-release interval
+was 550.6 ms; final flag-zero readback and later read-only simulation progression
+passed. This does not establish suspension restoration or other-build support.
+
+## Read-only constraint inventory
+
+```powershell
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-constraint-inventory <full-build-sha256> <checkpoint.json> <new-report.json>
+```
+
+Uses read-only process rights and the existing Practice, active-driver, EAC,
+full-build, checkpoint track/car and motion/suspension code gates. It additionally
+checks 22 inventory code/table/name proofs, including four constructor/type-name
+bindings, and rereads joint/body/group membership and vtables. Timing-only SDK
+bracket refusals retry at most three times; topology/pointer/code failures stop.
+Collection requires physics-backed mode, progressing SDK time before entry, equal before/after SDK
+time and at most 25 ms for the accepted native read. It never pauses physics.
+
+Reports capture-local joint/group IDs, vtable and function RVAs, identified or
+unresolved types, group row counts/membership and verified IsoBallJoint_0 body
+references. Other types' body references/state remain unavailable. Names alone
+do not enable their state capture. Vectors are bounded to 256 joints/64 groups,
+with 256 rows/members per group. The solver member table can have two-byte
+alignment because native construction packs it after two-byte indices;
+individual object pointers still require eight-byte alignment.
+
+One read-only inventory passed on 2026-11-04, build `66942337`, Bahrain Paddock /
+TF Sport 2026 #2:LM. The name-proved sample at 230.85 km/h found 30 joints:
+5 IsoBallJoint_2, 4 PureHinge, 20 Bar_2 and 1 AnisoOriJoint_0; three groups had
+6/20/20 rows. Accepted read: 2.458 ms, SDK time 236.7525 s before/after, unchanged
+topology rereads; this capture used 21 proof checks. The final explicit mode gate
+raises discovery to 22 checks; 45 focused tests and offline carrier discovery
+passed. Its live recheck was refused outside active driving control.
+This is a non-atomic inventory, not complete constraint/contact state or a
+restoration payload. Production recording, reset and learned-rest are unchanged.
+
+## Read-only constraint state
+
+```powershell
+dotnet artifacts/bin/InactiveReset.Reanchor/release/inactive-reset-reanchor.dll suspension-constraint-state <full-build-sha256> <checkpoint.json> <new-report.json>
+```
+
+Shares all inventory gates and read-only
+rights, with 24 additional exact vtable/function checks for IsoBallJoint_2,
+PureHinge, Bar_2 and AnisoOriJoint_0. Captures local body IDs, local anchor/axis
+relationships, raw flags, offset-labelled parameters, row coefficients/weighted
+coefficients and retained corrections/input/limits. Infinite limits/configuration
+are invariant strings; NaNs and non-finite corrections/coefficients are refused.
+Unknown types, foreign bodies, inconsistent group rows/membership and changed or
+short object blocks are refused. Each joint must occur in exactly one group.
+
+Full object-block rereads and SDK brackets do not prove atomicity or alignment
+with a body snapshot. `ConstraintStateAvailable` remains false: complete solver
+scratch/contact/tyre history and reconstruction are absent. Native accessors are
+never invoked; no pause or game-memory write occurs. Offline carrier checks
+(22 inventory + 24 state) passed. A fresh live capture
+must independently establish driving control. Previous pause authorization does
+not cover another pause. Production reset/recovery/learning are unchanged.
+
+A terminal changed/truncated verification reread saves a rejected report
+(`mode=read-only-constraint-refusal`, `accepted=false`) and exits with failure.
+It identifies the first failing block, relative byte offset and mismatch counts;
+it contains no accepted joint state or SDK-after bracket. Early gate failures
+still produce no report. Refusal
+attribution regressions initially brought the focused suite to 62 passing tests.
+
+Native acquisition now finishes all byte rereads before local joint decoding.
+The SDK-after/25-ms bracket excludes local decoding and row/scalar interpretation;
+those checks still must pass before saving an accepted result. All byte-equality
+gates remain. Focused tests now total 64 passed. The first live check after this
+change refused before attachment at the active-driver gate. Later moving reads
+still advanced, motivating the batching change below.
+
+Joint-state copying now starts after topology discovery, with two tight passes
+over all state blocks before topology rereads. The command permits at most three
+fresh attempts within the existing timing-attempt budget. Only equal-length
+mismatches entirely inside proved numeric row spans may retry; pointers, flags,
+headers, topology, code and short-read failures still stop. Each attempt rechecks
+Practice/driver/player context and acquires a fresh complete graph. Every byte
+reread and acceptance gate remains; attempts never merge state. Refused attempts
+are retained in successful/final reread-refusal reports.
+
+One live capture passed on 2026-11-04, build `66942337`, Bahrain Paddock /
+TF Sport 2026 #2:LM, at 198.42 km/h in 2.7453 ms. Attempt 1 was discarded for
+numeric row advancement; attempt 2 passed equal SDK time, all block/topology
+rereads and 22+24 code checks. All 30 joints/46 rows were captured with nonzero
+finite corrections. Final focused tests: 70 passed. This establishes one
+bracketed read-only observation, not atomicity, body-phase alignment, repeated
+reliability, complete contact state or restoration. No pause or game writes.
+
 ## Experimental speed restoration
 
 New checkpoints store optional `motion.local_velocity_mps` and the existing

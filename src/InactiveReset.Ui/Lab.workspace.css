@@ -75,3 +75,10 @@
   .lab .access-notice{padding:8px 10px;margin:0;flex:none}.lab .access-notice>p{font-size:10px;line-height:1.35;margin-top:3px}.lab .launch-choices{gap:10px;margin-top:6px}.lab .launch-choices p{font-size:10px;line-height:1.3;margin:4px 0}
   .lab .summary-shade{top:46px}.lab .lab-dock{top:46px!important}
 }
+
+.lab .checkpoint-picker:has(#timelinePanel[open]){display:block;overflow-y:auto}
+.lab #timelinePanel{flex:none;padding:8px;margin-bottom:8px}
+.lab #timelinePanel>label{display:block;margin-top:8px}
+.lab #timelineScrub{width:100%;box-sizing:border-box}
+.lab .practice-layout #timelineMap{height:170px;min-height:170px;margin-top:8px}
+.lab .practice-layout #timelineMap svg{height:150px;min-height:150px}

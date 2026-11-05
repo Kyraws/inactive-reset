@@ -58,3 +58,9 @@ in this app instance, provided its original filename is still free and the
 deleted content is unchanged. Earlier deleted files are retained for manual
 recovery. Undo is not available after restarting the app. File actions are
 blocked during a placement or tyre operation.
+
+Recorded timestamps have their own position preview in Practice tools. Choose a
+recording and browse time: R marks the selected sample's actual world coordinates,
+and the text shows its distance along the lap. The same layout matching and exact
+layout chooser apply. Browsing a recording does not select a saved checkpoint or
+teleport the car.

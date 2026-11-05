@@ -3,9 +3,11 @@
     "Byte offsets into LMU's shared memory, emitted by the compiler from",
     "SharedMemoryInterface.hpp. Do not hand-edit: re-run tools/dump-sdk-offsets."
   ],
+  "sdkHeaderSha256": "A82833D5E9E277A7C3AF8802518E35EA62F4EC7C7C7C9083650282E4EDF1F8BF",
   "mapName": "LMU_Data",
   "eventName": "",
   "layoutSize": 324824,
+  "synchronization": {"lockMap": "LMU_SharedMemoryLockData", "lockEvent": "LMU_SharedMemoryLockEvent", "holdEvent": "LMU_Data_HoldEvent", "dataEvent": "LMU_Data_DataEvent"},
   "telemetry": {
     "base": 128464,
     "activeVehicles": 128464,
@@ -15,6 +17,33 @@
     "telemInfoStride": 1888
   },
   "telemInfo": {
+    "mVehicleName": 32,
+    "mTrackName": 96,
+    "mVehicleNameSize": 64,
+    "mTrackNameSize": 64,
+    "mDeltaTime": 4,
+    "mLocalAccel": 208,
+    "mLocalRot": 304,
+    "mLocalRotAccel": 328,
+    "mFuel": 524,
+    "mFuelCapacity": 608,
+    "mBatteryChargeFraction": 704,
+    "mElectricBoostMotorState": 744,
+    "mSoC": 772,
+    "mVirtualEnergy": 776,
+    "mRegen": 768,
+    "mUnfilteredSteering": 404,
+    "mUnfilteredClutch": 412,
+    "mFilteredSteering": 436,
+    "mFilteredClutch": 444,
+    "mFront3rdDeflection": 460,
+    "mRear3rdDeflection": 468,
+    "mFrontRideHeight": 484,
+    "mRearRideHeight": 492,
+    "mDentSeverity": 544,
+    "mLastImpactET": 552,
+    "mLastImpactMagnitude": 560,
+    "mDetached": 542,
     "mID": 0,
     "mElapsedTime": 12,
     "mLapNumber": 20,
@@ -36,6 +65,11 @@
     "vect3ComponentSize": 8
   },
   "wheel": {
+    "mSuspensionDeflection": 0,
+    "mRideHeight": 8,
+    "mSuspForce": 16,
+    "mTireLoad": 104,
+    "mWheelYLocation": 188,
     "mTemperature": 128,
     "mWear": 152,
     "mRotation": 40,
@@ -55,6 +89,9 @@
     "vehScoringInfoStride": 584
   },
   "scoringInfo": {
+    "mCurrentET": 68,
+    "mInRealtime": 115,
+    "mGamePhase": 108,
     "mTrackName": 0,
     "mTrackNameSize": 64,
     "mNumVehicles": 104,
@@ -62,6 +99,7 @@
     "mLapDist": 88
   },
   "vehScoringInfo": {
+    "mControl": 197,
     "mID": 0,
     "mVehicleName": 36,
     "mVehicleNameSize": 64,
@@ -70,8 +108,8 @@
     "mTotalLaps": 100
   },
   "generic": {
+    "optionsLocation": 96,
     "base": 0,
     "gameVersion": 64
-  },
-  "sdkHeaderSha256": "A82833D5E9E277A7C3AF8802518E35EA62F4EC7C7C7C9083650282E4EDF1F8BF"
+  }
 }

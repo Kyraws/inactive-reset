@@ -18,6 +18,16 @@ public sealed class MotionCaptureTests
             var layout = JsonNode.Parse(File.ReadAllText(ProfileFixture.PathFor("shared-memory")))!.AsObject();
             var name = "ir-motion-" + Guid.NewGuid().ToString("N");
             layout["mapName"] = name;
+            layout["synchronization"] = new JsonObject
+            {
+                ["lockMap"] = name + "-lock", ["lockEvent"] = name + "-wake",
+                ["holdEvent"] = name + "-hold", ["dataEvent"] = name + "-data",
+            };
+            using var sdkLock = MemoryMappedFile.CreateNew(name + "-lock", 8);
+            using var lockView = sdkLock.CreateViewAccessor();
+            using var wake = new EventWaitHandle(false, EventResetMode.AutoReset, name + "-wake");
+            using var hold = new EventWaitHandle(true, EventResetMode.ManualReset, name + "-hold");
+            using var data = new EventWaitHandle(true, EventResetMode.ManualReset, name + "-data");
             var path = Path.Combine(directory, "layout.json");
             File.WriteAllText(path, layout.ToJsonString());
             var offsets = SharedMemoryOffsets.Load(path);
@@ -26,6 +36,7 @@ public sealed class MotionCaptureTests
             using var view = mapping.CreateViewAccessor();
             view.Write(offsets.PlayerHasVehicle, (byte)1);
             view.Write(offsets.PlayerVehicleIdx, (byte)0);
+            view.Write(offsets.ActiveVehicles!.Value, (byte)1);
             view.Write(offsets.ScoringInfo + offsets.NumVehicles, 1);
             view.Write(offsets.VehScoringInfo + offsets.VehIsPlayer, (byte)1);
             void Text(int address, string text)
@@ -44,7 +55,19 @@ public sealed class MotionCaptureTests
             view.Write(velocity + 8, 4.0);
             view.Write(velocity + 16, -12.0);
             using var reader = new SharedMemoryReader(offsets);
+            Assert.True(reader.WaitForFrame(0));
+            lockView.Write(4, 1);
+            Assert.Throws<SharedMemoryException>(() => reader.Read());
+            lockView.Write(4, 0);
+            lockView.Write(0, 1);
             var capture = new CaptureService(reader).Capture("moving");
+            Assert.Equal(0, lockView.ReadInt32(4));
+            Assert.True(wake.WaitOne(0));
+            lockView.Write(0, 0);
+            view.Write(offsets.PlayerVehicleIdx, (byte)104);
+            Assert.Throws<SharedMemoryException>(() => reader.Read());
+            Assert.Equal(0, lockView.ReadInt32(4));
+            view.Write(offsets.PlayerVehicleIdx, (byte)0);
             Assert.True(capture.Usable);
             Assert.Equal(new Vec3(-3, 4, -12), capture.Snapshot.LocalVelocityMetresPerSecond);
             Assert.Equal(46.8, capture.Snapshot.SpeedKmh!.Value, 6);

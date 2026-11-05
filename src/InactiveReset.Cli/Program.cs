@@ -90,6 +90,7 @@ internal static class Program
             "plan" => Plan(offsets, data, rest),
             "place" => Place(offsets, data, rest),
             "watch" => Watch(offsets, data),
+            "record" => Record(offsets, data),
             "capture" => Capture(offsets, data, rest),
             "serve" => Serve(offsets, data, rest),
             "launch" => Launch(data, rest),
@@ -887,6 +888,28 @@ internal static class Program
         Console.Error.WriteLine($"{kind}: {message}");
     }
 
+    private static int Record(string offsets, string data)
+    {
+        using var cancellation = new CancellationTokenSource();
+        void Cancel(object? sender, ConsoleCancelEventArgs e) { e.Cancel = true; cancellation.Cancel(); }
+        Console.CancelKeyPress += Cancel;
+        try
+        {
+            var recorder = new TelemetryRecorder(offsets, data);
+            Console.WriteLine($"Recording to {Path.Combine(data, "recordings")}; Ctrl+C stops and flushes. Menus/replay/pause suspend recording.");
+            var running = recorder.RunAsync(cancellation.Token);
+            while (!running.IsCompleted)
+            {
+                if (Task.WhenAny(running, Task.Delay(1000)).GetAwaiter().GetResult() == running) break;
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(recorder.Status));
+            }
+            running.GetAwaiter().GetResult();
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(recorder.Status));
+            return recorder.Status.State == "failed" ? 1 : 0;
+        }
+        finally { Console.CancelKeyPress -= Cancel; }
+    }
+
     private static void Usage()
     {
         Console.WriteLine("""
@@ -919,6 +942,10 @@ internal static class Program
               inactive-reset watch
                   Live view of position, heading and whether the current pose
                   could be captured. Reads LMU's shared memory only.
+
+              inactive-reset record
+                  Continuously record fresh driving telemetry; Ctrl+C flushes and stops.
+                  Also runs automatically with the app or serve. No native write attachment.
 
               inactive-reset capture <name>
                   Record the car's current pose as a checkpoint. Drive to the

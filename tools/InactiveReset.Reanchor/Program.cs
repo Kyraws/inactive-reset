@@ -47,6 +47,18 @@ internal static class Program
                 "spot-probe" => IndexedSpotProbe.Run(rest),
                 "velocity-probe" => VelocityProbe.Run(rest),
                 "pause-probe" => PauseProbe.Run(rest),
+                "suspension-layout" => SuspensionProbe.Layout(rest),
+                "suspension-tyre-model-layout" => SuspensionProbe.TyreModelLayout(rest),
+                "suspension-tyre-table-layout" => SuspensionProbe.TyreTableLayout(rest),
+                "suspension-snapshot" => SuspensionProbe.Snapshot(rest),
+                "suspension-paused-snapshot" => SuspensionProbe.PausedSnapshot(rest),
+                "suspension-paused-constraint-state" => SuspensionProbe.PausedConstraintState(rest),
+                "suspension-tyre-model-state" => SuspensionProbe.TyreModelState(rest),
+                "suspension-paused-tyre-model-state" => SuspensionProbe.PausedTyreModelState(rest),
+                "suspension-tyre-table-state" => SuspensionProbe.TyreTableState(rest),
+                "suspension-paused-tyre-table-state" => SuspensionProbe.PausedTyreTableState(rest),
+                "suspension-constraint-inventory" => SuspensionProbe.Inventory(rest),
+                "suspension-constraint-state" => SuspensionProbe.ConstraintState(rest),
                 "spot-place-test" => IndexedSpotProbe.PlaceCheckpoint(rest),
                 "spot-place-rules-test" => IndexedSpotProbe.PlaceCheckpointWithRules(rest),
                 _ => Unknown(args[0]),
@@ -484,6 +496,39 @@ internal static class Program
 
           inactive-reset-reanchor spot-telemetry
               Read the active player's pose from LMU's SDK shared memory only.
+
+          inactive-reset-reanchor suspension-layout <mapped-image> <new-report.json>
+              Resolve observation-only suspension code contracts offline; no game attachment.
+
+          inactive-reset-reanchor suspension-snapshot <full-build-sha256> <checkpoint.json> <new-report> [--window]
+              One read-only native/SDK observation in same-car local Practice; no pause or writes.
+              Refuses changed topology, unsupported code, or advanced SDK time. Not atomic.
+              --window observes for 45 seconds in one attachment, writing JSONL samples/refusals.
+
+          inactive-reset-reanchor suspension-paused-snapshot <full-build-sha256> <checkpoint.json> <new-report.json>
+          inactive-reset-reanchor suspension-paused-constraint-state <full-build-sha256> <checkpoint.json> <new-report.json>
+          inactive-reset-reanchor suspension-paused-tyre-model-state <full-build-sha256> <checkpoint.json> <new-report.json>
+          inactive-reset-reanchor suspension-paused-tyre-table-state <full-build-sha256> <checkpoint.json> <new-report.json>
+              Writes the owned physics-pause flag, compares two native/SDK reads, then verifies cleanup.
+              The constraint-state command also requires exact raw joint/topology equality; no retry.
+              Explicit owner approval required before execution. No suspension/body restoration.
+              Ctrl+C requests cleanup; context loss or failed readback can require recovery.
+
+          inactive-reset-reanchor suspension-constraint-inventory <full-build-sha256> <checkpoint.json> <new-report.json>
+          inactive-reset-reanchor suspension-constraint-state <full-build-sha256> <checkpoint.json> <new-report.json>
+              Read-only joint vtable/body-reference and solver-membership inventory; no pause or writes.
+              Unknown joint types stay unresolved. Stable rereads are not an atomicity proof.
+
+          inactive-reset-reanchor suspension-tyre-model-state <full-build-sha256> <checkpoint.json> <new-report.json>
+              One read-only embedded tyre-body and inline model observation; no retries or writes.
+              The paused variant above includes bodies/joints and two exact tyre observations.
+              Neither captures complete contact/model state or provides restoration support.
+          inactive-reset-reanchor suspension-tyre-model-layout <mapped-image> <new-report.json>
+              Offline code/layout validation only; never attaches to the game.
+          inactive-reset-reanchor suspension-tyre-table-layout <mapped-image> <new-report.json>
+          inactive-reset-reanchor suspension-tyre-table-state <full-build-sha256> <checkpoint.json> <new-report.json>
+              Table variants add bounded allocated numeric prefixes and local descriptor mappings.
+              Exact counts, ranges, graph and full-block rereads required. No arbitrary pointer following.
 
           inactive-reset-reanchor velocity-probe <full-build-sha256> <checkpoint.json> [--bodies | --wheels | --paused-wheels | --auto-wheels | --placement-wheels | --gear-wheels] [--arm]
               Experimental captured-velocity probe (no upper speed ceiling); same-car offline Practice only.

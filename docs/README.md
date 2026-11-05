@@ -8,6 +8,7 @@
 | [Circuit maps and library](CIRCUIT_MAPS.md) | Geometry, preview, selection, file management and offline maps |
 | [Placement and rules](PLACEMENT.md) | Garage/direct teleport, motion, cleanup and lap timing |
 | [Tyres](TYRES.md) | Preparation, telemetry and build-specific engine evidence |
+| [Telemetry recorder](TELEMETRY_TIMELINE.md) | Continuous capture, field inventory, storage and current limits |
 | [Status](STATUS.md) | Known gaps, live scope and validation limits |
 | [Architecture](ARCHITECTURE.md) | Components, discovery and data flow |
 | [Testing](TESTING.md) | Automated checks, private captures and live-test boundaries |

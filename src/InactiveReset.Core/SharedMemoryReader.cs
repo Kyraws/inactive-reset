@@ -12,6 +12,7 @@ public sealed class SharedMemoryException(string message) : Exception(message);
 /// </summary>
 public sealed class SharedMemoryOffsets
 {
+    internal JsonElement Layout { get; init; }
     internal TyreTelemetryOffsets? Tyres { get; init; }
     public required string MapName { get; init; }
     public required string EventName { get; init; }
@@ -19,6 +20,7 @@ public sealed class SharedMemoryOffsets
     public required string SdkHeaderSha256 { get; init; }
 
     public required int PlayerVehicleIdx { get; init; }
+    public int? ActiveVehicles { get; init; }
     public required int PlayerHasVehicle { get; init; }
     public required int TelemInfo { get; init; }
     public required int TelemInfoStride { get; init; }
@@ -67,6 +69,7 @@ public sealed class SharedMemoryOffsets
 
         var offsets = new SharedMemoryOffsets
         {
+            Layout = root.Clone(),
             Tyres = TyreTelemetryOffsets.Load(root, telem),
             MapName = root.GetProperty("mapName").GetString()!,
             EventName = root.GetProperty("eventName").GetString()!,
@@ -74,6 +77,7 @@ public sealed class SharedMemoryOffsets
             SdkHeaderSha256 = root.GetProperty("sdkHeaderSha256").GetString()!,
 
             PlayerVehicleIdx = telemetry.GetProperty("playerVehicleIdx").GetInt32(),
+            ActiveVehicles = telemetry.TryGetProperty("activeVehicles", out var active) ? active.GetInt32() : null,
             PlayerHasVehicle = telemetry.GetProperty("playerHasVehicle").GetInt32(),
             TelemInfo = telemetry.GetProperty("telemInfo").GetInt32(),
             TelemInfoStride = telemetry.GetProperty("telemInfoStride").GetInt32(),
@@ -121,6 +125,7 @@ public sealed record TelemetrySnapshot(
     TyreState? Tyres = null,
     Vec3? LocalVelocityMetresPerSecond = null)
 {
+    public TelemetryDetails? Details { get; init; }
     public double? SpeedKmh => LocalVelocityMetresPerSecond is { } v
         ? MotionCapture.SpeedKmh(v) : null;
 }
@@ -140,6 +145,9 @@ public sealed partial class SharedMemoryReader : IDisposable
     private readonly SharedMemoryOffsets _offsets;
     private nint _mapping;
     private nint _view;
+    private readonly SdkReadGate _gate;
+    private readonly byte[] _copy;
+    private readonly object _readLock = new();
 
     public SharedMemoryReader(SharedMemoryOffsets offsets)
     {
@@ -160,6 +168,9 @@ public sealed partial class SharedMemoryReader : IDisposable
             _mapping = 0;
             throw new SharedMemoryException("cannot map a read-only view of LMU's shared memory");
         }
+        try { _gate = new SdkReadGate(offsets.Layout); }
+        catch { Dispose(); throw; }
+        _copy = new byte[offsets.LayoutSize];
     }
 
     /// <summary>
@@ -168,12 +179,28 @@ public sealed partial class SharedMemoryReader : IDisposable
     /// </summary>
     public TelemetrySnapshot? Read()
     {
+        lock (_readLock)
+        {
+            ObjectDisposedException.ThrowIf(_view == 0, this);
+            _gate.Copy(() => Marshal.Copy(_view, _copy, 0, _copy.Length));
+            return Decode();
+        }
+    }
+
+    public bool WaitForFrame(uint timeoutMilliseconds = 20) => _gate.WaitForFrame(timeoutMilliseconds);
+
+    private TelemetrySnapshot? Decode()
+    {
         if (ReadByte(_offsets.PlayerHasVehicle) == 0)
         {
             return null;
         }
 
         int playerIndex = ReadByte(_offsets.PlayerVehicleIdx);
+        if (playerIndex >= 104) throw new SharedMemoryException("Invalid SDK player index.");
+        if (_offsets.ActiveVehicles is { } active &&
+            (ReadByte(active) > 104 || playerIndex >= ReadByte(active)))
+            throw new SharedMemoryException("SDK player index does not identify an active vehicle.");
         var telem = _offsets.TelemInfo + playerIndex * _offsets.TelemInfoStride;
 
         var pose = new RecordedPose(
@@ -194,7 +221,8 @@ public sealed partial class SharedMemoryReader : IDisposable
             ElapsedTime: ReadDouble(telem + _offsets.TelemElapsedTime),
             Tyres: ReadTyres(telem),
             LocalVelocityMetresPerSecond: _offsets.TelemLocalVelocity is { } velocity
-                ? MotionCapture.ReadLocalVelocity(telem + velocity, ReadDouble) : null);
+                ? MotionCapture.ReadLocalVelocity(telem + velocity, ReadDouble) : null)
+        { Details = TelemetryDetails.Decode(_offsets, telem, _copy) };
     }
 
     private TyreState? ReadTyres(int telem)
@@ -258,26 +286,26 @@ public sealed partial class SharedMemoryReader : IDisposable
     private byte ReadByte(int offset)
     {
         Bounds(offset, 1);
-        return Marshal.ReadByte(_view, offset);
+        return _copy[offset];
     }
 
     private int ReadInt32(int offset)
     {
         Bounds(offset, 4);
-        return Marshal.ReadInt32(_view, offset);
+        return BitConverter.ToInt32(_copy, offset);
     }
 
     private double ReadDouble(int offset)
     {
         Bounds(offset, 8);
-        return BitConverter.Int64BitsToDouble(Marshal.ReadInt64(_view, offset));
+        return BitConverter.ToDouble(_copy, offset);
     }
 
     private string ReadAscii(int offset, int maxLength)
     {
         Bounds(offset, maxLength);
         var bytes = new byte[maxLength];
-        Marshal.Copy(_view + offset, bytes, 0, maxLength);
+        Array.Copy(_copy, offset, bytes, 0, maxLength);
         var end = Array.IndexOf(bytes, (byte)0);
         return Encoding.ASCII.GetString(bytes, 0, end < 0 ? maxLength : end).Trim();
     }
@@ -294,6 +322,7 @@ public sealed partial class SharedMemoryReader : IDisposable
 
     public void Dispose()
     {
+        _gate?.Dispose();
         if (_view != 0)
         {
             UnmapViewOfFile(_view);

@@ -26,6 +26,7 @@
 #include "SharedMemoryInterface.hpp"
 
 #define OFF(type, member) static_cast<size_t>(offsetof(type, member))
+#define FIELD(type, member) std::printf("    \"" #member "\": %zu,\n", OFF(type, member))
 
 int main() {
     std::printf("{\n");
@@ -42,6 +43,8 @@ int main() {
 #endif
     std::printf("  \"layoutSize\": %zu,\n", sizeof(SharedMemoryLayout));
 
+    std::printf("  \"synchronization\": {\"lockMap\": \"LMU_SharedMemoryLockData\", \"lockEvent\": \"LMU_SharedMemoryLockEvent\", \"holdEvent\": \"%s\", \"dataEvent\": \"%s\"},\n",
+        LMU_SHARED_MEMORY_HOLD_EVENT, LMU_SHARED_MEMORY_DATA_EVENT);
     // data -> telemetry
     const size_t data = OFF(SharedMemoryLayout, data);
     const size_t telemetry = data + OFF(SharedMemoryObjectOut, telemetry);
@@ -60,6 +63,33 @@ int main() {
 
     // Fields within one TelemInfoV01, relative to that vehicle's entry.
     std::printf("  \"telemInfo\": {\n");
+    FIELD(TelemInfoV01, mVehicleName);
+    FIELD(TelemInfoV01, mTrackName);
+    std::printf("    \"mVehicleNameSize\": %zu,\n", sizeof(((TelemInfoV01*)nullptr)->mVehicleName));
+    std::printf("    \"mTrackNameSize\": %zu,\n", sizeof(((TelemInfoV01*)nullptr)->mTrackName));
+    FIELD(TelemInfoV01, mDeltaTime);
+    FIELD(TelemInfoV01, mLocalAccel);
+    FIELD(TelemInfoV01, mLocalRot);
+    FIELD(TelemInfoV01, mLocalRotAccel);
+    FIELD(TelemInfoV01, mFuel);
+    FIELD(TelemInfoV01, mFuelCapacity);
+    FIELD(TelemInfoV01, mBatteryChargeFraction);
+    FIELD(TelemInfoV01, mElectricBoostMotorState);
+    FIELD(TelemInfoV01, mSoC);
+    FIELD(TelemInfoV01, mVirtualEnergy);
+    FIELD(TelemInfoV01, mRegen);
+    FIELD(TelemInfoV01, mUnfilteredSteering);
+    FIELD(TelemInfoV01, mUnfilteredClutch);
+    FIELD(TelemInfoV01, mFilteredSteering);
+    FIELD(TelemInfoV01, mFilteredClutch);
+    FIELD(TelemInfoV01, mFront3rdDeflection);
+    FIELD(TelemInfoV01, mRear3rdDeflection);
+    FIELD(TelemInfoV01, mFrontRideHeight);
+    FIELD(TelemInfoV01, mRearRideHeight);
+    FIELD(TelemInfoV01, mDentSeverity);
+    FIELD(TelemInfoV01, mLastImpactET);
+    FIELD(TelemInfoV01, mLastImpactMagnitude);
+    FIELD(TelemInfoV01, mDetached);
     std::printf("    \"mID\": %zu,\n", OFF(TelemInfoV01, mID));
     std::printf("    \"mElapsedTime\": %zu,\n", OFF(TelemInfoV01, mElapsedTime));
     std::printf("    \"mLapNumber\": %zu,\n", OFF(TelemInfoV01, mLapNumber));
@@ -83,6 +113,11 @@ int main() {
 
     // Fields within one wheel, relative to that wheel's entry.
     std::printf("  \"wheel\": {\n");
+    FIELD(TelemWheelV01, mSuspensionDeflection);
+    FIELD(TelemWheelV01, mRideHeight);
+    FIELD(TelemWheelV01, mSuspForce);
+    FIELD(TelemWheelV01, mTireLoad);
+    FIELD(TelemWheelV01, mWheelYLocation);
     std::printf("    \"mTemperature\": %zu,\n", OFF(TelemWheelV01, mTemperature));
     std::printf("    \"mWear\": %zu,\n", OFF(TelemWheelV01, mWear));
     std::printf("    \"mRotation\": %zu,\n", OFF(TelemWheelV01, mRotation));
@@ -108,6 +143,9 @@ int main() {
     std::printf("  },\n");
 
     std::printf("  \"scoringInfo\": {\n");
+    FIELD(ScoringInfoV01, mCurrentET);
+    FIELD(ScoringInfoV01, mInRealtime);
+    FIELD(ScoringInfoV01, mGamePhase);
     std::printf("    \"mTrackName\": %zu,\n", OFF(ScoringInfoV01, mTrackName));
     std::printf("    \"mTrackNameSize\": %zu,\n", sizeof(((ScoringInfoV01*)nullptr)->mTrackName));
     std::printf("    \"mNumVehicles\": %zu,\n", OFF(ScoringInfoV01, mNumVehicles));
@@ -116,6 +154,7 @@ int main() {
     std::printf("  },\n");
 
     std::printf("  \"vehScoringInfo\": {\n");
+    FIELD(VehicleScoringInfoV01, mControl);
     std::printf("    \"mID\": %zu,\n", OFF(VehicleScoringInfoV01, mID));
     std::printf("    \"mVehicleName\": %zu,\n", OFF(VehicleScoringInfoV01, mVehicleName));
     std::printf("    \"mVehicleNameSize\": %zu,\n",
@@ -127,6 +166,7 @@ int main() {
 
     std::printf("  \"generic\": {\n");
     const size_t generic = data + OFF(SharedMemoryObjectOut, generic);
+    std::printf("    \"optionsLocation\": %zu,\n", generic + OFF(SharedMemoryGeneric, appInfo) + OFF(ApplicationStateV01, mOptionsLocation));
     std::printf("    \"base\": %zu,\n", generic);
     std::printf("    \"gameVersion\": %zu\n", generic + OFF(SharedMemoryGeneric, gameVersion));
     std::printf("  }\n");

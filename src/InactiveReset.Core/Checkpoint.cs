@@ -26,6 +26,7 @@ public sealed class Checkpoint
     public Vec3? LocalVelocityMetresPerSecond { get; init; }
     public double? SpeedKmh => LocalVelocityMetresPerSecond is { } v
         ? MotionCapture.SpeedKmh(v) : null;
+    public RecordedRestoration? Restoration { get; init; }
     public string? SourcePath { get; init; }
 
     /// <summary>Build this was captured against, for provenance only.</summary>
@@ -68,6 +69,7 @@ public sealed class Checkpoint
             ExecutableSha256 = root.TryGetProperty("game", out var game)
                 && game.TryGetProperty("executable_sha256", out var h) ? h.GetString() : null,
             SourcePath = path,
+            Restoration = root.TryGetProperty("restoration", out var restoration) ? restoration.Deserialize<RecordedRestoration>() : null,
             LocalVelocityMetresPerSecond = root.TryGetProperty("motion", out var motion)
                 && motion.ValueKind == JsonValueKind.Object
                 && (motion.TryGetProperty("local_velocity_mps", out var velocity)

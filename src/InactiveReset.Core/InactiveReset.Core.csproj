@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="InactiveReset.Tests" />
+    <InternalsVisibleTo Include="inactive-reset-reanchor" />
     <EmbeddedResource Include="discovery-*.json" LogicalName="InactiveReset.Core.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

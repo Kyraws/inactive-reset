@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="suspension-observation-anchors.json" />
+    <EmbeddedResource Include="constraint-inventory-anchors.json" />
+    <EmbeddedResource Include="constraint-state-proofs.json" />
+    <EmbeddedResource Include="tyre-model-observation-proofs.json" />
+    <EmbeddedResource Include="tyre-model-table-proofs.json" />
+    <InternalsVisibleTo Include="InactiveReset.Tests" />
     <ProjectReference Include="..\..\src\InactiveReset.Core\InactiveReset.Core.csproj" />
   </ItemGroup>
 

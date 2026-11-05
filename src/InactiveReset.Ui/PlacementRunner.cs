@@ -594,7 +594,12 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         var tyreOptions = ReadTyreOptions(body);
         var restoreSpeed = body["restoreSpeed"]?.GetValue<bool>() ?? true;
         var directReset = body["directReset"]?.GetValue<bool>() ?? false;
-        var name = body["checkpoint"]?.GetValue<string>();
+        var recorded = body["recording"]?.GetValue<string>();
+        var selection = recorded is null ? null : new TelemetryTimeline(dataDirectory).Select(recorded,
+            sequence: body["sequence"]?.GetValue<long>() ?? throw new GateException("An exact sample sequence is required."));
+        if (selection is not null && tyreOptions is not null) throw new GateException("Recorded reset does not restore tyres; disable tyre preparation.");
+        if (selection is not null && restoreSpeed && selection.RollingUnavailableReason is { } reason) throw new GateException(reason);
+        var name = selection?.Checkpoint.Name ?? body["checkpoint"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new CheckpointException("a checkpoint name is required");
@@ -621,7 +626,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             _placementCancellation?.Dispose();
             _placementCancellation = new CancellationTokenSource();
             var token = _placementCancellation!.Token;
-            _running = Task.Run(() => RunPlacement(name, tyreOptions, restoreSpeed, directReset, token, cleanup));
+            _running = Task.Run(() => RunPlacement(name, tyreOptions, restoreSpeed, directReset, token, cleanup, selection));
         }
         return new JsonObject { ["ok"] = true };
     }
@@ -703,7 +708,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         }
     }
 
-    private void RunPlacement(string name, TyreResetOptions? tyreOptions, bool restoreSpeed, bool directReset, CancellationToken cancellation, Task? cleanup = null)
+    private void RunPlacement(string name, TyreResetOptions? tyreOptions, bool restoreSpeed, bool directReset, CancellationToken cancellation, Task? cleanup = null, TimelineSelection? selection = null)
     {
         try
         {
@@ -724,9 +729,12 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             {
             }
 
-            var checkpoint = Checkpoint.Require(Checkpoints, name, live);
+            var checkpoint = selection?.Checkpoint ?? Checkpoint.Require(Checkpoints, name, live);
             var identity = SessionIdentity.RequireKnown(live);
             identity.RequireMatches(checkpoint);
+            selection?.RequireContext(session.ExecutableSha256, identity);
+            if (selection is not null)
+                Log($"Recorded segment {selection.SegmentId}, sample {selection.Sequence}, simulation {selection.Timestamp:R} s; restoring pose{(restoreSpeed ? ", speed and gear" : " standing")}. Other recorded physical state is not restored.");
             if (restoreSpeed) RollingMotion.RequireEligible(checkpoint, session.Offsets.Motion is not null, identity);
             if (directReset)
             {

@@ -10,6 +10,33 @@ namespace InactiveReset.Tests;
 public sealed class UiServerTests
 {
     [Fact]
+    public async Task RecordingSelectionIsReadOnlyAndResetStillChecksEac()
+    {
+        await using var host = new UiTestHost { Protected = true };
+        var directory = Path.Combine(host.DataDirectory, "recordings");
+        Directory.CreateDirectory(directory);
+        var identity = new InactiveReset.Core.RecordingIdentity("game.exe", new string('A', 64), "sdk", "track", "car", 1, 123);
+        var sample = new InactiveReset.Core.TelemetrySnapshot("track", "car",
+            new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)), 0, 2, 10.125,
+            LocalVelocityMetresPerSecond: new(0, 0, -10))
+        { Details = new(1, 10, 5, true, 0, 0, new Dictionary<string, double?>(), [], null) { IdentityMatches = true } };
+        File.WriteAllLines(Path.Combine(directory, "part.jsonl"), new[] {
+            new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: identity, SegmentId: "segment"),
+            new InactiveReset.Core.TimelineEntry("sample", 42, 1, Identity: identity, SegmentId: "segment", Sample: sample)
+        }.Select(e => System.Text.Json.JsonSerializer.Serialize(e)));
+        var list = await host.Client.GetFromJsonAsync<JsonArray>("api/recordings/list");
+        Assert.Equal("segment", Assert.Single(list!)!["SegmentId"]!.GetValue<string>());
+        using var response = await host.Client.PostAsJsonAsync("api/recordings/select", new { recording = "segment", timestamp = 10.12 });
+        var selected = (await response.Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal(42, selected["Sequence"]!.GetValue<long>());
+        Assert.Equal(10.125, selected["Timestamp"]!.GetValue<double>());
+        using var reset = await host.Client.PostAsJsonAsync("api/place", new { recording = "segment", sequence = 42, restoreSpeed = false });
+        Assert.Contains("EAC", await reset.Content.ReadAsStringAsync());
+        Assert.Equal(0, host.AttachmentReads);
+        Assert.Equal(0, host.Menu.Writes);
+    }
+
+    [Fact]
     public async Task EacAllowsSinglePlayerRestEditingWithoutReadingGameMemory()
     {
         await using var host = new UiTestHost { Protected = true };

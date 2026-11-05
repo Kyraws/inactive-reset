@@ -108,6 +108,9 @@ public sealed class CaptureService(SharedMemoryReader reader)
         if (checkpoint.Tyres is { } tyres)
             json["tyres"] = JsonSerializer.SerializeToNode(tyres, TyreState.JsonOptions);
 
+        if (checkpoint.Restoration is { } restoration)
+            json["restoration"] = JsonSerializer.SerializeToNode(restoration);
+
         var payload = json.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

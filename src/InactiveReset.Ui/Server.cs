@@ -18,6 +18,10 @@ namespace InactiveReset.Ui;
 /// </summary>
 public sealed class Server(string offsetDirectory, string dataDirectory, int port)
 {
+    private readonly TelemetryRecorder _recorder = new(offsetDirectory, dataDirectory);
+    private readonly CancellationTokenSource _recorderCancellation = new();
+    private Task? _recording;
+    private readonly bool _recordingEnabled = true;
     private readonly PlacementRunner _runner = new(offsetDirectory, dataDirectory);
     private readonly LabPreferencesStore _labPreferences = new(dataDirectory);
     private readonly CircuitMapStore _maps = new(dataDirectory, id => new LmuSessionClient(dataDirectory: dataDirectory).TrackMapAsync(id));
@@ -25,10 +29,15 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
     private readonly LmuBrandAssets _brandAssets = new(() => Path.Combine(GameLauncher.Locate(dataDirectory).Root, "Bin", "UI.zip"));
 
     internal Server(PlacementRunner runner, string dataDirectory, int port, OfficialSessionsStore? officialSessions = null) : this("unused", dataDirectory, port)
-    { _runner = runner; _maps = new(dataDirectory, runner.TrackMapAsync); if (officialSessions is not null) _officialSessions = officialSessions; }
+    { _runner = runner; _maps = new(dataDirectory, runner.TrackMapAsync); _recordingEnabled = false; if (officialSessions is not null) _officialSessions = officialSessions; }
 
     public string Url => $"http://127.0.0.1:{port}/";
-    public Task StopAsync() => _runner.StopAsync();
+    public async Task StopAsync()
+    {
+        _recorderCancellation.Cancel();
+        await _runner.StopAsync().ConfigureAwait(false);
+        if (_recording is not null) await _recording.ConfigureAwait(false);
+    }
 
     public async Task RunAsync(CancellationToken cancellation)
     {
@@ -49,6 +58,8 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         Console.WriteLine("Ctrl+C to stop.");
 
         using var registration = cancellation.Register(() => listener.Abort());
+        using var recorderRegistration = cancellation.Register(() => _recorderCancellation.Cancel());
+        if (_recordingEnabled) _recording = _recorder.RunAsync(_recorderCancellation.Token);
         try
         {
             while (!cancellation.IsCancellationRequested)
@@ -70,7 +81,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         {
             // The process must stay alive until a placement has restored its
             // temporary writes, including when the console server is cancelled.
-            await _runner.StopAsync().ConfigureAwait(false);
+            await StopAsync().ConfigureAwait(false);
         }
     }
 
@@ -79,6 +90,8 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         try
         {
             var path = context.Request.Url?.AbsolutePath ?? "/";
+            if (path == "/api/recordings/status" && context.Request.HttpMethod == "GET")
+            { SendText(context, JsonSerializer.Serialize(_recorder.Status), "application/json"); return; }
             if (path == "/api/track-maps" && context.Request.HttpMethod == "GET")
             { SendJson(context, new JsonObject { ["tracks"] = _maps.List() }); return; }
             if (path == "/api/track-map" && context.Request.HttpMethod == "GET")
@@ -95,7 +108,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 SendText(context, logo ?? "", "image/svg+xml");
                 return;
             }
-            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
+            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/recordings/list" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
             if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
                 (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
             {
@@ -166,7 +179,10 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     SendJson(context, await _runner.SessionActionAsync(ReadBody(context)));
                     break;
                 case "/api/state":
-                    SendJson(context, _runner.State());
+                    var state = _runner.State();
+                    state["recorder"] = JsonSerializer.SerializeToNode(_recorder.Status,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    SendJson(context, state);
                     break;
                 case "/api/rules":
                     SendJson(context, _runner.SetRules(ReadBody(context)));
@@ -182,6 +198,16 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/api/launch":
                     SendJson(context, _runner.Launch(ReadBody(context)));
+                    break;
+                case "/api/recordings/list":
+                    SendText(context, JsonSerializer.Serialize(new TelemetryTimeline(dataDirectory).List()), "application/json");
+                    break;
+                case "/api/recordings/select":
+                    var selectionBody = ReadBody(context);
+                    var selected = new TelemetryTimeline(dataDirectory).Select(
+                        selectionBody["recording"]?.GetValue<string>() ?? "",
+                        timestamp: selectionBody["timestamp"]?.GetValue<double>());
+                    SendText(context, JsonSerializer.Serialize(selected), "application/json");
                     break;
                 case "/api/capture":
                     SendJson(context, _runner.Capture(ReadBody(context)));
