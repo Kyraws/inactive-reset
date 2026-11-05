@@ -1,7 +1,8 @@
 # Inactive Reset
 
 A Windows practice companion for **Le Mans Ultimate**: repeat corners, build local
-sessions, and practise official-event conditions.
+sessions, and practise official-event conditions. Built with **C# / .NET 8**, a
+Windows Forms/WebView2 host, and an embedded HTML/CSS/JavaScript workspace.
 
 **[Download for Windows x64](https://github.com/Kyraws/inactive-reset/releases/latest)** ·
 [Report a problem](https://github.com/Kyraws/inactive-reset/issues)
@@ -86,6 +87,66 @@ and [known issues](docs/STATUS.md).
 
 Back up `data/` before upgrading; keep `data/` and `offsets/` beside the executables.
 The unsigned executables may trigger Windows SmartScreen.
+
+## Engineering overview
+
+The desktop host and command-line tool share a C# core. A loopback HTTP server
+connects the embedded workspace to session management, checkpoint storage and
+background operations. SDK telemetry is separate from native memory attachment;
+local session setup uses the game's menu API.
+
+| Engineering challenge | Approach and source |
+| --- | --- |
+| Read game state | [Shared-memory reader](src/InactiveReset.Core/SharedMemoryReader.cs) uses a generated SDK layout for telemetry; capture guards reject menu/loading leftovers. |
+| Adapt to executable changes | [Automatic discovery](src/InactiveReset.Core/AutomaticOffsets.cs) derives addresses from mapped code using structural resolvers and instruction anchors, verifies probes, and checks caches against the current executable. Missing or ambiguous evidence refuses use; matching code does not prove live compatibility. |
+| Limit temporary memory changes | [Spot transaction](src/InactiveReset.Core/SpotWriteTransaction.cs) checks build identity, writable pages and planned bytes, verifies writes by readback, and attempts restoration on normal or exceptional exit. Its scope is the spot-entry bytes; rule/lap cleanup is separate, and process termination cannot run disposal. |
+| Enforce operation boundaries | [Game attachment](src/InactiveReset.Core/GameSession.cs) refuses EAC/protected launch. Memory actions additionally require active offline single-player Practice; the session API has its own menu/multiplayer gates. |
+| Validate without the game | [xUnit and HTTP tests](tests/InactiveReset.Tests) and [WebView2 suites](tests/InactiveReset.BrowserTests) exercise domain logic, failure handling and real browser interaction using isolated fixtures. Live game checks remain separate. |
+
+See [Architecture](docs/ARCHITECTURE.md) for component responsibilities and data
+flow, [Testing](docs/TESTING.md) for coverage and execution limits, and
+[research evidence](docs/research/README.md) for build-specific reverse-engineering
+measurements. Private executable captures and SDK headers are not distributed.
+
+### Build and test
+
+Use Windows x64, the .NET 8 SDK and WebView2 Runtime. From the repository root
+in PowerShell:
+
+```powershell
+.\build.cmd
+.\build.cmd test -Configuration Release
+```
+
+The test wrapper runs portable C#/HTTP checks and actual WebView2 suites without
+attaching to LMU. The [Verify workflow](.github/workflows/verify.yml) runs the
+package path, including Release tests and an extracted-package smoke check.
+See [Contributing](docs/CONTRIBUTING.md) for local packaging and optional
+read-only compatibility checks. Automated tests do not establish live reset
+reliability across every game build, car or circuit.
+
+### Release and development status
+
+The published download is [v0.4.0](https://github.com/Kyraws/inactive-reset/releases/tag/v0.4.0).
+Its [successful Verify run](https://github.com/Kyraws/inactive-reset/actions/runs/40208372185)
+applies to that release commit, not the newer local development work.
+
+Work toward **0.5 is unreleased**. The local [telemetry recorder and timestamp
+selection](docs/TELEMETRY_TIMELINE.md) integrate recorded pose/speed/gear with the
+existing guarded operation runner. That integration has offline checks; recorded
+resets have not been live-tested. Complete suspension, tyre-model and other native
+state restoration remain unsupported. See [Status](docs/STATUS.md) for the current
+implementation and research limits. No new release or live-validation result is
+claimed by this README update.
+
+### Project summary for CVs and applications
+
+> Developed a Windows practice companion in C#/.NET with a WebView2 interface,
+> shared-memory telemetry, local session API integration and runtime address
+> discovery. Implemented guarded checkpoint placement, verified temporary writes
+> with spot-byte restoration, and automated xUnit/HTTP/WebView2 checks. Memory
+> operations are restricted to offline single-player Practice; compatibility and
+> live outcomes remain build- and scenario-dependent.
 
 [User and technical guides](docs/README.md) · [Build and contribute](docs/CONTRIBUTING.md) ·
 [MIT licence](LICENSE) · [Third-party notices](NOTICE)
