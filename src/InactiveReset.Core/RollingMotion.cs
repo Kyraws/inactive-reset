@@ -70,14 +70,35 @@ public static class RollingMotion
             throw new GateException("Player/session state or SDK time changed during physics pause.");
     }
 
-    public static bool EligibleCapture(Vec3? velocity) => velocity is { IsFinite: true } v &&
-        MotionCapture.SpeedKmh(v) >= 0.5 && Math.Abs(v.X) <= 0.05 &&
-        Math.Abs(v.Y) <= Math.Max(0.05, Math.Abs(v.Z) * 0.005);
+    // Experimental heuristic; live reset validation is still required. Preserve
+    // the recorded velocity and retain bounds at low and high forward speeds.
+    private static double VerticalCaptureLimit(Vec3 velocity) =>
+        Math.Min(0.5, Math.Max(0.05, Math.Abs((double)velocity.Z) * 0.02));
+
+    public static string? CaptureIssue(Vec3? velocity)
+    {
+        if (velocity is not { } v)
+            return "No recorded speed. Save a new checkpoint while driving.";
+        if (!v.IsFinite)
+            return "Invalid recorded velocity. Save a new checkpoint.";
+        if (MotionCapture.SpeedKmh(v) < 0.5)
+            return "Recorded speed is below 0.5 km/h. Save while moving in a forward gear.";
+        if (Math.Abs(v.X) > 0.05)
+            return FormattableString.Invariant($"Captured sideways motion is {Math.Abs(v.X):F3} m/s; maximum is 0.050 m/s. Capture after the car settles on a straight.");
+        var verticalLimit = VerticalCaptureLimit(v);
+        if (Math.Abs(v.Y) > verticalLimit)
+            return FormattableString.Invariant($"Captured vertical motion is {Math.Abs(v.Y):F3} m/s; maximum at this speed is {verticalLimit:F3} m/s. Capture on a smoother section after the car settles.");
+        return null;
+    }
+
+    public static bool EligibleCapture(Vec3? velocity) => CaptureIssue(velocity) is null;
 
     public static void RequireEligible(Checkpoint checkpoint, bool supported, SessionIdentity identity)
     {
-        if (!supported || !EligibleCapture(checkpoint.LocalVelocityMetresPerSecond))
-            throw new GateException("Rolling start requires the supported game build and a straight, level moving capture (at least 0.5 km/h).");
+        if (!supported)
+            throw new GateException("Speed & gear are unavailable for this game build. Use Standing teleport.");
+        if (CaptureIssue(checkpoint.LocalVelocityMetresPerSecond) is { } issue)
+            throw new GateException(issue);
         identity.RequireMatches(checkpoint);
         RequireCaptureVehicle(checkpoint, identity.VehicleName);
     }

@@ -99,7 +99,7 @@ function speedRestorationIssue() {
   const checkpoint = visibleCheckpoints.find(c => c.id === document.getElementById('cp').value);
   if (!checkpoint) return 'Choose a checkpoint first.';
   if (!destinationState.rollingStartSupported) return 'Speed & gear are unavailable for this game build. Use Standing teleport.';
-  if (!checkpoint.rollingEligible) return 'This checkpoint needs a straight, level moving capture for speed & gear restoration. Use Standing teleport.';
+  if (!checkpoint.rollingEligible) return checkpoint.rollingIssue || 'This checkpoint needs a straight, level moving capture for speed & gear restoration. Use Standing teleport.';
   const car = destinationState.session?.vehicle || '';
   if (checkpoint.vehicle.toLowerCase() !== car.toLowerCase())
     return `Captured in ${checkpoint.vehicle}; currently driving ${car || 'an unknown car'}. Speed & gear require the capture car. Load that car or use Standing teleport.`;

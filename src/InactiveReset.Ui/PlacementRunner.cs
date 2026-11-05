@@ -395,6 +395,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["lapDistance"] = checkpoint.LapDistance,
                 ["speedKmh"] = checkpoint.SpeedKmh,
                 ["rollingEligible"] = RollingMotion.EligibleCapture(checkpoint.LocalVelocityMetresPerSecond),
+                ["rollingIssue"] = RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond),
                 ["gear"] = checkpoint.Gear,
                 ["quick"] = checkpoint.Name.Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase),
                 ["x"] = checkpoint.Pose.Position.X,

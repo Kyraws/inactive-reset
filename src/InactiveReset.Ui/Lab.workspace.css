@@ -75,3 +75,5 @@
   .lab .access-notice{padding:8px 10px;margin:0;flex:none}.lab .access-notice>p{font-size:10px;line-height:1.35;margin-top:3px}.lab .launch-choices{gap:10px;margin-top:6px}.lab .launch-choices p{font-size:10px;line-height:1.3;margin:4px 0}
   .lab .summary-shade{top:46px}.lab .lab-dock{top:46px!important}
 }
+
+.practice-motion-hint{margin:0 0 12px;line-height:1.4;flex:none;overflow-wrap:anywhere}

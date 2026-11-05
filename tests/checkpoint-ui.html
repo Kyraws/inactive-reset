@@ -175,6 +175,8 @@ function runCheckpointTests(script, html) {
       check(!ui.canRestoreSpeed(),'unsupported build blocks rolling start');
       ui.renderCheckpoints({...rolling,checkpoints:[{...rolling.checkpoints[0],speedKmh:null,rollingEligible:false}]});
       check(!ui.canRestoreSpeed(),'captures without motion data require standing teleport');
+      ui.renderCheckpoints({...rolling,checkpoints:[{...rolling.checkpoints[0],rollingEligible:false,rollingIssue:'Captured vertical motion is 0.335 m/s; maximum at this speed is 0.159 m/s.'}]});
+      check(!ui.canRestoreSpeed() && element('restoreSpeedHint').textContent.includes('0.335') && element('restoreSpeedHint').textContent.includes('0.159'),'blocked capture shows the actual motion and limit returned by the backend');
       const onTrack={...rolling,connected:true,inGarage:false};
       response=onTrack;
       return ui.refresh().then(async()=>{

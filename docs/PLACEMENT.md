@@ -89,9 +89,14 @@ The app restores captured speed and gear automatically for normal teleport.
 **Standing teleport** explicitly skips motion restoration.
 Motion restoration requires a reset layout verified against the running engine,
 the capture car/track, and a straight, level checkpoint captured at 0.5 km/h or faster. There is no upper speed ceiling.
-The sideways component must stay within 0.05 m/s. Vertical motion must stay
-within the larger of 0.05 m/s or 0.5% of forward speed, allowing small road/pitch
-components in faster captures.
+The sideways component must stay within 0.05 m/s. This experimental proposal
+changes the vertical bound to the larger of 0.05 m/s or 2% of forward speed,
+capped at 0.5 m/s. It preserves the complete recorded velocity. This heuristic
+admits one observed Road Atlanta capture; that capture included a punctured
+front-right tyre and does not establish normal suspension behavior. The required
+direct-launch Practice reset test, repeated-reset observations and verified
+restoration have not been performed for this change. Do not treat automated
+acceptance of the captured vector as evidence of live reset stability.
 Unresolved engine layouts, older checkpoints without velocity and cross-car
 speed restoration are refused. Ordinary pose placement remains available.
 
