@@ -201,6 +201,19 @@ public sealed class UiServerTests
         Assert.Equal(0, host.Menu.Writes);
     }
 
+    [Fact]
+    public async Task UnknownEndpointReturns404JsonWithoutSideEffects()
+    {
+        await using var host = new UiTestHost();
+        using var response = await host.Client.PostAsJsonAsync("api/does-not-exist", new { });
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType!.MediaType);
+        var body = (await response.Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal("not found", body["error"]!.GetValue<string>());
+        Assert.Equal(0, host.Menu.Writes);
+        Assert.Equal(0, host.AttachmentReads);
+    }
+
     private static object Assist() => new { action = "assist", key = "DRIVEAIDS_steering_help", value = 1 };
     private static async Task<JsonObject> State(UiTestHost host) =>
         (await host.Client.GetFromJsonAsync<JsonObject>("api/state"))!;

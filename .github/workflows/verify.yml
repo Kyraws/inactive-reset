@@ -25,7 +25,7 @@ jobs:
             $setup = Start-Process -FilePath $installer -ArgumentList '/silent','/install' -Wait -PassThru -WindowStyle Hidden
             if ($setup.ExitCode -ne 0) { throw "WebView2 setup failed: $($setup.ExitCode)" }
           }
-      - name: Test and package
+      - name: Test (xUnit, WebView2 and Playwright) and package
         shell: cmd
         run: build.cmd package
       - name: Upload test diagnostics

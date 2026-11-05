@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Net;
+using System.Net.Sockets;
 using InactiveReset.TestSupport;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -17,6 +19,10 @@ internal static class Program
         Directory.CreateDirectory(output);
         var profile = Directory.CreateTempSubdirectory("inactive-reset-browser-").FullName;
         var results = new List<Result>();
+        using var portReservation = new TcpListener(IPAddress.Loopback, 0);
+        portReservation.Start();
+        var debugPort = ((IPEndPoint)portReservation.LocalEndpoint).Port;
+        portReservation.Stop();
         using var form = new Form { ClientSize = new Size(1320, 900), Opacity = 0, ShowInTaskbar = false };
         using var view = new WebView2 { Dock = DockStyle.Fill };
         form.Controls.Add(view);
@@ -24,7 +30,8 @@ internal static class Program
         {
             try
             {
-                var environment = await CoreWebView2Environment.CreateAsync(null, profile).WaitAsync(TimeSpan.FromSeconds(45));
+                var environment = await CoreWebView2Environment.CreateAsync(null, profile,
+                    new CoreWebView2EnvironmentOptions($"--remote-debugging-port={debugPort} --remote-debugging-address=127.0.0.1")).WaitAsync(TimeSpan.FromSeconds(45));
                 await view.EnsureCoreWebView2Async(environment).WaitAsync(TimeSpan.FromSeconds(45));
                 var core = view.CoreWebView2;
                 Console.WriteLine("WebView2 " + environment.BrowserVersionString);
@@ -253,6 +260,8 @@ internal static class Program
                         });
                 await core.CallDevToolsProtocolMethodAsync("Emulation.clearDeviceMetricsOverride", "{}");
                 if (host.Menu.Writes != 0) throw new Exception("Browser smoke checks unexpectedly changed game settings");
+                await Navigate("about:blank");
+                await PlaywrightChecks.RunAsync($"http://127.0.0.1:{debugPort}", Run);
                 await Navigate("about:blank"); // Stop page polling before disposing the isolated server and data.
             }
             catch (Exception ex) { results.Add(new("runner", false, ex.ToString())); Console.WriteLine(ex); }

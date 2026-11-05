@@ -1,5 +1,8 @@
 # Testing
 
+For a requirement-to-test map, Playwright walkthrough and reproduced historical
+regression, see [QA automation case study](QA_AUTOMATION.md).
+
 The repeatable suite runs on Windows x64 with .NET 8 and the WebView2 Runtime.
 From the repository root in PowerShell:
 
