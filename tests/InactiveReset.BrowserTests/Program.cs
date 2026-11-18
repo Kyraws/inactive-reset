@@ -173,33 +173,72 @@ internal static class Program
                         new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)), 0, 2, 10.125,
                         LocalVelocityMetresPerSecond: new(0, 0, -10))
                     { Details = new(1, 10, 5, true, 0, 0, new Dictionary<string, double?>(), [], null) { IdentityMatches = true } };
-                    File.WriteAllLines(Path.Combine(directory, "part.jsonl"), new[] {
-                        new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: identity, SegmentId: "segment"),
-                        new InactiveReset.Core.TimelineEntry("sample", 42, 1, Identity: identity, SegmentId: "segment", Sample: sample),
-                        new InactiveReset.Core.TimelineEntry("sample", 43, 2, Identity: identity, SegmentId: "segment", Sample: sample with { ElapsedTime = 20.125, LapDistance = 100, Pose = sample.Pose with { Position = new(8, 2, 7) } })
+                    InactiveReset.Core.TimelineEntry Point(long sequence, double time, float distance, float x, float z) =>
+                        new("sample", sequence, sequence, Identity: identity, SegmentId: "segment",
+                            Sample: sample with { ElapsedTime = time, LapDistance = distance, Gear = sequence == 44 ? 9 : 2,
+                                Pose = sample.Pose with { Position = new(x, 2, z) } });
+                    var path = Path.Combine(directory, "part.jsonl");
+                    File.WriteAllLines(path, new[] {
+                        new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: identity, Utc: DateTimeOffset.UtcNow, SegmentId: "segment"),
+                        Point(41, 10, 500, 0, 3), Point(42, 10.2, 0, 0, 0),
+                        Point(43, 10.4, 100, 8, 7), Point(44, 10.6, 500, 5, 12),
                     }.Select(e => JsonSerializer.Serialize(e)));
-                    await core.ExecuteScriptAsync("setPage('practice');document.querySelector('#timelineRecording').closest('details').open=true;loadRecordings()");
-                    await WaitFor("document.getElementById('timelineRecording').options.length===2", "Recording list did not load");
-                    await core.ExecuteScriptAsync("savedMapTracks.push({id:'timeline-test',name:'track'});circuitMaps.set('timeline-test',{points:[{type:0,x:0,z:0},{type:0,x:10,z:0},{type:0,x:10,z:10},{type:0,x:0,z:10}]})");
-                    await core.ExecuteScriptAsync("document.getElementById('timelineRecording').value='segment';document.getElementById('timelineTime').value='10.12';selectTimelineSample()");
-                    await WaitFor("document.getElementById('timelineSelection').textContent.includes('10.125 s')", "Exact selected timestamp missing");
-                    await core.ExecuteScriptAsync("document.querySelector('#timelineRestorationScope>summary').click()");
-                    await Check("document.getElementById('timelineRestorationScope').open && ['zero angular motion','recorded wheel rates are not restored','suspension configuration present at reset time'].every(text=>document.getElementById('timelineRestorationScope').textContent.includes(text))", "Recorded reset does not explain chassis and wheel restoration limits");
-                    await core.ExecuteScriptAsync("document.querySelector('#timelineRestorationScope>summary').click()");
-                    await Check("!!document.querySelector('#timelineMap .map-marker.selected') && document.getElementById('timelineSelection').textContent.includes('0 m')", "Recorded timestamp has no circuit position preview or lap distance");
-                    await Check("document.getElementById('timelineSelection').textContent.includes('36.00 km/h') && document.getElementById('timelineStanding').disabled && document.getElementById('timelineReset').disabled", "Speed display or disconnected reset gate failed");
+                    await core.ExecuteScriptAsync("setPage('practice')");
+                    await Check("document.getElementById('practiceLapsView').getAttribute('aria-pressed')==='true' && document.getElementById('practiceSaved').hidden && document.getElementById('practiceTyres').hidden && document.getElementById('timelineActions').hidden", "Practice should open directly to lap selection");
+                    await WaitFor("document.getElementById('timelineRecording').options[0].textContent==='No completed laps yet'", "An incomplete lap appeared");
+                    File.AppendAllLines(path, new[] { Point(45, 10.8, 0, 0, 0) }.Select(e => JsonSerializer.Serialize(e)));
+                    await WaitFor("document.getElementById('timelineRecording').options.length===2", "Completed lap did not appear automatically");
+                    await core.ExecuteScriptAsync("const lapPicker=document.getElementById('timelineRecording');lapPicker.selectedIndex=1;lapPicker.dispatchEvent(new Event('change'))");
+                    await WaitFor("!!document.querySelector('#timelineMap svg')", "Recorded lap map did not render");
+                    await Check("getComputedStyle(document.querySelector('.lap-road')).stroke === 'rgb(255, 255, 255)' && getComputedStyle(document.querySelector('.lap-road-speed')).stroke === 'rgb(85, 220, 130)' && !!document.querySelector('.lap-road-speed').getAttribute('d') && lapPoints.map(point=>point.SpeedEligible).join() === 'true,true,false'", "Lap map did not mark speed eligibility in green and standing-only in white");
+                    await Check("document.getElementById('timelineRecording').selectedOptions[0].textContent.includes('Lap 1 · 0:00.600 · track / car')", "Lap label lacks duration and identity");
+                    await core.ExecuteScriptAsync("(()=>{const svg=document.querySelector('#timelineMap svg');const [x,y]=document.getElementById('timelineScrub').projectedPoints[1];const point=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());svg.dispatchEvent(new MouseEvent('click',{clientX:point.x,clientY:point.y}));})()");
+                    await WaitFor("timelineSelection?.Sequence===43", "Map click did not select the exact recorded point");
+                    await Check("document.getElementById('timelineSelection').textContent.includes('100 m along lap · 36.0 km/h · gear 2') && document.getElementById('timelineStanding').disabled && document.getElementById('timelineReset').disabled", "Selected point details or disconnected reset gate failed");
                     using (var screenshot = File.Create(Path.Combine(output, "recording-selection.png")))
                         await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
-                    await Check("document.getElementById('timelineRecording').selectedOptions[0].textContent.includes('Recording 1') && document.getElementById('timelineRecording').selectedOptions[0].textContent.includes('2 samples')", "Recording label lacks readable identity and sample count");
-                    await core.ExecuteScriptAsync("window.firstRecordedMarker=document.querySelector('#timelineMap .map-marker').getAttribute('transform');chooseTimelineRecording()");
-                    await WaitFor("!document.getElementById('timelineScrub').disabled && timelineSelection?.Sequence===42", "Recording time range did not initialize");
-                    await core.ExecuteScriptAsync("document.getElementById('timelineScrub').value='20.125';scrubTimeline();selectTimelineSample()");
-                    await WaitFor("timelineSelection?.Sequence===43", "Browsing time did not resolve the new exact sample");
-                    await Check("document.querySelector('#timelineMap .map-marker').getAttribute('transform')!==window.firstRecordedMarker && document.getElementById('timelineSelection').textContent.includes('100 m')", "Time browsing did not move the position preview");
-                    await core.ExecuteScriptAsync("document.getElementById('timelineTime').value='11';document.getElementById('timelineTime').dispatchEvent(new Event('input'))");
-                    await Check("timelineSelection===null", "Editing timestamp retained an obsolete selection");
-                    await core.ExecuteScriptAsync("document.querySelector('#timelineRecording').closest('details').open=false");
-                    return "Real HTTP list and exact sample selection, speed display, reset gate and edit invalidation";
+                    await core.ExecuteScriptAsync("const lapSlider=document.getElementById('timelineScrub');lapSlider.value=0;lapSlider.dispatchEvent(new Event('input'));lapSlider.dispatchEvent(new Event('change'))");
+                    await WaitFor("timelineSelection?.Sequence===42", "Slider did not select the exact recorded point");
+                    await core.ExecuteScriptAsync("document.querySelector('#timelineTyres [data-practice-view]').click()");
+                    await Check("document.getElementById('timelinePanel').hidden && !document.getElementById('practiceTyres').hidden", "Tyres view did not hide checkpoint navigation");
+                    await core.ExecuteScriptAsync("document.getElementById('practiceLapsView').click()");
+                    await Check("timelineSelection?.Sequence===42 && !document.getElementById('timelineActions').hidden", "Switching tools lost the selected lap point");
+                    await core.ExecuteScriptAsync("""
+                        (async () => {
+                          const originalFetch = window.fetch, originalNavigation = navigation, originalState = destinationState;
+                          const override = document.getElementById('overrideRecordedTyres');
+                          window.recordedResetRequests = [];
+                          window.fetch = (path, options) => {
+                            if (path !== '/api/place') return originalFetch(path, options);
+                            window.recordedResetRequests.push(JSON.parse(options.body));
+                            return Promise.resolve({json: async () => ({ok:true})});
+                          };
+                          try {
+                            navigation = {state:{settingMode:'SETTING_GRANDPRIX', gameState:'GSTATE_DYN', gameSession:'PRACTICE1'}};
+                            destinationState = {connected:true, rollingStartSupported:true, inGarage:false};
+                            override.checked = true;
+                            override.dispatchEvent(new Event('change'));
+                            window.recordedTyresBlocked = document.getElementById('timelineReset').disabled;
+                            await resetTimelineSample(false);
+                            navigation = {state:{settingMode:'SETTING_GRANDPRIX', gameState:'GSTATE_DYN', gameSession:'PRACTICE1'}};
+                            destinationState = {connected:true, rollingStartSupported:true, inGarage:true};
+                            document.getElementById('tyreConditionFL').value = 65;
+                            document.getElementById('tyreTemperatureFL').value = 72;
+                            document.getElementById('tyreTemperatureEnabledFL').checked = true;
+                            await resetTimelineSample(false);
+                          } finally {
+                            window.fetch = originalFetch;
+                            override.checked = false;
+                            override.dispatchEvent(new Event('change'));
+                            navigation = originalNavigation;
+                            destinationState = originalState;
+                          }
+                        })();
+                        """);
+                    await WaitFor("recordedTyresBlocked && recordedResetRequests.length===1 && recordedResetRequests[0].sequence===42 && recordedResetRequests[0].tyres.wheels[0].conditionPercent===65 && recordedResetRequests[0].tyres.wheels[0].temperatureCelsius===72", "Recorded reset did not gate on-track overrides or send the garage tyre settings");
+                    await core.ExecuteScriptAsync("document.getElementById('practiceSavedView').click()");
+                    await Check("document.getElementById('practiceMap').getBoundingClientRect().bottom <= document.getElementById('destinationList').getBoundingClientRect().top", "Saved checkpoint map is not above the list");
+                    return "Auto-refresh, completed lap labels, route-map clicks, slider selection and disconnected reset gates";
                 });
 
                 await Run("first-use-access", async () =>

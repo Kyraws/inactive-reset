@@ -1,4 +1,3 @@
-using System.Globalization;
 using InactiveReset.Core;
 using Xunit;
 
@@ -6,77 +5,35 @@ namespace InactiveReset.Tests;
 
 public sealed class CaptureIssueTests
 {
-    [Fact]
-    public void RoadAtlantaCaptureExplainsVerticalRejectionWithoutChangingEligibility()
-    {
-        // Observed capture: 114.67 km/h, third gear. No reset was performed.
-        var velocity = new Vec3(0.010204315f, 0.33538005f, -31.852272f);
-        Assert.False(RollingMotion.EligibleCapture(velocity));
-        var issue = RollingMotion.CaptureIssue(velocity);
-        Assert.NotNull(issue);
-        Assert.Contains("vertical", issue);
-        Assert.Contains("0.335 m/s", issue);
-        Assert.Contains("0.159 m/s", issue);
-    }
-
     [Theory]
-    [InlineData(0, 0, -2)]
-    [InlineData(0.010424137f, 0.07474714f, -16.163006f)]
-    [InlineData(0.0034713745f, 0.11587092f, -27.625631f)]
-    public void EligibleCapturesHaveNoRejectionReason(float lateral, float vertical, float forward)
-    {
-        var velocity = new Vec3(lateral, vertical, forward);
-        Assert.True(RollingMotion.EligibleCapture(velocity));
-        Assert.Null(RollingMotion.CaptureIssue(velocity));
-    }
-
-    [Fact]
-    public void UnknownInvalidStationaryAndLateralMotionHaveDistinctReasons()
-    {
-        Assert.Contains("No recorded speed", RollingMotion.CaptureIssue(null));
-        Assert.Contains("Invalid", RollingMotion.CaptureIssue(new(float.NaN, 0, -2)));
-        Assert.Contains("0.5 km/h", RollingMotion.CaptureIssue(new(0, 0, 0)));
-        var sideways = RollingMotion.CaptureIssue(new(0.06f, 0, -20));
-        Assert.Contains("sideways", sideways);
-        Assert.Contains("0.06 m/s", sideways);
-        Assert.Contains("0.05 m/s", sideways);
-    }
-
-    [Fact]
-    public void NearLimitRejectionShowsDistinctValues()
-    {
-        var issue = RollingMotion.CaptureIssue(new(0, 0.0501f, -2));
-        Assert.Contains("0.0501", issue);
-        Assert.Contains("maximum is 0.05", issue);
-    }
-
-    [Fact]
-    public void MotionGateUsesTheSameReasonAsTheCheckpointProjection()
+    [InlineData(0.090f, -0.115f, -63.056f, 5)]
+    [InlineData(0.131f, -0.174f, -66.722f, 6)]
+    [InlineData(-0.067f, 0.748f, -63.056f, 6)]
+    [InlineData(0.010204315f, 0.33538005f, -31.852272f, 3)]
+    public void RecordedStraightFramesPassAndPreserveAllVelocityComponents(float x, float y, float z, int gear)
     {
         var checkpoint = new Checkpoint
         {
             Name = "capture", TrackName = "Track", VehicleName = "Car",
             Pose = new(new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
-            LocalVelocityMetresPerSecond = new(0.010204315f, 0.33538005f, -31.852272f),
+            LocalVelocityMetresPerSecond = new(x, y, z), Gear = gear,
         };
-        var error = Assert.Throws<GateException>(() =>
-            RollingMotion.RequireEligible(checkpoint, true, new("Track", "Car")));
-        Assert.Equal(RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond), error.Message);
+        Assert.Null(RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, gear));
+        RollingMotion.RequireEligible(checkpoint, true, new("Track", "Car"));
+        var payload = RollingMotion.BuildPayload(checkpoint.LocalVelocityMetresPerSecond.Value, checkpoint.Pose);
+        Assert.Equal(new[] { x, y, z, x, y, z }, Enumerable.Range(0, 6).Select(i => BitConverter.ToSingle(payload, i * 4)));
     }
 
-    [Theory]
-    [InlineData("en-US")]
-    [InlineData("pt-BR")]
-    public void DiagnosticValuesUseUnambiguousUnitsAndFormatting(string culture)
+    [Fact]
+    public void MissingInvalidStationaryAndIncompatibleGearHaveDistinctReasons()
     {
-        var original = CultureInfo.CurrentCulture;
-        try
-        {
-            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
-            var issue = RollingMotion.CaptureIssue(new(0, 0.33538005f, -31.852272f));
-            Assert.Contains("0.335 m/s", issue);
-            Assert.Contains("0.159 m/s", issue);
-        }
-        finally { CultureInfo.CurrentCulture = original; }
+        Assert.Contains("No recorded speed", RollingMotion.CaptureIssue(null));
+        Assert.Contains("Invalid", RollingMotion.CaptureIssue(new(float.NaN, 0, -2)));
+        Assert.Contains("0.5 km/h", RollingMotion.CaptureIssue(new(0, 0, 0)));
+        Assert.Contains("supported range", RollingMotion.CaptureIssue(new(0, 0, -2), 9));
+        Assert.Contains("direction", RollingMotion.CaptureIssue(new(0, 0, 2), 1));
+        Assert.Contains("direction", RollingMotion.CaptureIssue(new(0, 0, -2), -1));
+        Assert.Null(RollingMotion.CaptureIssue(new(0, 0, 2), -1));
+        Assert.Null(RollingMotion.CaptureIssue(new(0, 0, 2), 0));
     }
 }

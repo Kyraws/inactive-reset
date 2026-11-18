@@ -36,17 +36,6 @@ renderContent=function(){
 
 function updateWorkspace(){
   $('workspaceTitle').textContent=({home:'Overview',setup:'Session builder',official:'Official races',presets:'Session presets',practice:'Practice tools',library:'Checkpoint library',activity:'Activity',settings:'Controls'})[labPage]||'';
-  for(const button of document.querySelectorAll('[data-practice-action]')){
-    const action=button.dataset.practiceAction;
-    button.disabled=action==='capture'?$('quickCaptureButton').disabled:$(action==='place'?'placeBtn':'standingBtn').disabled;
-  }
-  $('primaryPracticeLabel').textContent=labState?.inGarage===false?'Reset on track':'Place checkpoint';
-  const motionHint=$('practiceMotionHint');
-  const reason=$('placeBtn').disabled ? placementIssue()||speedRestorationIssue() : '';
-  if(motionHint.textContent!==reason)motionHint.textContent=reason;
-  motionHint.hidden=!reason;
-  $('practiceIntro').hidden=!!reason;
-  $('captureShortcut').textContent=practiceShortcut('capture','Ctrl+Alt+C')+' · replace quick slot';
   $('builderSave').disabled=$('savePlanButton').disabled;
   for(const b of document.querySelectorAll('[data-checkpoint-action]'))b.disabled=checkpointMutation||!!labState?.busy;
   if(builderPreset&&setup){
@@ -119,14 +108,14 @@ function renderPracticeManagement(){
   const checkpoint=(labState?.checkpoints||[]).find(c=>c.id===$('cp').value),list=(labState?.checkpoints||[]).filter(c=>normalizeTrack(c.track)===normalizeTrack(labState?.session?.track));
   const quick=checkpoint&&(checkpoint.quick||checkpoint.name==='Quick capture');
   $('checkpointManagement').innerHTML=checkpoint?`<div class="section-heading"><div><small>${quick?'REPLACEABLE QUICK SLOT':'SAVED CHECKPOINT'}</small><strong>${escapeHtml(checkpoint.name)}</strong><small>Captured in ${escapeHtml(checkpoint.vehicle)}</small></div><div class="button-group"><button class="button quiet" data-checkpoint-action="${quick?'copy':'rename'}" data-id="${escapeHtml(checkpoint.id)}">${quick?'Save as named':'Rename'}</button><button class="button critical" data-checkpoint-action="delete" data-id="${escapeHtml(checkpoint.id)}">Delete</button></div></div>${checkpointUndoToken?'<button class="text-button" data-undo-checkpoint>Undo last checkpoint deletion</button>':''}`:'';
-  renderCircuitMap($('practiceMap'),mappedLayout(labState?.session?.track),list,checkpoint?.id);
-  renderTimelineMap();
+  if (labPage === 'practice' && !$('practiceSaved').hidden)
+    renderCircuitMap($('practiceMap'),mappedLayout(labState?.session?.track),list,checkpoint?.id);
 }
 function selectMapCheckpoint(id){
   if(labState?.busy)return;
   const cp=(labState?.checkpoints||[]).find(c=>c.id===id);
   if(!cp||normalizeTrack(cp.track)!==normalizeTrack(labState?.session?.track)){notify('Load the checkpoint’s track before selecting it.',true);return;}
-  $('cp').value=id;updateDestination();renderCheckpoints(labState);setPage('practice');
+  $('cp').value=id;updateDestination();renderCheckpoints(labState);choosePracticeView('practiceSaved');setPage('practice');
   notify('Destination selected. The car has not moved.');
 }
 async function manageCheckpoint(action,id){
@@ -246,7 +235,6 @@ document.addEventListener('click',e=>{
   if(b.dataset.mapCheckpoint)selectMapCheckpoint(b.dataset.mapCheckpoint);
   if(b.dataset.checkpointAction)manageCheckpoint(b.dataset.checkpointAction,b.dataset.id);
   if(b.hasAttribute('data-undo-checkpoint'))undoCheckpoint();
-  if(b.dataset.practiceAction){if(b.dataset.practiceAction==='capture')quickCapture();else $(b.dataset.practiceAction==='place'?'placeBtn':'standingBtn').click();}
   if(b.dataset.presetTab){presetSource=b.dataset.presetTab;updatePresetTab();}
   if(b.dataset.inspectPreset)inspectPreset(b.dataset.inspectPreset);
   if(b.dataset.inspectOfficial)inspectOfficial(b.dataset.inspectOfficial);
@@ -283,32 +271,3 @@ applyAppearance=function(){refreshAppearance();summaryWidth(labPreferences.summa
 document.querySelector('.dock-heading').insertAdjacentHTML('afterend','<div id="summaryMap" class="circuit-map summary-map"></div>');
 request('/api/track-maps').then(result=>{savedMapTracks=result.tracks||[];if(labPage==='library')renderLibrary();}).catch(()=>{});
 updateWorkspace();
-
-function renderTimelineMap() {
-  const location = $('timelineLocation');
-  if (!location) return;
-  location.hidden = !timelineSelection;
-  if (!timelineSelection) { $('timelineMap').replaceChildren(); return; }
-  const checkpoint = timelineSelection.Checkpoint;
-  const layout = mappedLayout(checkpoint.TrackName);
-  const selector = $('timelineMapLayout');
-  const options = '<option value="">Choose the exact circuit layout…</option>' + allMapTracks().map(t => option(t.id, (t.displayProperties?.shortName || t.shortName || t.name) + ' · ' + (t.displayProperties?.name || t.name), t.id === layout)).join('');
-  if (selector.dataset.options !== options) { selector.innerHTML = options; selector.dataset.options = options; }
-  selector.value = layout;
-  renderCircuitMap($('timelineMap'), layout, [{ id:'recorded-position', name:'Recorded position at ' + timelineSelection.Timestamp + ' seconds', x:checkpoint.Pose.Position.X, z:checkpoint.Pose.Position.Z }], 'recorded-position', true);
-  const marker = $('timelineMap').querySelector('.map-marker');
-  if (marker) {
-    marker.removeAttribute('data-preview-checkpoint');
-    marker.removeAttribute('tabindex');
-    marker.setAttribute('role', 'img');
-    marker.setAttribute('aria-label', 'Recorded position at ' + timelineSelection.Timestamp + ' seconds');
-    marker.querySelector('text').textContent = 'R';
-  }
-}
-function chooseTimelineMap() {
-  if (!timelineSelection) return;
-  labPreferences.mapLayouts ||= {};
-  labPreferences.mapLayouts[timelineSelection.Checkpoint.TrackName] = $('timelineMapLayout').value;
-  persistPreferences();
-  renderTimelineMap();
-}

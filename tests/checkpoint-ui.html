@@ -178,7 +178,7 @@ function runCheckpointTests(script, html) {
       const onTrack={...rolling,connected:true,inGarage:false};
       response=onTrack;
       return ui.refresh().then(async()=>{
-        check(!element('placeBtn').disabled && element('placeBtn').textContent.includes('Reset on track'),'on-track direct reset is available on the researched build');
+        check(!element('placeBtn').disabled && element('placeBtn').textContent.includes('Teleport with speed & gear'),'on-track direct reset is available on the researched build');
         check(element('placeHint').textContent.includes('Ctrl+Alt+R'),'cockpit hotkey is explained');
         ui.updateDestination();element('freshOnPlace').checked=true;
         posted=null;

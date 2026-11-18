@@ -32,6 +32,7 @@ function setPage(page,nextSection){
   const panels={home:'homePanel',setup:'setupPanel',practice:'practicePanel',library:'libraryPanel',activity:'activityPanel',settings:'settingsPanel',presets:'presetsPanel',official:'officialPanel'};
   if(!panels[page])return;
   labPage=page;for(const id of Object.values(panels))$(id).hidden=id!==panels[page];
+  toggleRecordedLaps();
   document.body.dataset.page=page;
   $('setupDock').hidden=['practice','library','activity'].includes(page);$('practiceDock').hidden=!$('setupDock').hidden;
   $('sessionSummary').hidden=$('summaryMeta').hidden=document.querySelector('.dock-journal').hidden=$('setupDock').hidden;
@@ -43,6 +44,21 @@ function setPage(page,nextSection){
   $('editor').scrollTop=0;updateLabControls();
   if(typeof updateWorkspace==='function')updateWorkspace();
 }
+function choosePracticeView(id) {
+  for (const button of document.querySelectorAll('.practice-views button')) {
+    const panel = button.getAttribute('aria-controls');
+    const selected = panel === id;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    $(panel).hidden = !selected;
+  }
+  document.querySelector('.practice-content').scrollTop = 0;
+  toggleRecordedLaps();
+  if (id === 'practiceSaved' && typeof renderPracticeManagement === 'function') renderPracticeManagement();
+  if (id === 'timelinePanel') updateTimelineButtons(destinationState);
+}
+for (const button of document.querySelectorAll('.practice-views button'))
+  button.addEventListener('click', () => choosePracticeView(button.getAttribute('aria-controls')));
 const baseSwitchSection=switchSection;
 switchSection=next=>setPage('setup',next);
 const baseSchedule=schedule;
@@ -258,6 +274,7 @@ function editPreset(id,replace=false){const p=labPreferences.plans.find(p=>p.id=
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.page)setPage(b.dataset.page);if(b.dataset.goto)setPage('setup',b.dataset.goto);
+  if(b.dataset.practiceView)choosePracticeView(b.dataset.practiceView);
   if(b.dataset.close){const d=$(b.dataset.close);if(d.id==='planDialog'&&applyingPlan){cancelPlan=true;return;}d.close();}
   if(b.dataset.vehicleClass){
     vehicleClass=b.dataset.vehicleClass;

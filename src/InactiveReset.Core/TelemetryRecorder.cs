@@ -258,9 +258,13 @@ public sealed class TelemetryRecorder(string offsetDirectory, string dataDirecto
     }
 
     /// <summary>Recover only newline-terminated records; an interrupted final line is ignored.</summary>
-    public static IEnumerable<TimelineEntry> ReadComplete(string path)
+    public static IEnumerable<TimelineEntry> ReadComplete(string path) =>
+        ReadComplete(path, 0).Select(record => record.Entry);
+
+    internal static IEnumerable<(TimelineEntry Entry, long NextOffset)> ReadComplete(string path, long offset)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        stream.Position = offset;
         using var line = new MemoryStream();
         int value;
         while ((value = stream.ReadByte()) >= 0)
@@ -272,7 +276,7 @@ public sealed class TelemetryRecorder(string offsetDirectory, string dataDirecto
             }
             var entry = JsonSerializer.Deserialize<TimelineEntry>(line.ToArray()) ?? throw new InvalidDataException("Empty recording entry.");
             if (entry.SchemaVersion != 1) throw new InvalidDataException("Unsupported recording schema.");
-            yield return entry;
+            yield return (entry, stream.Position);
             line.SetLength(0);
         }
     }

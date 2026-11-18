@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -25,9 +26,25 @@ public sealed class CaptureService(SharedMemoryReader reader)
     /// </summary>
     public CaptureResult Capture(string name)
     {
-        var snapshot = _reader.Read()
+        ValidateName(name);
+        var baseline = _reader.Read()
             ?? throw new CheckpointException(
                 "no player vehicle in shared memory - are you on track?");
+        RequireDriving(baseline);
+
+        var start = Stopwatch.GetTimestamp();
+        TelemetrySnapshot snapshot;
+        do
+        {
+            if (Stopwatch.GetElapsedTime(start).TotalMilliseconds >= 250)
+                throw new CheckpointException("No fresh driving frame arrived. Resume driving and try again.");
+            Thread.Sleep(5);
+            snapshot = _reader.Read() ?? throw new CheckpointException("The player vehicle disappeared during capture.");
+            RequireDriving(snapshot);
+            if (snapshot.TrackName != baseline.TrackName || snapshot.VehicleName != baseline.VehicleName ||
+                snapshot.Details?.Session != baseline.Details?.Session || snapshot.ElapsedTime < baseline.ElapsedTime)
+                throw new CheckpointException("The driving session changed during capture. Try again.");
+        } while (snapshot.ElapsedTime == baseline.ElapsedTime);
 
         if (string.IsNullOrWhiteSpace(snapshot.TrackName)
             || string.IsNullOrWhiteSpace(snapshot.VehicleName))
@@ -37,6 +54,19 @@ public sealed class CaptureService(SharedMemoryReader reader)
         }
 
         var target = Geometry.BuildTargetFromRecordedPose(snapshot.Pose);
+        if (target.Valid)
+        {
+            var pose = snapshot.Pose;
+            try
+            {
+                DirectPosePlan.RequireRotation([pose.Row0.X, pose.Row0.Y, pose.Row0.Z,
+                    pose.Row1.X, pose.Row1.Y, pose.Row1.Z, pose.Row2.X, pose.Row2.Y, pose.Row2.Z]);
+            }
+            catch (GateException ex)
+            {
+                target = target with { Valid = false, Failures = [ex.Message] };
+            }
+        }
 
         return new CaptureResult
         {
@@ -47,6 +77,7 @@ public sealed class CaptureService(SharedMemoryReader reader)
                 VehicleName = snapshot.VehicleName,
                 Pose = snapshot.Pose,
                 CapturedUtc = DateTimeOffset.UtcNow,
+                CapturedSimulationTime = snapshot.ElapsedTime,
                 LapDistance = snapshot.LapDistance,
                 Gear = snapshot.Gear,
                 Tyres = snapshot.Tyres,
@@ -55,6 +86,14 @@ public sealed class CaptureService(SharedMemoryReader reader)
             Target = target,
             Snapshot = snapshot,
         };
+    }
+
+    private static void RequireDriving(TelemetrySnapshot snapshot)
+    {
+        if (snapshot.Details is not { Driving: true })
+            throw new CheckpointException($"No player-controlled driving frame ({snapshot.Details?.DrivingUnavailableReason ?? "missing driving state"}). Press Drive and try again.");
+        if (!double.IsFinite(snapshot.ElapsedTime) || snapshot.ElapsedTime < 0 || !float.IsFinite(snapshot.LapDistance))
+            throw new CheckpointException("The driving frame has invalid timing or lap distance.");
     }
 
     /// <summary>
@@ -67,6 +106,8 @@ public sealed class CaptureService(SharedMemoryReader reader)
         var reserved = string.Equals(checkpoint.Name, QuickCaptureName, StringComparison.OrdinalIgnoreCase);
         if (quick != reserved)
             throw new CheckpointException("'Quick capture' is reserved for the quick-capture action; use another name for a library checkpoint.");
+        if (quick && RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, checkpoint.Gear) is { } issue)
+            throw new CheckpointException($"Quick capture requires eligible speed and gear. {issue} Use named Capture to save a standing destination.");
         var folder = Path.Combine(checkpointDirectory, SanitiseFolder(checkpoint));
         Directory.CreateDirectory(folder);
         var path = Path.GetFullPath(Path.Combine(folder, checkpoint.Name + ".json"));
@@ -98,6 +139,9 @@ public sealed class CaptureService(SharedMemoryReader reader)
                     Vec(checkpoint.Pose.Row0), Vec(checkpoint.Pose.Row1), Vec(checkpoint.Pose.Row2)),
             },
         };
+
+        if (checkpoint.CapturedSimulationTime is { } time)
+            json["captured_simulation_time_s"] = time;
 
         if (checkpoint.LocalVelocityMetresPerSecond is { } velocity)
             json["motion"] = new JsonObject

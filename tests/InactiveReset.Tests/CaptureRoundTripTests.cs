@@ -75,6 +75,9 @@ public sealed class CaptureRoundTripTests : IDisposable
         };
         CaptureService.Save(Original, _directory);
         var first = CaptureService.Save(Quick(Original.VehicleName, 100, 2), _directory, quick: true);
+        Assert.Throws<CheckpointException>(() =>
+            CaptureService.Save(Quick(Original.VehicleName, 250, 9), _directory, quick: true));
+        Assert.Equal(100, Checkpoint.Load(first).LapDistance);
         var otherCar = CaptureService.Save(Quick("Other car", 200, 3), _directory, quick: true);
         var replaced = CaptureService.Save(Quick(Original.VehicleName, 300, 4), _directory, quick: true);
         Assert.Equal(first, replaced);

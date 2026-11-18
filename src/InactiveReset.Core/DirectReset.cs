@@ -32,6 +32,26 @@ public static class DirectReset
             throw new GateException("Direct reset requires active driving control outside the garage.");
     }
 
+    internal static void RequireReleasedControls(TelemetrySnapshot sample)
+    {
+        var inputs = sample.Details?.Values;
+        if (inputs is null)
+            throw new GateException("Driver input telemetry is unavailable. On-track reset refused.");
+        foreach (var (field, label, tolerance) in new[]
+        {
+            ("mUnfilteredThrottle", "Release the throttle", 0.01),
+            ("mUnfilteredBrake", "Release the brake", 0.01),
+            ("mUnfilteredClutch", "Release the clutch", 0.01),
+            ("mUnfilteredSteering", "Centre the steering wheel", 0.02),
+        })
+        {
+            if (!inputs.TryGetValue(field, out var reading) || reading is not { } value || !double.IsFinite(value))
+                throw new GateException("Driver input telemetry is unavailable. On-track reset refused.");
+            if (Math.Abs(value) > tolerance)
+                throw new GateException($"{label} and retry the teleport.");
+        }
+    }
+
     // Discard the teleported partial lap; the next line crossing starts a timed lap.
     internal static Dictionary<string, byte[]> LapRepair() => new()
     {
@@ -58,6 +78,7 @@ public static class DirectReset
             new SessionIdentity(s.TrackName,s.VehicleName).RequireMatches(checkpoint);
             if(restoreSpeed)RollingMotion.RequireIdentity(checkpoint,s);return s;}
         var first=Read();
+        RequireReleasedControls(first);
         layout.ReadEngineSetter(game,game.Memory.ReadUInt64(physics+layout.PhysicsEngine));
         if(restoreSpeed)RollingMotion.RequireEligible(checkpoint,true,new(first.TrackName,first.VehicleName));
         Thread.Sleep(50);if(Read().ElapsedTime<=first.ElapsedTime)throw new GateException("Resume the game before direct reset.");
@@ -69,11 +90,15 @@ public static class DirectReset
         DirectPosePlan? pose=null;GearMotionPlan? gears=null;double frozen=0;var duration=Stopwatch.StartNew();
         void Boundary(){cancellation.ThrowIfCancellationRequested();if(!pause.IsPaused||Read().ElapsedTime!=frozen)throw new GateException("Direct-reset pause boundary changed.");}
         void Paused(JsonObject state){RequireDriver(state);Boundary();}
-        progress("Resetting directly to checkpoint.");
+        progress("Resetting to checkpoint. Keep the pedals released and the wheel centred until driving resumes.");
+        RequireReleasedControls(Read());
         try{
             RollingMotion.ApplyWhilePaused(pause,()=>{
                 var stateTask=menu.GameStateAsync(cancellation);
-                Thread.Sleep(25);frozen=Read().ElapsedTime;
+                Thread.Sleep(25);
+                var pausedSample=Read();
+                frozen=pausedSample.ElapsedTime;
+                RequireReleasedControls(pausedSample);
                 pose=DirectPosePlan.Prepare(game,slot,checkpoint.Pose,restoreSpeed?checkpoint.LocalVelocityMetresPerSecond:null);
                 gears=GearMotionPlan.PrepareForReset(game,slot,pose,restoreSpeed?checkpoint.Gear:0);
                 Paused(stateTask.GetAwaiter().GetResult());
@@ -81,6 +106,7 @@ public static class DirectReset
                 var before=State();Thread.Sleep(25);Boundary();
                 if(before!=State())throw new GateException("Direct-reset state is not stable while paused.");
                 pose.Preflight();gears.Preflight();
+                RequireReleasedControls(Read());
             },()=>{pose!.Apply(Boundary);gears!.Apply(Boundary);
                 foreach(var (field,bytes) in lapRepair){Boundary();game.Memory.WriteVerified(LapAddress(field),bytes);}
             },()=>{

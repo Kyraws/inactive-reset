@@ -4,6 +4,27 @@ using Xunit;
 namespace InactiveReset.Tests;
 public sealed class DirectResetTests
 {
+ [Theory]
+ [InlineData("mUnfilteredThrottle", 0.25, "throttle")]
+ [InlineData("mUnfilteredBrake", 1.0, "brake")]
+ [InlineData("mUnfilteredClutch", 0.1, "clutch")]
+ [InlineData("mUnfilteredSteering", -0.4, "steering")]
+ [InlineData("mUnfilteredSteering", null, "telemetry")]
+ public void DirectResetRefusesHeldControlsAndUnavailableInput(string field, double? reading, string reason)
+ {
+  var values = new Dictionary<string, double?>
+  {
+   ["mUnfilteredThrottle"] = 0,
+   ["mUnfilteredBrake"] = 0,
+   ["mUnfilteredClutch"] = 0,
+   ["mUnfilteredSteering"] = 0.0005,
+   ["mFilteredClutch"] = 1,
+  };
+  var sample = Sample(new(0, 0, 0), 40) with { Details = new(1, 10, 5, true, 0, 0, values, [], null) };
+  DirectReset.RequireReleasedControls(sample);
+  values[field] = reading;
+  Assert.Contains(reason, Assert.Throws<GateException>(() => DirectReset.RequireReleasedControls(sample)).Message);
+ }
  private static JsonObject Driving()=>JsonNode.Parse("""{"MultiStintState":"DRIVING","playerVehicleLoaded":true,"inControlOfVehicle":true,"inMonitor":false,"isReplayActive":false,"PitState":"NONE"}""")!.AsObject();
  private static TelemetrySnapshot Sample(Vec3 position,double speed)=>new("track","car",new(position,new(1,0,0),new(0,1,0),new(0,0,1)),0,1,2,LocalVelocityMetresPerSecond:new(0,0,(float)(-speed/3.6)));
  [Theory]

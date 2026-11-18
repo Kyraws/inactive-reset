@@ -9,7 +9,7 @@ namespace InactiveReset.Tests;
 public sealed class MotionCaptureTests
 {
     [Fact]
-    public void ReaderAndCapturePreserveVelocityDirectionAndConvertSpeedToKmh()
+    public async Task ReaderAndCapturePreserveVelocityDirectionAndConvertSpeedToKmh()
     {
         var directory = Path.Combine(Path.GetTempPath(), "ir-motion-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -47,6 +47,12 @@ public sealed class MotionCaptureTests
             Text(offsets.ScoringInfo + offsets.TrackName, "Test track");
             Text(offsets.VehScoringInfo + offsets.VehName, "Test car");
             var telem = offsets.TelemInfo;
+            var scoring = offsets.Layout.GetProperty("scoringInfo");
+            var fields = offsets.Layout.GetProperty("telemInfo");
+            view.Write(offsets.ScoringInfo + scoring.GetProperty("mInRealtime").GetInt32(), (byte)1);
+            view.Write(offsets.ScoringInfo + scoring.GetProperty("mGamePhase").GetInt32(), (byte)5);
+            Text(telem + fields.GetProperty("mTrackName").GetInt32(), "Test track");
+            Text(telem + fields.GetProperty("mVehicleName").GetInt32(), "Test car");
             view.Write(telem + offsets.TelemGear, 3);
             view.Write(telem + offsets.TelemElapsedTime, 42.5);
             for (var i = 0; i < 3; i++) view.Write(telem + offsets.TelemOri + i * offsets.Vect3Stride + i * 8, 1.0);
@@ -59,10 +65,21 @@ public sealed class MotionCaptureTests
             lockView.Write(4, 1);
             Assert.Throws<SharedMemoryException>(() => reader.Read());
             lockView.Write(4, 0);
+            var service = new CaptureService(reader);
+            Assert.Contains("No fresh driving frame", Assert.Throws<CheckpointException>(() => service.Capture("moving")).Message);
+            Text(telem + fields.GetProperty("mVehicleName").GetInt32(), "Other car");
+            Assert.Contains("identity-mismatch", Assert.Throws<CheckpointException>(() => service.Capture("moving")).Message);
+            Text(telem + fields.GetProperty("mVehicleName").GetInt32(), "Test car");
             lockView.Write(0, 1);
-            var capture = new CaptureService(reader).Capture("moving");
+            var updated = Task.Factory.StartNew(() =>
+            {
+                if (!wake.WaitOne(1000)) return false;
+                view.Write(telem + offsets.TelemElapsedTime, 42.52);
+                return true;
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            var capture = service.Capture("moving");
             Assert.Equal(0, lockView.ReadInt32(4));
-            Assert.True(wake.WaitOne(0));
+            Assert.True(await updated);
             lockView.Write(0, 0);
             view.Write(offsets.PlayerVehicleIdx, (byte)104);
             Assert.Throws<SharedMemoryException>(() => reader.Read());
@@ -73,6 +90,7 @@ public sealed class MotionCaptureTests
             Assert.Equal(46.8, capture.Snapshot.SpeedKmh!.Value, 6);
             var saved = CaptureService.Save(capture.Checkpoint, Path.Combine(directory, "checkpoints"));
             var loaded = Checkpoint.Load(saved);
+            Assert.Equal(42.52, loaded.CapturedSimulationTime);
             Assert.Equal(capture.Snapshot.LocalVelocityMetresPerSecond, loaded.LocalVelocityMetresPerSecond);
             Assert.Equal(46.8, loaded.SpeedKmh!.Value, 6);
             Assert.Equal(3, loaded.Gear);

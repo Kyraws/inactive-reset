@@ -14,7 +14,7 @@ public sealed class RedlineDataTests : IDisposable
     {
         Name = name, TrackName = "Layout", VehicleName = "Car", CapturedUtc = DateTimeOffset.UtcNow,
         Pose = new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
-        Gear = 3, LocalVelocityMetresPerSecond = new(0, 0, 20),
+        Gear = 3, LocalVelocityMetresPerSecond = new(0, 0, -20),
     }, _root, name == "Quick capture");
 
     [Fact]

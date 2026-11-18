@@ -88,10 +88,10 @@ guarantee of accurate intermediate splits.
 The app restores captured speed and gear automatically for normal teleport.
 **Standing teleport** explicitly skips motion restoration.
 Motion restoration requires a reset layout verified against the running engine,
-the capture car/track, and a straight, level checkpoint captured at 0.5 km/h or faster. There is no upper speed ceiling.
-The sideways component must stay within 0.05 m/s. Vertical motion must stay
-within the larger of 0.05 m/s or 0.5% of forward speed, allowing small road/pitch
-components in faster captures.
+the capture car/track, and finite motion captured at 0.5 km/h or faster.
+Reset uses the recorded linear velocity, including sideways and vertical motion.
+Gear must agree with the recorded direction of travel. The loaded gearbox,
+engine rev limit and other reset checks are verified at runtime.
 Unresolved engine layouts, older checkpoints without velocity and cross-car
 speed restoration are refused. Ordinary pose placement remains available.
 
@@ -153,6 +153,10 @@ the Drive handoff; player-controlled cars use direct reset even with inherited
 pit state. The hotkey also works in the garage. A garage placement waiting only
 for pit state to clear allows a direct reset; its original rule cleanup remains
 owned until that reset clears pit state or the driver returns to the garage.
+
+Before an on-track reset writes the car state, it checks the recorded driver
+controls. Release throttle, brake and clutch and centre the wheel. Hold those
+positions until driving resumes. The physics pause does not suppress LMU inputs.
 
 Direct reset repairs lap state inside its verified physics pause: pit state and
 pit flag become zero, sector becomes the final sector, and the next-lap latch is

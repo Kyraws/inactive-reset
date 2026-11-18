@@ -18,6 +18,7 @@ namespace InactiveReset.Ui;
 /// </summary>
 public sealed class Server(string offsetDirectory, string dataDirectory, int port)
 {
+    private readonly TelemetryTimeline _timeline = new(dataDirectory);
     private readonly TelemetryRecorder _recorder = new(offsetDirectory, dataDirectory);
     private readonly CancellationTokenSource _recorderCancellation = new();
     private Task? _recording;
@@ -108,7 +109,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 SendText(context, logo ?? "", "image/svg+xml");
                 return;
             }
-            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/recordings/list" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
+            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/recordings/list" or "/api/recordings/laps" or "/api/recordings/lap" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
             if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
                 (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
             {
@@ -200,13 +201,20 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     SendJson(context, _runner.Launch(ReadBody(context)));
                     break;
                 case "/api/recordings/list":
-                    SendText(context, JsonSerializer.Serialize(new TelemetryTimeline(dataDirectory).List()), "application/json");
+                    SendText(context, JsonSerializer.Serialize(_timeline.List()), "application/json");
+                    break;
+                case "/api/recordings/laps":
+                    SendText(context, JsonSerializer.Serialize(_timeline.ListLaps()), "application/json");
+                    break;
+                case "/api/recordings/lap":
+                    SendText(context, JsonSerializer.Serialize(_timeline.LapPoints(context.Request.QueryString["id"] ?? "")), "application/json");
                     break;
                 case "/api/recordings/select":
                     var selectionBody = ReadBody(context);
-                    var selected = new TelemetryTimeline(dataDirectory).Select(
+                    var selected = _timeline.Select(
                         selectionBody["recording"]?.GetValue<string>() ?? "",
-                        timestamp: selectionBody["timestamp"]?.GetValue<double>());
+                        timestamp: selectionBody["timestamp"]?.GetValue<double>(),
+                        sequence: selectionBody["sequence"]?.GetValue<long>());
                     SendText(context, JsonSerializer.Serialize(selected), "application/json");
                     break;
                 case "/api/capture":

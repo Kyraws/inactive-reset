@@ -6,12 +6,9 @@ It reads the official SDK mapping without native memory attachment, including
 when EAC is enabled. Only the SDK's lock-coordination mapping is writable.
 Practice tools and `GET /api/recordings/status` expose status and errors.
 
-Practice tools now includes a Recorded timestamp selector. Refresh recordings,
-choose a segment (including its retained simulation-time range), enter simulation
-seconds and select the nearest complete sample. The result shows its actual time,
-sequence, speed, gear and motion eligibility. There is no interpolation. Ties use
-the first retained sample; out-of-range requests snap to the nearest endpoint.
-Editing the recording or time invalidates the selection.
+Open **Recorded laps** in Practice tools. Completed laps appear automatically
+while the panel is open. Choose a lap by lap time, circuit, car and recording
+date, then click its route or use the slider to select an exact sample.
 
 Recorded speed/gear reset and standing pose reset use the existing production
 operation runner and its Practice, EAC, identity, motion, cancellation and cleanup
@@ -240,14 +237,12 @@ The complete analysis, file names and per-field ranges are retained in
 `data/recordings/` under normal retention. This is one recording's observed scope,
 not general compatibility or a guarantee of a complete physical rewind.
 
-### Locating recorded timestamps
+### Finding a point on a lap
 
-Recorded timestamp uses numbered recording labels with retained time ranges and
-sample counts. Choosing a segment initializes a time slider; releasing it selects
-the nearest exact sample. The selected sample shows lap distance as well as time,
-speed and gear. Its recorded world position appears as R on a separate circuit
-map using the existing coordinate transform. Choose the exact circuit layout
-when there is no unique catalog match. The preview does not select a saved
-checkpoint or move the car. Reset still requires its explicit action and gates.
-The expanded panel scrolls so its position preview and reset actions remain
-reachable. No corner names or inferred track locations are invented.
+The lap list uses forward start/finish crossings in the retained SDK lap
+distance, so existing recordings can supply laps too. A timed lap spans two
+crossings without a sample gap over half a second. A continuous run that starts
+before zero and reaches the first crossing appears separately as an opening run.
+Lap numbers are relative to the recording. The route shows the driven line.
+Clicking it selects the closest recorded frame and shows lap distance, speed and
+gear. The reset still requires its explicit action and live gates.

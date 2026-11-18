@@ -82,15 +82,24 @@ Unresolved inherited baselines are refused rather than guessed as Green.
 
 ## Practice and checkpoint library
 
-Capture saves a pose; selecting a destination never moves the car. Quick capture
-replaces its track/car slot and survives restart. Named captures stay separate;
+Capture saves the pose and simulation time of a fresh player-controlled frame.
+Selecting a destination never moves the car. Quick capture replaces its
+track/car slot only when the new frame is eligible for speed and gear.
+Named captures can also save standing destinations.
 Save as named copies the saved quick slot without recapturing the current car.
+Practice opens on **Recorded laps**. Choose a completed lap by time, circuit and
+car. Click the recorded route or use the slider to select a frame, then choose
+standing teleport or speed and gear when eligible. Switch to **Saved
+checkpoints** to capture or select a named destination or the quick slot.
+For a recorded point, enable **Override tyre condition and temperature** and
+edit the values in **Tyres**. Start the reset from the garage and press Drive
+when prompted. An on-track reset uses the currently fitted tyres.
 The library separates preview from selection and provides circuit/car filters,
 favourites, rename, delete and one-operation undo. See
 [Circuit maps and library](CIRCUIT_MAPS.md) for geometry, caching and recovery.
 
-Normal teleport restores speed/gear for an eligible straight, approximately level
-moving capture in the capture car. Standing teleport can reuse another car's pose
+Normal teleport restores speed/gear for an eligible moving capture in the
+capture car. Standing teleport can reuse another car's pose
 on the matching track. Actual ownership/state chooses garage placement with a
 Drive handoff or experimental on-track reset. See [Placement](PLACEMENT.md).
 

@@ -370,7 +370,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["y"] = snapshot.Pose.Position.Y,
                 ["z"] = snapshot.Pose.Position.Z,
                 ["yaw"] = target.Yaw,
-                ["capturable"] = target.Valid,
+                ["capturable"] = snapshot.Details?.Driving == true,
                 ["tyres"] = JsonSerializer.SerializeToNode(snapshot.Tyres,
                     new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
             };
@@ -386,7 +386,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         var array = new JsonArray();
         foreach (var checkpoint in Checkpoint.LoadAll(Checkpoints, message => errors.Add((JsonNode)message)).OrderBy(c => c.Name))
         {
-            var rollingIssue = RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond);
+            var rollingIssue = RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, checkpoint.Gear);
             array.Add(new JsonObject
             {
                 ["name"] = checkpoint.Name,
@@ -581,8 +581,9 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         }
 
         var path = CaptureService.Save(result.Checkpoint, Checkpoints, quick);
+        var rollingIssue = RollingMotion.CaptureIssue(result.Checkpoint.LocalVelocityMetresPerSecond, result.Checkpoint.Gear);
         Log($"captured '{name}' at {result.Checkpoint.LapDistance:F0} m");
-        return new JsonObject { ["ok"] = true, ["path"] = path,
+        return new JsonObject { ["ok"] = true, ["path"] = path, ["rollingIssue"] = rollingIssue,
             ["id"] = Path.GetRelativePath(Checkpoints, path).Replace('\\', '/') };
     }
 
@@ -599,7 +600,6 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         var recorded = body["recording"]?.GetValue<string>();
         var selection = recorded is null ? null : new TelemetryTimeline(dataDirectory).Select(recorded,
             sequence: body["sequence"]?.GetValue<long>() ?? throw new GateException("An exact sample sequence is required."));
-        if (selection is not null && tyreOptions is not null) throw new GateException("Recorded reset does not restore tyres; disable tyre preparation.");
         if (selection is not null && restoreSpeed && selection.RollingUnavailableReason is { } reason) throw new GateException(reason);
         var name = selection?.Checkpoint.Name ?? body["checkpoint"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(name))
@@ -719,7 +719,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             var placementReader = new LiveStateReader(session);
             directReset = placementReader.ReadControlOwner(placementReader.ResolveSlotIndex()) == 0;
             if (cleanup is not null && !directReset) throw new GateException("Wait for the previous garage placement to finish cleanup.");
-            if (directReset && tyreOptions is not null) throw new GateException("Tyre conditioning requires the garage Drive handoff. Uncheck Apply on garage teleport to reset on track with your current tyres.");
+            if (directReset && tyreOptions is not null)
+                throw new GateException("Return to the garage to apply tyre overrides, or turn off the override to teleport with your current tyres.");
             SessionIdentity? live = null;
             try
             {
@@ -736,7 +737,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             identity.RequireMatches(checkpoint);
             selection?.RequireContext(session.ExecutableSha256, identity);
             if (selection is not null)
-                Log($"Recorded segment {selection.SegmentId}, sample {selection.Sequence}, simulation {selection.Timestamp:R} s; restoring pose{(restoreSpeed ? ", speed and gear" : " standing")}. Other recorded physical state is not restored.");
+                Log($"Recorded segment {selection.SegmentId}, sample {selection.Sequence}, simulation {selection.Timestamp:R} s; restoring pose{(restoreSpeed ? ", speed and gear" : " standing")}. {(tyreOptions is null ? "Keeping current tyres." : "Applying requested tyre settings before restoring motion.")}");
             if (restoreSpeed) RollingMotion.RequireEligible(checkpoint, session.Offsets.Motion is not null, identity);
             if (directReset)
             {

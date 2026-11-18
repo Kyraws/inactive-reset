@@ -70,12 +70,7 @@ public static class RollingMotion
             throw new GateException("Player/session state or SDK time changed during physics pause.");
     }
 
-    // Keep the established capture bounds and use the same check for the gate
-    // and its explanation. This describes recorded motion, not road contact.
-    private static double VerticalCaptureLimit(Vec3 velocity) =>
-        Math.Max(0.05, Math.Abs((double)velocity.Z) * 0.005);
-
-    public static string? CaptureIssue(Vec3? velocity)
+    public static string? CaptureIssue(Vec3? velocity, int? gear = null)
     {
         if (velocity is not { } v)
             return "No recorded speed. Save a new checkpoint while driving.";
@@ -83,26 +78,12 @@ public static class RollingMotion
             return "Invalid recorded velocity. Save a new checkpoint.";
         if (MotionCapture.SpeedKmh(v) < 0.5)
             return "Recorded speed is below 0.5 km/h. Save while moving in a forward gear.";
-        if (Math.Abs(v.X) > 0.05)
-            return FormattableString.Invariant($"Captured sideways motion is {DescribeExcess(Math.Abs(v.X), 0.05)}. Capture after the car settles on a straight.");
-        var verticalLimit = VerticalCaptureLimit(v);
-        if (Math.Abs(v.Y) > verticalLimit)
-            return FormattableString.Invariant($"Captured vertical motion is {DescribeExcess(Math.Abs(v.Y), verticalLimit)}. Capture on a smoother section after the car settles.");
+        if (gear is < -1 or > 8)
+            return "Captured gear is outside the supported range.";
+        // SDK forward velocity is negative. The engine rejects a gear coupled against wheel travel.
+        if ((gear is > 0 && v.Z > 0) || (gear is < 0 && v.Z < 0))
+            return "Captured gear opposes the recorded direction of travel.";
         return null;
-    }
-
-    private static string DescribeExcess(float actual, double limit)
-    {
-        var actualText = FormattableString.Invariant($"{actual:0.###}");
-        var limitText = FormattableString.Invariant($"{limit:0.###}");
-        if (actualText == limitText)
-        {
-            actualText = FormattableString.Invariant($"{actual:0.####}");
-            limitText = FormattableString.Invariant($"{limit:0.####}");
-        }
-        return actualText == limitText
-            ? FormattableString.Invariant($"{(double)actual:G17} m/s, maximum is {limit:G17} m/s")
-            : $"{actualText} m/s, maximum is {limitText} m/s";
     }
 
     public static bool EligibleCapture(Vec3? velocity) => CaptureIssue(velocity) is null;
@@ -111,7 +92,7 @@ public static class RollingMotion
     {
         if (!supported)
             throw new GateException("Speed & gear are unavailable for this game build. Use Standing teleport.");
-        if (CaptureIssue(checkpoint.LocalVelocityMetresPerSecond) is { } issue)
+        if (CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, checkpoint.Gear) is { } issue)
             throw new GateException(issue);
         identity.RequireMatches(checkpoint);
         RequireCaptureVehicle(checkpoint, identity.VehicleName);

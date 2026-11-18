@@ -20,6 +20,7 @@ public sealed class Checkpoint
     public required RecordedPose Pose { get; init; }
 
     public DateTimeOffset? CapturedUtc { get; init; }
+    public double? CapturedSimulationTime { get; init; }
     public float LapDistance { get; init; }
     public int Gear { get; init; }
     public TyreState? Tyres { get; init; }
@@ -62,6 +63,8 @@ public sealed class Checkpoint
                 ReadVec(rows[0]), ReadVec(rows[1]), ReadVec(rows[2])),
             CapturedUtc = root.TryGetProperty("captured_utc", out var c)
                 && DateTimeOffset.TryParse(c.GetString(), out var when) ? when : null,
+            CapturedSimulationTime = root.TryGetProperty("captured_simulation_time_s", out var time)
+                ? time.GetDouble() : null,
             LapDistance = root.TryGetProperty("lap", out var lap)
                 && lap.TryGetProperty("distance", out var d) ? d.GetSingle() : 0f,
             Gear = root.TryGetProperty("vehicle", out var v)

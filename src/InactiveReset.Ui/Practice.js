@@ -15,7 +15,9 @@ function savePracticePreferences() {
     heat:document.getElementById('tyreTemperature'+wheel).value,
     enabled:document.getElementById('tyreTemperatureEnabled'+wheel).checked
   };
-  practicePreferences = {wheels,apply:document.getElementById('freshOnPlace').checked,checkpoint:document.getElementById('cp').value || practicePreferences.checkpoint};
+  practicePreferences = {wheels,apply:document.getElementById('freshOnPlace').checked,
+    overrideRecordedTyres:document.getElementById('overrideRecordedTyres')?.checked,
+    checkpoint:document.getElementById('cp').value || practicePreferences.checkpoint};
   try { sessionStorage.setItem('practice-preferences',JSON.stringify(practicePreferences)); } catch {}
 }
 let noticeTimer;
@@ -105,7 +107,7 @@ function speedRestorationIssue() {
   const checkpoint = visibleCheckpoints.find(c => c.id === document.getElementById('cp').value);
   if (!checkpoint) return 'Choose a checkpoint first.';
   if (!destinationState.rollingStartSupported) return 'Speed & gear are unavailable for this game build. Use Standing teleport.';
-  if (!checkpoint.rollingEligible) return (checkpoint.rollingUnavailableReason || 'This checkpoint needs a straight, level moving capture for speed & gear restoration.') + ' Use Standing teleport.';
+  if (!checkpoint.rollingEligible) return (checkpoint.rollingUnavailableReason || 'Speed & gear are unavailable for this checkpoint.') + ' Use Standing teleport.';
   const car = destinationState.session?.vehicle || '';
   if (checkpoint.vehicle.toLowerCase() !== car.toLowerCase())
     return `Captured in ${checkpoint.vehicle}; currently driving ${car || 'an unknown car'}. Speed & gear require the capture car. Load that car or use Standing teleport.`;
@@ -224,6 +226,8 @@ function collectDiagnostics(s) {
 
 function renderActivity(s) {
   const phase = s.phase || 'Idle', el = document.getElementById('phase');
+  const progress = document.getElementById('practiceProgress');
+  if (progress) progress.hidden = !s.busy && phase === 'Idle';
   el.textContent = phase === 'Armed' ? 'PRESS DRIVE' : phase.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
   el.className = 'phase' + (phase === 'Armed' ? ' armed' : phase === 'Failed' ? ' bad' : s.busy ? ' live' : '');
   document.getElementById('phaseMsg').textContent = s.phaseMessage || (s.game?.protected
@@ -273,7 +277,9 @@ async function refreshState(request) {
   const blocker = placementIssue();
   document.getElementById('placeBtn').disabled = !!blocker || !canRestoreSpeed();
   document.getElementById('standingBtn').disabled = !!blocker;
-  document.getElementById('placeBtn').textContent = directReset ? 'Reset on track ↺' : 'Place checkpoint ↗';
+  const place = document.getElementById('placeBtn');
+  place.textContent = 'Teleport with speed & gear';
+  place.title = directReset ? practiceShortcut('teleport', 'Ctrl+Alt+R') : '';
   const placeHint = blocker || (directReset ? practiceShortcut('teleport', 'Ctrl+Alt+R') + ' · speed & gear. ' + practiceShortcut('standing', 'Ctrl+Alt+Shift+R') + ' · standing.' : 'Press Drive when prompted.');
   document.getElementById('placeHint').textContent = placeHint;
   document.getElementById('placeHint').hidden = !placeHint;
@@ -326,6 +332,7 @@ async function capture() {
     showNotice(res.error + (res.failures ? '\n\n' + res.failures.join('\n') : ''));
   } else {
     input.value = '';
+    showNotice(res.rollingIssue ? 'Checkpoint saved for standing teleport. ' + res.rollingIssue : 'Checkpoint saved.');
   }
   refresh();
 }
@@ -338,7 +345,7 @@ async function quickCapture() {
   quickCapturePending = true;
   try {
     const res = await api('/api/capture', {quick:true});
-    if (res.error) { showNotice(res.error); return; }
+    if (res.error) { showNotice(res.error + (res.failures ? '\n\n' + res.failures.join('\n') : '')); return; }
     if (!res.ok || !res.id) { showNotice('Quick capture was not saved.'); return; }
     // Clear the old selection so the next refresh selects the newly saved ID.
     practicePreferences.checkpoint = res.id;
@@ -441,76 +448,213 @@ for (const wheel of TYRE_WHEELS) {
   document.getElementById('tyreTemperatureEnabled'+wheel).checked = !!saved.enabled;
 }
 document.getElementById('freshOnPlace').checked = !!practicePreferences.apply;
+const recordedTyreOverride = document.getElementById('overrideRecordedTyres');
+if (recordedTyreOverride) recordedTyreOverride.checked = !!practicePreferences.overrideRecordedTyres;
 updateTyreSettings();
 refresh();
 schedule(700);
 
 let timelineSelection = null;
 let timelineRequest = 0;
-let timelineRecordings = [];
+let recordedLaps = [];
+let lapPoints = [];
+let lapRefresh = null;
+let lapRefreshPending = false;
+let lapRequest = 0;
+const lapElement = id => document.getElementById(id);
+
 function clearTimelineSelection() {
   timelineRequest++;
   timelineSelection = null;
-  if (typeof renderTimelineMap === 'function') renderTimelineMap();
-  document.getElementById('timelineSelection').textContent = 'Select a sample to see its exact timestamp and speed.';
+  lapElement('timelineSelection').textContent = '';
   updateTimelineButtons(destinationState);
 }
+
 function updateTimelineButtons(s) {
-  const standing = document.getElementById('timelineStanding');
-  const rolling = document.getElementById('timelineReset');
+  const actions = lapElement('timelineActions');
+  if (actions) actions.hidden = !timelineSelection;
+  const scope = lapElement('timelineRestorationScope');
+  if (scope) scope.hidden = !timelineSelection;
+  const tyreControls = lapElement('timelineTyres');
+  if (tyreControls) tyreControls.hidden = !timelineSelection;
+  const standing = lapElement('timelineStanding');
+  const rolling = lapElement('timelineReset');
   if (!standing || !rolling) return;
-  const blocked = !timelineSelection || !s.connected || s.game?.protected ||
-    (s.busy && s.phase !== 'WaitingToClear');
+  const checkpoint = timelineSelection?.Checkpoint;
+  const mismatch = checkpoint && s.session &&
+    (checkpoint.TrackName.toLowerCase() !== s.session.track?.toLowerCase() ||
+     checkpoint.VehicleName.toLowerCase() !== s.session.vehicle?.toLowerCase());
+  const tyreIssue = recordedTyreOverrideIssue(s);
+  const tyreHint = lapElement('timelineTyreHint');
+  if (tyreHint) tyreHint.textContent = recordedTyreOverride.checked
+    ? tyreIssue || 'Start the teleport from the garage, then press Drive when prompted. ' + lapElement('tyreSummary').textContent
+    : 'To apply tyre changes, return to the garage, start the teleport, and press Drive when prompted.';
+  const blocked = !timelineSelection || !s.connected || s.game?.protected || !!tyreIssue ||
+    mismatch || (s.busy && s.phase !== 'WaitingToClear');
   standing.disabled = blocked;
   rolling.disabled = blocked || !!timelineSelection?.RollingUnavailableReason || !s.rollingStartSupported;
 }
-async function loadRecordings() {
-  clearTimelineSelection();
-  const rows = await api('/api/recordings/list');
-  if (rows.error) { showNotice(rows.error); return; }
-  const select = document.getElementById('timelineRecording');
-  select.replaceChildren(new Option('Choose a recording segment', ''));
-  timelineRecordings = rows;
-  document.getElementById('timelineScrub').disabled = true;
-  document.getElementById('timelineRange').textContent = '';
-  rows.forEach((row, i) => select.add(new Option('Recording ' + (i + 1) + ' · ' + row.Identity.Track + ' / ' + row.Identity.Vehicle + ' · ' + row.Start.toFixed(2) + '–' + row.End.toFixed(2) + ' s · ' + row.Samples + ' samples', row.SegmentId)));
+
+function recordedTyreOverrideIssue(s) {
+  return recordedTyreOverride?.checked && (s.inGarage ?? s.tyreRules?.inGarage) !== true
+    ? 'Return to the garage to apply tyre overrides, or turn off the override to keep your current tyres.'
+    : '';
 }
-async function selectTimelineSample() {
+
+function toggleRecordedLaps() {
+  const visible = !lapElement('practicePanel').hidden && !lapElement('timelinePanel').hidden;
+  if (!visible) {
+    clearInterval(lapRefresh);
+    lapRefresh = null;
+    return;
+  }
+  if (lapRefresh !== null) return;
+  loadRecordedLaps();
+  lapRefresh = setInterval(loadRecordedLaps, 8000);
+}
+
+function lapTime(seconds) {
+  const ms = Math.round(seconds * 1000);
+  return Math.floor(ms / 60000) + ':' + (ms % 60000 / 1000).toFixed(3).padStart(6, '0');
+}
+
+async function loadRecordedLaps() {
+  if (lapRefreshPending) return;
+  lapRefreshPending = true;
+  const rows = await api('/api/recordings/laps');
+  lapRefreshPending = false;
+  const status = lapElement('timelineRange');
+  if (!Array.isArray(rows)) {
+    status.hidden = false;
+    status.textContent = rows.error || 'Could not load recorded laps.';
+    return;
+  }
+  const select = lapElement('timelineRecording');
+  const previous = select.value;
+  const track = destinationState.session?.track;
+  const ordered = [...rows].sort((a, b) => Number(b.Identity.Track === track) - Number(a.Identity.Track === track));
+  const changed = ordered.map(lap => lap.Id).join() !== recordedLaps.map(lap => lap.Id).join();
+  recordedLaps = ordered;
+  if (changed || select.disabled) {
+    select.replaceChildren(new Option(rows.length ? 'Choose a lap' : 'No completed laps yet', ''));
+    ordered.forEach(lap => {
+      const when = lap.RecordedUtc ? ' · ' + new Date(lap.RecordedUtc).toLocaleString() : '';
+      const label = lap.IsOpeningRun ? 'Opening run' : 'Lap ' + lap.Number;
+      select.add(new Option(label + ' · ' + lapTime(lap.Duration) + ' · ' +
+        lap.Identity.Track + ' / ' + lap.Identity.Vehicle + when, lap.Id));
+    });
+    select.value = ordered.some(lap => lap.Id === previous) ? previous : '';
+    select.disabled = !rows.length;
+    if (previous && !select.value) chooseRecordedLap();
+  }
+  status.hidden = rows.length > 0;
+  status.textContent = rows.length ? '' :
+    'Drive from one start/finish crossing to the next. Completed laps appear here automatically.';
+}
+
+async function chooseRecordedLap() {
+  const request = ++lapRequest;
   clearTimelineSelection();
+  lapPoints = [];
+  lapElement('timelineLocation').hidden = true;
+  const id = lapElement('timelineRecording').value;
+  if (!id) return;
+  lapElement('timelineSelection').textContent = 'Loading recorded lap…';
+  const points = await api('/api/recordings/lap?id=' + encodeURIComponent(id));
+  if (request !== lapRequest) return;
+  if (points.error) { lapElement('timelineSelection').textContent = points.error; return; }
+  lapPoints = points;
+  renderRecordedLap();
+  lapElement('timelineSelection').textContent = 'Choose a point on this lap.';
+}
+
+function renderRecordedLap() {
+  const map = lapElement('timelineMap');
+  const x = lapPoints.map(point => point.Z);
+  const y = lapPoints.map(point => point.X);
+  const minX = Math.min(...x), maxX = Math.max(...x);
+  const minY = Math.min(...y), maxY = Math.max(...y);
+  const scale = Math.min(552 / Math.max(1, maxX - minX), 292 / Math.max(1, maxY - minY));
+  const projected = lapPoints.map(point => [
+    300 + (point.Z - (minX + maxX) / 2) * scale,
+    170 + (point.X - (minY + maxY) / 2) * scale
+  ]);
+  const line = projected.map(([x, y]) => x.toFixed(2) + ',' + y.toFixed(2)).join(' ');
+  const speedLine = [];
+  for (let i = 1; i < projected.length; i++) {
+    const before = lapPoints[i - 1].SpeedEligible;
+    const after = lapPoints[i].SpeedEligible;
+    if (!before && !after) continue;
+    const [x1, y1] = projected[i - 1];
+    const [x2, y2] = projected[i];
+    const midpoint = [(x1 + x2) / 2, (y1 + y2) / 2];
+    const start = before ? projected[i - 1] : midpoint;
+    const end = after ? projected[i] : midpoint;
+    speedLine.push('M' + start.map(value => value.toFixed(2)).join(' ') +
+      'L' + end.map(value => value.toFixed(2)).join(' '));
+  }
+  map.innerHTML = '<svg viewBox="0 0 600 340" role="img" aria-label="Recorded lap route">' +
+    '<polyline class="map-road-shadow" points="' + line + '"/><polyline class="map-road lap-road" points="' + line + '"/>' +
+    '<path class="map-road lap-road-speed" d="' + speedLine.join(' ') + '"/>' +
+    '<g class="map-marker" transform="translate(' + projected[0].join(' ') + ')"><circle r="9"/><text text-anchor="middle" y="4">S</text></g>' +
+    '<g id="timelineMapPoint" class="map-marker selected" visibility="hidden"><circle r="10"/></g></svg>';
+  const svg = map.querySelector('svg');
+  svg.addEventListener('click', event => {
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    let nearest = 0;
+    let distance = Infinity;
+    projected.forEach(([x, y], index) => {
+      const squared = (point.x - x) ** 2 + (point.y - y) ** 2;
+      if (squared < distance) { distance = squared; nearest = index; }
+    });
+    selectLapPoint(nearest);
+  });
+  const slider = lapElement('timelineScrub');
+  slider.max = lapPoints.length - 1;
+  slider.value = 0;
+  slider.projectedPoints = projected;
+  lapElement('timelineLocation').hidden = false;
+}
+
+function previewLapPoint(index) {
+  clearTimelineSelection();
+  const slider = lapElement('timelineScrub');
+  const point = slider.projectedPoints?.[index];
+  if (!point) return;
+  slider.value = index;
+  const marker = lapElement('timelineMapPoint');
+  marker.setAttribute('transform', 'translate(' + point.join(' ') + ')');
+  marker.setAttribute('visibility', 'visible');
+}
+
+async function selectLapPoint(index) {
+  const lap = recordedLaps.find(row => row.Id === lapElement('timelineRecording').value);
+  const point = lapPoints[index];
+  if (!lap || !point) return;
+  previewLapPoint(index);
   const request = timelineRequest;
-  const recording = document.getElementById('timelineRecording').value;
-  const input = document.getElementById('timelineTime');
-  if (!recording || input.value === '' || !input.checkValidity()) { showNotice('Choose a recording and enter a nonnegative simulation time.'); return; }
-  const result = await api('/api/recordings/select', {recording, timestamp:Number(input.value)});
+  const status = lapElement('timelineSelection');
+  status.textContent = 'Loading selected point…';
+  const result = await api('/api/recordings/select', {recording:lap.SegmentId, sequence:point.Sequence});
   if (request !== timelineRequest) return;
-  if (result.error) { showNotice(result.error); return; }
+  if (result.error) { status.textContent = result.error; return; }
   timelineSelection = result;
-  document.getElementById('timelineScrub').value = result.Timestamp;
-  if (typeof renderTimelineMap === 'function') renderTimelineMap();
-  document.getElementById('timelineSelection').textContent = 'Sample ' + result.Sequence + ' at ' + result.Timestamp + ' s · ' + result.SpeedKmh.toFixed(2) + ' km/h · gear ' + result.Checkpoint.Gear + ' · ' + Math.round(result.Checkpoint.LapDistance) + ' m along lap. ' + (result.RollingUnavailableReason || 'Eligible recorded motion; live reset gates still apply.');
+  status.textContent = Math.round(result.Checkpoint.LapDistance) + ' m along lap · ' +
+    result.SpeedKmh.toFixed(1) + ' km/h · gear ' + result.Checkpoint.Gear +
+    (result.RollingUnavailableReason ? ' · ' + result.RollingUnavailableReason : '') +
+    ' · Teleport requires ' + result.Checkpoint.TrackName + ' / ' + result.Checkpoint.VehicleName + '.';
   updateTimelineButtons(destinationState);
 }
 async function resetTimelineSample(standing) {
   if (!timelineSelection) return;
   if (practiceAccessIssue()) { showNotice(practiceAccessIssue()); return; }
-  const result = await api('/api/place', {recording:timelineSelection.SegmentId, sequence:timelineSelection.Sequence, restoreSpeed:!standing});
+  const body = {recording:timelineSelection.SegmentId, sequence:timelineSelection.Sequence, restoreSpeed:!standing};
+  if (recordedTyreOverride?.checked) {
+    const issue = recordedTyreOverrideIssue(destinationState);
+    if (issue) { showNotice(issue); return; }
+    try { body.tyres = tyreOptions(); } catch (e) { showNotice(e.message); return; }
+  }
+  const result = await api('/api/place', body);
   if (result.error) showNotice(result.error);
   refresh();
-}
-function chooseTimelineRecording() {
-  clearTimelineSelection();
-  const row = timelineRecordings.find(r => r.SegmentId === document.getElementById('timelineRecording').value);
-  const slider = document.getElementById('timelineScrub');
-  slider.disabled = !row || row.Start === row.End;
-  document.getElementById('timelineRange').textContent = row ? row.Start + '–' + row.End + ' s · ' + (row.End - row.Start).toFixed(2) + ' seconds recorded · ' + row.Samples + ' samples' : '';
-  if (!row) return;
-  slider.min = row.Start;
-  slider.max = row.End;
-  slider.value = row.Start;
-  document.getElementById('timelineTime').value = row.Start;
-  selectTimelineSample();
-}
-function scrubTimeline() {
-  document.getElementById('timelineTime').value = document.getElementById('timelineScrub').value;
-  clearTimelineSelection();
 }

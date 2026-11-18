@@ -71,7 +71,7 @@ public sealed class WheelRotationPlan
     {
         bodies.RequireCurrent();
         if (!RollingMotion.EligibleCapture(velocity))
-            throw new GateException("Wheel experiment requires a straight, level low-speed capture.");
+            throw new GateException("Wheel restoration requires a valid moving capture.");
         var layout = session.RequireMotion();
         var vehicle = session.Offsets.Containers.ContainerAddress(session.ModuleBase, slot) + session.Offsets.Containers.VehicleDelta;
         var physics = session.Memory.ReadUInt64(vehicle + layout.VehiclePhysics);

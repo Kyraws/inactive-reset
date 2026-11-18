@@ -59,8 +59,6 @@ deleted content is unchanged. Earlier deleted files are retained for manual
 recovery. Undo is not available after restarting the app. File actions are
 blocked during a placement or tyre operation.
 
-Recorded timestamps have their own position preview in Practice tools. Choose a
-recording and browse time: R marks the selected sample's actual world coordinates,
-and the text shows its distance along the lap. The same layout matching and exact
-layout chooser apply. Browsing a recording does not select a saved checkpoint or
-teleport the car.
+Recorded laps in Practice tools use the recorded driving line as their map.
+Choose a completed lap, then click the line or use the slider to preview an
+exact recorded position. Teleporting requires a separate action.

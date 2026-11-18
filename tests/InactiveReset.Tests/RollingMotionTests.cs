@@ -6,10 +6,10 @@ namespace InactiveReset.Tests;
 public sealed class RollingMotionTests
 {
     [Fact]
-    public void CaptureEligibilityRefusesUnknownStationaryDriftingAndInvalidValues()
+    public void CaptureEligibilityRefusesUnknownStationaryAndInvalidValues()
     {
         Assert.True(RollingMotion.EligibleCapture(new(0, 0, -2)));
-        foreach (var v in new Vec3?[] { null, new(0, 0, 0), new(0.1f, 0, -2), new(0, 0.1f, -2), new(float.NaN, 0, -2) })
+        foreach (var v in new Vec3?[] { null, new(0, 0, 0), new(float.NaN, 0, -2) })
             Assert.False(RollingMotion.EligibleCapture(v));
     }
 
@@ -36,15 +36,6 @@ public sealed class RollingMotionTests
         var wheel = WheelRotationPlan.Calculate(local.Z, 0.4, [1, 0, 0, 0, 1, 0, 0, 0, 1], [2, 3, 4], [0, 0, 0]);
         Assert.Equal(local.Z / 0.4, wheel.Rate, 10);
         Assert.Equal(wheel.Rate * 2, wheel.Momentum[0], 10);
-    }
-
-    [Fact]
-    public void SmallVerticalComponentScalesWithForwardSpeedWithoutAllowingSideslipOrBouncing()
-    {
-        Assert.True(RollingMotion.EligibleCapture(new(0.010424137f, 0.07474714f, -16.163006f)));
-        Assert.False(RollingMotion.EligibleCapture(new(0.06f, 0.07474714f, -16.163006f)));
-        Assert.False(RollingMotion.EligibleCapture(new(0, 0.09f, -16.163006f)));
-        Assert.False(RollingMotion.EligibleCapture(new(0, 0.06f, -2)));
     }
 
     [Fact]

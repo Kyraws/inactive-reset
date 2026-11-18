@@ -423,7 +423,7 @@ public sealed class LmuSessionClient
             return string.IsNullOrWhiteSpace(text) ? null : JsonNode.Parse(text);
         }
         catch (HttpRequestException ex) { throw new GateException($"LMU's menu connection is unavailable. Launch local play and wait for its main menu. {ex.Message}"); }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new GateException("LMU did not respond in time. Check the game before repeating the action."); }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new GateException($"LMU did not respond in time ({method} {path}). Check the game before repeating the action."); }
     }
 
     private static JsonObject Object(JsonNode? node) => node as JsonObject ?? throw new GateException("LMU returned an unexpected menu response.");

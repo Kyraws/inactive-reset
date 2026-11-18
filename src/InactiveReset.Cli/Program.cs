@@ -259,7 +259,7 @@ internal static class Program
                         + $"(heading magnitude {result.Target.HeadingHorizontalMagnitude:F6})");
         Console.WriteLine($"  lap distance  {checkpoint.LapDistance:F1} m   gear {checkpoint.Gear}");
         Console.WriteLine(checkpoint.SpeedKmh is { } speed
-            ? $"  captured speed {speed:F1} km/h (placement starts stationary)"
+            ? $"  captured speed {speed:F1} km/h"
             : "  captured speed unavailable");
 
         if (!result.Usable)
@@ -274,6 +274,9 @@ internal static class Program
 
         var path = CaptureService.Save(checkpoint, Path.Combine(dataDirectory, "checkpoints"));
         Console.WriteLine($"\n  saved         {path}");
+        var rollingIssue = RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, checkpoint.Gear);
+        if (rollingIssue is not null)
+            Console.WriteLine($"  standing teleport only: {rollingIssue}");
 
         var calibrations = CalibrationProfile.LoadAllForData(dataDirectory);
         var hasCalibration = calibrations.Any(c =>

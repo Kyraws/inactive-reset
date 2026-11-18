@@ -46,6 +46,55 @@ public sealed class TelemetryTimelineTests : IDisposable
     }
 
     [Fact]
+    public void CompletedLapAppearsAcrossRotatedPartsAndKeepsExactPoints()
+    {
+        static TimelineEntry Point(long sequence, double time, float distance)
+        {
+            var entry = Entry(sequence, time);
+            return entry with { Sample = entry.Sample! with { LapDistance = distance, Gear = sequence == 4 ? 9 : 2 } };
+        }
+
+        Part("a", Point(1, 10, 500), Point(2, 10.2, 0), Point(3, 10.4, 250));
+        var timeline = new TelemetryTimeline(_directory);
+        Assert.Empty(timeline.ListLaps());
+        Part("b", Point(4, 10.6, 500), Point(5, 10.8, 2), Point(6, 11, 250));
+        var lap = Assert.Single(timeline.ListLaps());
+        Assert.Equal(0.6, lap.Duration, 6);
+        var points = timeline.LapPoints(lap.Id);
+        Assert.Equal(new long[] { 2, 3, 4 }, points.Select(point => point.Sequence));
+        Assert.Equal(new[] { true, true, false }, points.Select(point => point.SpeedEligible));
+        Assert.Equal(250, timeline.Select(lap.SegmentId, sequence: 3).Checkpoint.LapDistance);
+        Assert.Equal(lap, Assert.Single(timeline.ListLaps()));
+        Assert.Same(points, timeline.LapPoints(lap.Id));
+
+        Part("c", Point(7, 12, 500), Point(8, 12.2, 0));
+        Assert.Equal(lap, Assert.Single(timeline.ListLaps()));
+        File.Delete(Path.Combine(_directory, "recordings", "a.jsonl"));
+        Assert.Empty(timeline.ListLaps());
+        Assert.Throws<GateException>(() => timeline.LapPoints(lap.Id));
+    }
+
+    [Fact]
+    public void OpeningRunEndsAtFirstCrossingAndDoesNotConsumeALapNumber()
+    {
+        static TimelineEntry Point(long sequence, double time, float distance)
+        {
+            var entry = Entry(sequence, time);
+            return entry with { Sample = entry.Sample! with { LapDistance = distance } };
+        }
+
+        Part("a", Point(1, 10, -85), Point(2, 10.2, 1), Point(3, 10.4, 500),
+            Point(4, 10.6, 0), Point(5, 10.8, 500), Point(6, 11, 0));
+        var timeline = new TelemetryTimeline(_directory);
+        var rows = timeline.ListLaps();
+        Assert.Equal(2, rows.Length);
+        Assert.False(rows[0].IsOpeningRun);
+        Assert.Equal(1, rows[0].Number);
+        Assert.True(rows[1].IsOpeningRun);
+        Assert.Equal(new long[] { 1, 2, 3 }, timeline.LapPoints(rows[1].Id).Select(point => point.Sequence));
+    }
+
+    [Fact]
     public void RecordedContextRequiresBuildTrackAndCarEvenForStandingPose()
     {
         Part("a", Entry(2, 10));
@@ -62,7 +111,7 @@ public sealed class TelemetryTimelineTests : IDisposable
     public void UnsuitableMotionIsExplainedAndInvalidDrivingIsRejected()
     {
         var entry = Entry(2, 10);
-        Part("a", entry with { Sample = entry.Sample! with { LocalVelocityMetresPerSecond = new(1, 0, -10) } });
+        Part("a", entry with { Sample = entry.Sample! with { Gear = 9 } });
         Assert.NotNull(new TelemetryTimeline(_directory).Select("one", sequence: 2).RollingUnavailableReason);
         Part("a", entry with { Sample = entry.Sample! with { Details = entry.Sample.Details! with { Control = 3 } } });
         Assert.Throws<GateException>(() => new TelemetryTimeline(_directory).Select("one", sequence: 2));
