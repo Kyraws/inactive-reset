@@ -188,13 +188,13 @@ function runCheckpointTests(script, html) {
         await ui.place();
         check(posted.directReset===true && posted.restoreSpeed===true && posted.tyres===undefined,'direct reset preserves the motion choice without requesting garage tyre preparation');
         posted=null;ui.renderCheckpoints({...onTrack,busy:true});await ui.resetFromHotkey();
-        check(posted===null,'hotkey ignores an operation already running');
+        check(posted===null && element('noticeText').textContent.includes('current operation'),'hotkey explains the operation already running');
         element('freshOnPlace').checked=false;
         ui.renderCheckpoints({...onTrack,inGarage:true});await ui.resetFromHotkey();
         check(posted.directReset===false,'garage hotkey uses the original Drive handoff');
         posted=null;
         ui.renderCheckpoints({...onTrack,rollingStartSupported:false});await ui.resetFromHotkey();
-        check(posted===null,'hotkey refuses unsupported builds');
+        check(posted===null && element('noticeText').textContent.includes('Return to the garage'),'hotkey explains how to recover when on-track reset is unavailable');
         ui.renderCheckpoints(onTrack);await ui.resetFromHotkey();
         check(posted.directReset===true,'cockpit hotkey dispatches the selected checkpoint through the direct path');
         await ui.resetFromHotkey(true);
@@ -206,9 +206,11 @@ function runCheckpointTests(script, html) {
         posted=null;await ui.resetFromHotkey();
         check(posted.directReset===true && posted.restoreSpeed===true,'reset during pit cleanup preserves the selected motion choice');
         posted=null;await ui.quickCapture();
-        check(posted===null,'quick capture ignores an operation in progress');
+        check(posted===null && element('noticeText').textContent.includes('operation'),'quick capture explains why it is blocked');
         ui.renderCheckpoints({...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[]});
         check(element('cp').disabled && !element('cp').value,'empty library has no teleport destination');
+        await ui.resetFromHotkey(true);
+        check(posted===null && element('noticeText').textContent.includes('Capture or choose'),'standing shortcut explains the missing destination');
         const quick={id:'Daytona/McLaren/Quick capture.json',name:'Quick capture',track:'Daytona',vehicle:'McLaren',rollingEligible:true,speedKmh:126};
         captureResponse={ok:true,id:quick.id};
         response={...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[quick]};
@@ -216,6 +218,10 @@ function runCheckpointTests(script, html) {
         check(postedPath==='/api/capture' && posted.quick===true,'quick capture uses the reserved reusable slot');
         check(element('cp').value===quick.id && ui.canRestoreSpeed(),'quick capture selects the saved checkpoint for motion teleport');
         check(!element('cp').disabled,'first quick capture enables the destination selector');
+        response={...response,checkpoints:[{...quick,rollingEligible:false}]};
+        await ui.quickCapture();
+        check(element('noticeText').textContent.includes('Use Standing teleport'),'ineligible quick capture points to the available standing action');
+        response={...response,checkpoints:[quick]};await ui.refresh();
         await ui.resetFromHotkey();
         check(posted.checkpoint===quick.id && posted.restoreSpeed===true,'teleport hotkey returns to the quick capture with speed and gear');
         captureResponse={error:'Capture refused'};
@@ -251,7 +257,7 @@ function runCheckpointTests(script, html) {
         captureResponse={ok:true,id:quick.id};response={...eac,checkpoints:[...eac.checkpoints,quick]};
         await ui.quickCapture();
         check(postedPath==='/api/capture' && posted.quick===true && element('cp').value===quick.id,'EAC quick capture uses telemetry without a memory connection');
-        check(element('noticeText').textContent.includes('restart LMU'),'EAC capture success explains how to teleport later');
+        check(element('noticeText').textContent.includes('Launch local play'),'EAC capture success explains how to teleport later');
         element('capName').value='Named EAC checkpoint';await ui.capture();
         check(posted.name==='Named EAC checkpoint','Named checkpoint capture is available under EAC');
         ui.setNavigation({state:{gameState:'GSTATE_SETUP'}});response=eac;await ui.refresh();

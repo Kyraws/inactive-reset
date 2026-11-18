@@ -63,7 +63,7 @@
 .capture-controls .inline-input{flex-wrap:wrap}.capture-controls .inline-input input{flex:1 1 150px;min-width:0}.capture-controls .inline-input .button{flex:0 0 auto}
 @media(max-width:950px){.lab-top{gap:8px}.lab-top .button{padding:8px}.lab-top .lab-badge{display:none}.launch-choices{grid-template-columns:1fr}}
 
-.session-save-notice{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:11px 14px;margin-bottom:14px;border:1px solid var(--line);border-radius:7px;background:var(--panel);font-size:11px;line-height:1.6}
+.session-save-notice{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:11px 14px;margin-top:14px;border:1px solid var(--line);border-radius:7px;background:var(--panel);font-size:11px;line-height:1.6}
 .session-save-notice>span{flex:1 1 180px;color:var(--muted)}
 .clock-note{font-size:10px;color:var(--muted)}.clock-note:empty{display:none}
 .lab .clock-stepper{display:grid;grid-template-columns:28px minmax(96px,1fr) 48px;min-width:172px;max-width:240px;gap:0}

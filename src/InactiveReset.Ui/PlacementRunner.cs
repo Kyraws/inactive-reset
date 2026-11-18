@@ -386,6 +386,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         var array = new JsonArray();
         foreach (var checkpoint in Checkpoint.LoadAll(Checkpoints, message => errors.Add((JsonNode)message)).OrderBy(c => c.Name))
         {
+            var rollingIssue = RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond);
             array.Add(new JsonObject
             {
                 ["name"] = checkpoint.Name,
@@ -394,7 +395,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 ["vehicle"] = checkpoint.VehicleName,
                 ["lapDistance"] = checkpoint.LapDistance,
                 ["speedKmh"] = checkpoint.SpeedKmh,
-                ["rollingEligible"] = RollingMotion.EligibleCapture(checkpoint.LocalVelocityMetresPerSecond),
+                ["rollingEligible"] = rollingIssue is null,
+                ["rollingUnavailableReason"] = rollingIssue,
                 ["gear"] = checkpoint.Gear,
                 ["quick"] = checkpoint.Name.Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase),
                 ["x"] = checkpoint.Pose.Position.X,

@@ -247,11 +247,18 @@ public sealed class LmuSessionClientTests
         Assert.Single(game.Requests, r => r.Method == "POST");
     }
 
-    [Fact]
-    public async Task WarmupCountCannotExceedOne()
+    [Theory]
+    [InlineData("PRACTICE")]
+    [InlineData("QUALIFY")]
+    [InlineData("WARMUP")]
+    [InlineData("RACE")]
+    public async Task SessionCountCannotExceedOne(string session)
     {
         using var game = new MenuGame();
-        await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(Parse("""{"action":"amount","session":"WARMUP","amount":2}""")));
+        await Assert.ThrowsAsync<GateException>(() => game.Client.ChangeAsync(new JsonObject
+        {
+            ["action"] = "amount", ["session"] = session, ["amount"] = 2
+        }));
         Assert.DoesNotContain(game.Requests, r => r.Method == "POST");
     }
 

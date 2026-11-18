@@ -105,8 +105,9 @@ public sealed class LmuSessionClient
 
     public async Task<JsonObject> SetupAsync(CancellationToken cancellation = default)
     {
+        var routes = _routes();
         var requests = new[] { "/rest/garage/UIScreen/SessionSetup", "/rest/sessions", "/rest/sessions/amount", "/rest/sessions/weather", "/rest/options/settings" };
-        var results = await Task.WhenAll(requests.Select(path => RequestAsync(HttpMethod.Get, path, cancellation: cancellation)));
+        var results = await Task.WhenAll(requests.Select(path => RequestAsync(HttpMethod.Get, path, cancellation: cancellation, readRoutes: routes)));
         var assists = new JsonObject();
         foreach (var (key, value) in Object(results[4]))
             if (key.StartsWith("DRIVEAIDS_", StringComparison.Ordinal)) assists[key] = value?.DeepClone();
@@ -172,7 +173,7 @@ public sealed class LmuSessionClient
             case "amount":
             {
                 var session = Session(body);
-                var amount = Integer(body, "amount", 0, session == "WARMUP" ? 1 : 4);
+                var amount = Integer(body, "amount", 0, 1);
                 await PostAsync($"/rest/sessions/{session.ToLowerInvariant()}/sessions", JsonValue.Create(amount), cancellation);
                 break;
             }
@@ -409,9 +410,9 @@ public sealed class LmuSessionClient
     private Task<JsonNode?> PostAsync(string path, JsonNode? body, CancellationToken cancellation) =>
         RequestAsync(HttpMethod.Post, path, body, cancellation: cancellation);
 
-    private async Task<JsonNode?> RequestAsync(HttpMethod method, string path, JsonNode? body = null, string? rawBody = null, CancellationToken cancellation = default, bool allowUnavailable = false)
+    private async Task<JsonNode?> RequestAsync(HttpMethod method, string path, JsonNode? body = null, string? rawBody = null, CancellationToken cancellation = default, bool allowUnavailable = false, LmuApiRoutes? readRoutes = null)
     {
-        using var request = new HttpRequestMessage(method, _routes().Resolve(method, path));
+        using var request = new HttpRequestMessage(method, (method == HttpMethod.Get ? readRoutes ?? _routes() : _routes()).Resolve(method, path));
         if (method == HttpMethod.Post) request.Content = new StringContent(rawBody ?? body?.ToJsonString() ?? "null", Encoding.UTF8, rawBody is null ? "application/json" : "text/plain");
         try
         {

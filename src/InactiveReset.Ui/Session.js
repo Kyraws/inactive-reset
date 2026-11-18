@@ -4,6 +4,8 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 let setup = null, catalog = null, navigation = null;
 let section = 'selection', weatherSession = 'PRACTICE', weatherNode = 'START';
 let saving = false, starting = false, menuReady = false, gameRunning = false, serverBusy = false;
+let savingOptions = false;
+const sessionOptions = [];
 let gameProtected = false, launching = false;
 let carSearch = '', settingSearch = '', pollTimer, polling = false;
 
@@ -26,6 +28,8 @@ const sessionValueEdits = new Map();
 let sessionValueTimer, sessionValueSaving=false, sessionValueError='', sessionValueEditedAt=0, sessionValueRevision=0;
 function clockValue(value){return value<0?'':String(Math.floor(value/60)).padStart(2,'0')+':'+String(value%60).padStart(2,'0');}
 const NOTES = {
+  SESSSET_private_prac:'Hides opponents from view during Practice.',
+  SESSSET_private_qual:'Hides opponents from view during Qualifying.',
   SESSSET_AI_Strength:'LMU applies the available difficulty range.',
   SESSSET_Grid_Position:'Used when qualifying is disabled.',
   SESSSET_tire_warmers:'Availability depends on the loaded car.',
@@ -79,7 +83,7 @@ function stepper(key, setting, action = 'setting', extra = {}) {
 }
 
 function updateSessionValueControls(){
-  for(const el of document.querySelectorAll('[data-session-value]'))el.disabled=!menuReady||starting||serverBusy||(saving&&!sessionValueSaving)||!!el.closest('fieldset[disabled]');
+  for(const el of document.querySelectorAll('[data-session-value]'))el.disabled=!menuReady||starting||serverBusy||(saving&&!sessionValueSaving&&!savingOptions)||!!el.closest('fieldset[disabled]');
   const pending=sessionValueEdits.size;
   $('sessionSaveNotice').hidden=!pending;
   $('sessionSaveText').textContent=sessionValueError?'Changes are not confirmed. '+sessionValueError:sessionValueSaving?'Saving your changes. You can keep adjusting numbers and times.':'Changes will save after you pause. You can keep editing.';
@@ -96,7 +100,7 @@ function scheduleSessionValues(){
   if(sessionValueEdits.size&&!sessionValueError)sessionValueTimer=setTimeout(flushSessionValues,Math.max(0,400-(Date.now()-sessionValueEditedAt)));
 }
 function queueSessionValue(key,value){
-  if(!menuReady||starting||serverBusy||(saving&&!sessionValueSaving))return;
+  if(!menuReady||starting||serverBusy||(saving&&!sessionValueSaving&&!savingOptions))return;
   if(!(NUMERIC.has(key)||TIME_SETTINGS.has(key))||!Number.isInteger(value)||value<(TIME_SETTINGS.has(key)?-3:0)||value>(TIME_SETTINGS.has(key)?1439:10000)){reportError('Enter a valid whole number, or choose a start time between 00:00 and 23:59.');return;}
   const hadError=!!sessionValueError;sessionValueError='';
   sessionValueRevision++;
@@ -164,11 +168,16 @@ const SESSION_KEYS = {
   WARMUP:['SESSSET_WarmUp_Length','SESSSET_warmup_starting_time'],
   RACE:['SESSSET_Finish_Criteria','SESSSET_race_time','SESSSET_Race_Laps','SESSSET_race_starting_time','SESSSET_formation','SESSSET_Grid_Position','SESSSET_race_realroad_init','SESSSET_race_realroad_wet','SESSSET_race_realroad_temperatures','SESSSET_realroad_timescale_race']
 };
+function sessionToggle(type, name) {
+  const pending=sessionOptions.findLast(edit=>edit.body.action==='amount'&&edit.body.session===type);
+  const enabled=(pending?.body.amount??setup.amounts[type])>0;
+  return `<label class="session-toggle"><input type="checkbox" data-amount="${type}" aria-label="Enable ${name}" ${enabled?'checked':''}>Enabled</label>`;
+}
 function renderSessions() {
   return Object.entries(SESSION_NAMES).map(([type,name])=>{
     const amount = setup.amounts[type];
-    return `<section class="section-block"><div class="settings-card"><div class="card-title-row"><h3>${name}</h3><select aria-label="Number of ${name.toLowerCase()} sessions" data-amount="${type}">${Array.from({length:type==='WARMUP'?2:5},(_,i)=>option(i,i===0?'Disabled':i===1?'Enabled':`${i} sessions`,i===amount)).join('')}</select></div>${amount ? settingsRows(SESSION_KEYS[type]) : '<p class="disabled-note">Enable this session to set its duration and conditions.</p>'}${type==='PRACTICE' && amount>1 ? '<p class="session-note">Practice sessions share the duration and conditions shown here.</p>' : ''}</div></section>`;
-  }).join('') + `<details class="subsection"><summary>Individual practice slots</summary><div class="settings-card">${settingsRows(['SESSSET_pract1','SESSSET_pract2','SESSSET_pract3','SESSSET_pract4'])}</div></details>`;
+    return `<section class="section-block"><div class="settings-card"><div class="card-title-row"><h3>${name}</h3>${sessionToggle(type,name)}</div>${amount ? settingsRows(SESSION_KEYS[type]) : '<p class="disabled-note">Enable this session to set its duration and conditions.</p>'}</div></section>`;
+  }).join('');
 }
 function renderWeather() {
   const names = {START:'Start',NODE_25:'25%',NODE_50:'50%',NODE_75:'75%',FINISH:'Finish'};
@@ -230,7 +239,7 @@ function renderSummary() {
   $('summaryMeta').innerHTML = `<div>${escapeHtml(setup.settings.SESSSET_Num_Opponents?.currentValue || 0)} AI opponents · ${escapeHtml(settingValue('SESSSET_AI_Strength'))} strength</div><div>${escapeHtml(settingValue('SESSSET_weather'))} weather</div>`;
 }
 function updateControls() {
-  $('editorFields').disabled = (saving&&!sessionValueSaving) || starting || !menuReady || serverBusy;
+  $('editorFields').disabled = (saving&&!sessionValueSaving&&!savingOptions) || starting || !menuReady || serverBusy;
   const anySession = setup && Object.values(setup.amounts).some(n=>n>0);
   $('startButton').disabled = !setup || !menuReady || saving || starting || serverBusy || !anySession || !!sessionValueEdits.size;
   $('startButton').innerHTML = starting ? 'Loading session…' : 'Start session <span aria-hidden="true">↗</span>';
@@ -252,31 +261,49 @@ function renderNavigation() {
   updateControls();
 }
 async function loadSetup() {
-  if(sessionValueSaving)return;
+  if(sessionValueSaving||savingOptions)return;
   const revision=sessionValueRevision;
   try {
     const next = await request('/api/session/setup');
     if (!catalog) catalog = await request('/api/session/catalog');
-    if(revision!==sessionValueRevision||sessionValueSaving)return;
+    if(revision!==sessionValueRevision||sessionValueSaving||savingOptions)return;
     setup = next;
     renderContent(); renderSummary(); if(!sessionValueEdits.size)setSaved('In sync with LMU');
   } catch(e) {
     if (setup) reportError(e.message);
   }
 }
-async function change(body) {
-  if (saving || starting || !menuReady || serverBusy || sessionValueEdits.size) return;
-  saving = true; updateControls();
+function change(body, confirmed) {
+  if ((saving&&!savingOptions) || starting || !menuReady || serverBusy || (sessionValueEdits.size&&!savingOptions)) return;
+  return new Promise(resolve => {
+    sessionOptions.push({body,confirmed,resolve});
+    if(!savingOptions) flushSessionOptions();
+  });
+}
+async function flushSessionOptions() {
+  savingOptions=true;saving=true;sessionValueRevision++;updateControls();
   $('saveDot').className = 'save-dot saving'; $('saveStatus').textContent = 'Saving to LMU…';
   try {
-    setup = await request('/api/session/action',body);
-    renderContent(); renderSummary(); setSaved(); $('errorBar').hidden = true;
+    while(sessionOptions.length){
+      if(!menuReady||serverBusy)throw Error('Return to the single-player main menu to change the session.');
+      const {body,confirmed,resolve}=sessionOptions[0];
+      const before=setup;
+      setup=await request('/api/session/action',body);
+      confirmed?.(before);
+      sessionOptions.shift();
+      resolve();
+    }
+    setSaved(); $('errorBar').hidden = true;
   } catch(e) {
-    // A write may have succeeded before its readback failed. Refresh before showing values.
     try { setup=await request('/api/session/setup'); } catch {}
-    renderContent(); renderSummary(); reportError(e.message);
+    reportError(e.message+(sessionOptions.length>1?' Re-enter the remaining selections.':''));
+    for(const edit of sessionOptions.splice(0))edit.resolve();
+  } finally {
+    savingOptions=false;saving=false;
+    if(sessionValueEdits.size&&document.activeElement?.dataset.sessionValue)renderAfterSessionValues();
+    else {renderContent();renderSummary();updateControls();}
+    scheduleSessionValues();
   }
-  finally { saving=false; updateControls(); }
 }
 async function launchLocal() { return launchGame('direct'); }
 async function launchGame(mode) {
@@ -349,7 +376,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',e=>{
   const el=e.target;
   if(el.dataset.sessionValue){const key=el.dataset.sessionValue,clock=TIME_SETTINGS.has(key),match=clock?/^(\d{2}):(\d{2})$/.exec(el.value):null,value=clock?(match?Number(match[1])*60+Number(match[2]):NaN):el.value.trim()?Number(el.value):NaN;if(!Number.isInteger(value)||value<0||value>(clock?1439:10000)){reportError(clock?'Enter a start time between 00:00 and 23:59, or choose Default.':'Enter a whole number within the available setting range.');paintSessionValue(key,sessionValueEdits.get(key)??setup.settings[key].currentValue);return;}queueSessionValue(key,value);}
-  if(el.dataset.amount)change({action:'amount',session:el.dataset.amount,amount:Number(el.value)});
+  if(el.dataset.amount)change({action:'amount',session:el.dataset.amount,amount:el.checked?1:0});
   if(el.dataset.assist)change({action:'assist',key:el.dataset.assist,value:el.checked?1:0});
   if(el.id==='trackSelect')change({action:'track',id:el.value});
   if(el.id==='carSelect')change({action:'car',id:el.value});

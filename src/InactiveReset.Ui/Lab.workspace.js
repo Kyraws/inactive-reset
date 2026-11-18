@@ -7,7 +7,7 @@ const normalizeTrack=s=>String(s||'').trim().toLowerCase().replace(/\s+\d+\.\d+$
 
 function renderWeekendSchedule(){
   const keys={PRACTICE:SESSION_KEYS.PRACTICE.slice(0,3),QUALIFY:SESSION_KEYS.QUALIFY.slice(0,3),WARMUP:SESSION_KEYS.WARMUP,RACE:SESSION_KEYS.RACE.slice(0,6)};
-  return '<div class="weekend-grid">'+Object.entries(SESSION_NAMES).map(([type,name])=>`<section class="section-block"><div class="settings-card" data-session-card="${type}"><div class="card-title-row"><h3>${name}</h3><select aria-label="Number of ${name.toLowerCase()} sessions" data-amount="${type}">${Array.from({length:type==='WARMUP'?2:5},(_,i)=>option(i,i===0?'Disabled':i===1?'Enabled':i+' sessions',i===setup.amounts[type])).join('')}</select></div>${setup.amounts[type]?settingsRows(keys[type]):'<p class="disabled-note">Enable this session to edit its schedule.</p>'}</div></section>`).join('')+'</div><details class="subsection"><summary>Individual practice slots</summary><div class="settings-card">'+settingsRows(['SESSSET_pract1','SESSSET_pract2','SESSSET_pract3','SESSSET_pract4'])+'</div></details>';
+  return '<div class="weekend-grid">'+Object.entries(SESSION_NAMES).map(([type,name])=>`<section class="section-block"><div class="settings-card" data-session-card="${type}"><div class="card-title-row"><h3>${name}</h3>${sessionToggle(type,name)}</div>${setup.amounts[type]?settingsRows(keys[type]):'<p class="disabled-note">Enable this session to edit its schedule.</p>'}</div></section>`).join('')+'</div>';
 }
 function renderConditions(enabled){
   const names={START:'Start',NODE_25:'25%',NODE_50:'50%',NODE_75:'75%',FINISH:'Finish'},weather=setup.weather[weatherSession]||{};
@@ -41,6 +41,11 @@ function updateWorkspace(){
     button.disabled=action==='capture'?$('quickCaptureButton').disabled:$(action==='place'?'placeBtn':'standingBtn').disabled;
   }
   $('primaryPracticeLabel').textContent=labState?.inGarage===false?'Reset on track':'Place checkpoint';
+  const motionHint=$('practiceMotionHint');
+  const reason=$('placeBtn').disabled ? placementIssue()||speedRestorationIssue() : '';
+  if(motionHint.textContent!==reason)motionHint.textContent=reason;
+  motionHint.hidden=!reason;
+  $('practiceIntro').hidden=!!reason;
   $('captureShortcut').textContent=practiceShortcut('capture','Ctrl+Alt+C')+' · replace quick slot';
   $('builderSave').disabled=$('savePlanButton').disabled;
   for(const b of document.querySelectorAll('[data-checkpoint-action]'))b.disabled=checkpointMutation||!!labState?.busy;

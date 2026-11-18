@@ -16,11 +16,12 @@ async function run() {
   const catalog={cars:[initial.selection.selectedCar,{id:'other',desc:'Team Two',fullPathTree:'WEC 2026, GT3, BMW M4',isOwned:true},{id:'locked',desc:'Locked',fullPathTree:'WEC 2026, Hypercar, Ferrari',isOwned:false}],tracks:[{id:'track',name:'Daytona',shortName:'Daytona',owned:true},{id:'locked-track',name:'Locked',shortName:'Locked',owned:false}]};
   initial.settings.SESSSET_practice1_starting_time=setting(-1,'Default (10:05 AM)');
   let state={state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_SETUP',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false},pid:123};
-  let posts=[],fail=false,holdValueSave=null,holdSetupRead=null;
+  let posts=[],fail=false,holdValueSave=null,holdSetupRead=null,holdAmountSave=null;
   const fakeFetch=async(path,options)=>{if(path.startsWith('/api/official-sessions'))return {ok:true,json:async()=>({schema:1,fetchedAt:new Date().toISOString(),events:[],warnings:[]})};
     const body=options?.body?JSON.parse(options.body):null;
     if(body){posts.push(body);if(fail)return {ok:false,json:async()=>({error:'Fixture rejected change'})};}
     if(body?.action==='sessionValue'){const gate=holdValueSave;if(gate)await gate;initial.settings[body.key].currentValue=body.value;}
+    if(body?.action==='amount'){if(holdAmountSave)await holdAmountSave;initial.amounts[body.session]=body.amount;}
     const setupSnapshot=path==='/api/session/setup'?structuredClone(initial):null;if(setupSnapshot&&holdSetupRead)await holdSetupRead;
     const result=path==='/api/lab/preferences'?{schema:1,theme:'midnight',density:'comfortable',pins:[],cars:[],tracks:[],checkpoints:[],plans:[]}:path==='/api/state'?{connected:true,game:{running:true},checkpoints:[]}:path.endsWith('/catalog')?catalog:path.endsWith('/state')?state:setupSnapshot||structuredClone(initial);
     return {ok:true,json:async()=>result};
@@ -35,15 +36,26 @@ async function run() {
   check(d.querySelectorAll('#carSelect option').length===2,'Only owned cars in team selection');
   check(!d.querySelector('#trackSelect option[value="locked-track"]'),'Unowned tracks cannot be selected');
   ui.switchSection('sessions');
+  let releaseAmount;holdAmountSave=new Promise(resolve=>releaseAmount=resolve);
+  const amountStart=posts.length;
+  d.querySelector('[data-amount=QUALIFY]').click();
+  check(!d.querySelector('[data-amount=WARMUP]').matches(':disabled')&&d.getElementById('startButton').disabled,'Weekend options stay editable during a slow save while launch waits');
+  d.querySelector('[data-amount=WARMUP]').click();
+  check(posts.length===amountStart+1,'Weekend changes wait for the previous LMU write');
+  releaseAmount();await until(()=>!d.getElementById('startButton').disabled,'Both weekend saves');
+  check(initial.amounts.QUALIFY===1&&initial.amounts.WARMUP===1&&!d.getElementById('startButton').disabled,'Both weekend changes are confirmed before launch unlocks');
   const durationKey='SESSSET_Practice_Length',durationInput=()=>d.getElementById('value-'+durationKey);
   const valuePosts=()=>posts.filter(p=>p.action==='sessionValue');
   const beforeRapid=valuePosts().length,liveDurationNode=durationInput();durationInput().focus();
+  const durationTop=durationInput().getBoundingClientRect().top;
   for(let i=0;i<7;i++)d.querySelector('[aria-label="Increase Practice duration"]').click();
   check(durationInput().value==='67'&&valuePosts().length===beforeRapid,'Rapid clicks update locally without one request per click');
   check(!durationInput().disabled&&d.getElementById('startButton').disabled&&!d.getElementById('sessionSaveNotice').hidden,'Numeric edits stay enabled while launch waits for confirmation');
+  check(durationInput().getBoundingClientRect().top===durationTop,'Pending save notice does not move the duration controls');
   await ui.flushSessionValues();
   check(valuePosts().length===beforeRapid+1&&valuePosts().at(-1).value===67&&durationInput().value==='67','A rapid sequence saves its final absolute value once');
   check(d.activeElement===liveDurationNode&&durationInput()===liveDurationNode,'Saving preserves the actual numeric editor node and focus');
+  check(durationInput().getBoundingClientRect().top===durationTop,'Save confirmation does not move the duration controls');
   let releaseValue;holdValueSave=new Promise(r=>releaseValue=r);
   ui.queueSessionValue(durationKey,70);const firstSave=ui.flushSessionValues();
   await until(()=>valuePosts().at(-1)?.value===70,'slow value save started');

@@ -162,6 +162,27 @@ public sealed class LmuApiRoutesTests
         Assert.Equal("/v2/sessions/adjustSettings", Assert.Single(posts));
     }
 
+    [Fact]
+    public async Task Setup_readback_recovers_routes_once_for_all_five_reads()
+    {
+        var routeReads = 0;
+        var requests = 0;
+        using var http = new HttpClient(new Handler(_ =>
+        {
+            Interlocked.Increment(ref requests);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
+        }));
+        var client = new LmuSessionClient(http, () =>
+        {
+            routeReads++;
+            return LmuApiRoutes.Known();
+        });
+
+        await client.SetupAsync();
+        Assert.Equal(5, requests);
+        Assert.Equal(1, routeReads);
+    }
+
     [Trait("Category", "LocalGame")]
     [LocalMenuFact]
     public void Installed_menu_resolves_all_supported_helpers_without_executing_the_game()

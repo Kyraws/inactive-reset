@@ -76,6 +76,8 @@ async function run(){
   ui.setNavReady(true);ui.setPage('setup','weather');check(!!d.querySelector('.weather-chart'),'Weather chart is available');
   ui.renderCheckpoints({...native,busy:true});check(d.querySelector('#destinationList button').disabled,'Destinations disabled only during active operation');ui.renderCheckpoints(native);
   check(ui.modelKey({fullPathTree:'WEC 2026, LMP2, Oreca 07'})!==ui.modelKey({fullPathTree:'ELMS 2026, LMP2_ELMS, Oreca 07'}),'Distinct LMP2 regulations retain separate models');
+  const legacyPlan=ui.snapshotPlan();legacyPlan.amounts.PRACTICE=4;
+  check(ui.planIntents(legacyPlan).find(intent=>intent.type==='amount'&&intent.session==='PRACTICE').value===1&&legacyPlan.amounts.PRACTICE===4,'Legacy plans review higher session counts as On without rewriting the saved plan');
   ui.setPage('setup','rules');check(!d.getElementById('sectionContent').textContent.includes('Driving assists')&&!d.querySelector('[data-assist]'),'Assist editing removed');
   ui.tyrePreset('reset');check(ui.tyreOptions().wheels.every(v=>v.temperatureCelsius===null),'Game defaults delegate warm and cold start to LMU');check(d.getElementById('allTemperatureValue').textContent==='Game default','Heat slider reset shows game default');check(d.getElementById('allTemperature').value==='0','Game default puts heat slider at zero');
   const heat=d.getElementById('allTemperature');check(heat.type==='range','All-wheel heat uses a slider');heat.value='82';heat.dispatchEvent(new w.Event('input',{bubbles:true}));check(ui.tyreOptions().wheels.every(v=>v.temperatureCelsius===82),'All-wheel heat updates four tyres');check(d.getElementById('allTemperatureValue').textContent==='82°C','Heat slider shows selected temperature');
@@ -88,6 +90,9 @@ async function run(){
   data.settings.SESSSET_Practice_Length.currentValue=55;await ui.loadSetup();ui.editPreset(id,true);d.getElementById('confirmSavePlan').click();await until(()=>prefs.plans[0]?.target.settings.SESSSET_Practice_Length===55&&!d.getElementById('confirmSavePlan').disabled,'preset update');check(ui.getPrefs().plans[0].target.settings.SESSSET_Practice_Length===55,'Preset update snapshots current session');
   ui.setPage('setup','selection');check(d.querySelector('.brand-logo').getAttribute('src').includes('/api/brands/BMW?theme=midnight'),'Manufacturer logos load from installed LMU assets');
   check(d.getElementById('carSelect').getBoundingClientRect().top<d.querySelector('.vehicle-grid').getBoundingClientRect().top,'Livery choice stays above the car list');
+  d.querySelector('[data-vehicle-class=GT3]').click();
+  check(d.querySelector('[data-vehicle-class=GT3]').getAttribute('aria-pressed')==='true'&&d.querySelector('.car-pick [data-class-color=gt3]').textContent==='GT3','Class filter and car tile show the same class label and color');
+  d.querySelector('[data-vehicle-class=all]').click();
   ui.setPage('practice');check(!d.querySelector('.practice-rules')&&!d.getElementById('practicePanel').textContent.includes('Practice rules'),'Practice rules block removed');
   check(d.getElementById('sessionSummary').hidden&&d.getElementById('summaryMeta').hidden&&d.querySelector('.dock-journal').hidden,'Practice dock omits session settings and edit history');
   check(!d.getElementById('restoreSpeedHint').hidden&&d.getElementById('restoreSpeedHint').textContent.includes('pedals released'),'Rolling placement retains its pedal-release instruction');

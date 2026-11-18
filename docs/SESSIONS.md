@@ -103,7 +103,8 @@ remain identifiable. The configured `WebUI port` is read from `Settings.JSON`;
 requests always use `127.0.0.1`, with redirects and proxies disabled. Port 6397 is
 the recorded build's setting, rather than a discovery assumption.
 
-Every request re-reads the selected bundle and port. Parsing is reused only for
+Each request resolves the selected bundle and port afresh, with one shared
+resolution for the five parallel GETs in a setup read. Parsing is reused only for
 the same full script SHA-256 and port. Missing, ambiguous or conflicting helpers,
 unsupported expressions and detected request-shape changes refuse use before
 that request is sent. There is no fallback to stale routes and no automatic retry

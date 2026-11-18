@@ -2,11 +2,11 @@
 let labPage='home', labState=null, preferencesReady=false, preferencesWrites=Promise.resolve(), toastTimer;
 let labPreferences={schema:1,theme:'midnight',style:'original',density:'comfortable',pins:['SESSSET_Num_Opponents','SESSSET_AI_Strength','SESSSET_weather'],cars:[],tracks:[],checkpoints:[],plans:[]};
 let vehicleSeason='all',vehicleClass='',favouriteCarsOnly=false,libraryQuery='',librarySort='name',onlyFavourites=false,logFilter='all';
-let pendingPlan=null,applyingPlan=false,cancelPlan=false,lastUndo=null,mutationFailed=false,editingPreset=null,presetQuery='';
+let pendingPlan=null,applyingPlan=false,cancelPlan=false,lastUndo=null,editingPreset=null,presetQuery='';
 const clone=v=>JSON.parse(JSON.stringify(v));
 const sameNumber=(a,b)=>Math.abs(Number(a)-Number(b))<0.0001;
 function notify(message,error=false){$('labToastText').textContent=message;$('labToast').className='lab-toast'+(error?' error':'');$('labToast').hidden=false;clearTimeout(toastTimer);if(!error)toastTimer=setTimeout(()=>$('labToast').hidden=true,6500);}
-reportError=message=>{mutationFailed=true;$('saveStatus').textContent='Change not confirmed';$('saveDot').className='save-dot error';notify(message,true);};
+reportError=message=>{$('saveStatus').textContent='Change not confirmed';$('saveDot').className='save-dot error';notify(message,true);};
 showNotice=message=>notify(message,true);
 const baseRequest=request;
 request=async function(path,body){
@@ -63,18 +63,18 @@ renderNavigation=function(){baseNavigation();renderMetrics();updateLabControls()
 const baseUpdateControls=updateControls;
 updateControls=function(){baseUpdateControls();updateLabControls();};
 function updateLabControls(){
-  const locked=!setup||!menuReady||saving||starting||serverBusy||applyingPlan||!!sessionValueEdits.size;
+  const locked=!setup||!menuReady||starting||serverBusy||applyingPlan||(!savingOptions&&(saving||!!sessionValueEdits.size));
   const busy=saving||starting||serverBusy||applyingPlan||!!sessionValueEdits.size;
-  $('editorFields').disabled=!menuReady||starting||serverBusy||applyingPlan||(saving&&!sessionValueSaving);$('savePlanButton').disabled=!setup||!preferencesReady||busy;
+  $('editorFields').disabled=!menuReady||starting||serverBusy||applyingPlan||(saving&&!sessionValueSaving&&!savingOptions);$('savePlanButton').disabled=!setup||!preferencesReady||busy;
   $('refreshLabButton').disabled=busy;
   for(const b of document.querySelectorAll('[data-plan],[data-official-preset]'))b.disabled=busy||b.hasAttribute('data-official-preset')&&officialRefreshing;
   for(const b of document.querySelectorAll('[data-change],[data-setting],[data-assist],[data-amount],[data-class],[data-car],[data-track],#circuitSelect,#trackSelect,#carSelect,#gridSource,[data-target],[data-weather-copy]')){if(b.dataset.lmuDisabled===undefined)b.dataset.lmuDisabled=String(b.disabled);b.disabled=locked||b.dataset.lmuDisabled==='true';}
-  if(!applyingPlan)$('applyPlanButton').disabled=locked||!pendingPlan?.intents.length;
+  if(!applyingPlan)$('applyPlanButton').disabled=busy||locked||!pendingPlan?.intents.length;
   const practiceBusy=!!labState?.busy;
   $('quickCaptureButton').disabled=!canCapture(labState||{});
   $('allCondition').disabled=$('allTemperature').disabled=practiceBusy;
   for(const b of document.querySelectorAll('[data-tyre-preset]'))b.disabled=practiceBusy;
-  $('undoButton').disabled=locked||!lastUndo;
+  $('undoButton').disabled=busy||locked||!lastUndo;
   renderAccessMessage();
   updateSessionValueControls();
   if(typeof updateWorkspace==='function')updateWorkspace();
@@ -109,16 +109,25 @@ function layoutName(track){
 }
 function brandLogoUrl(brand){return '/api/brands/'+encodeURIComponent(brand)+'?theme='+effectiveTheme();}
 function brandName(car){return car.manufacturer||parts(car)[2].match(/^(Aston Martin|Mercedes-AMG|Isotta Fraschini|[A-Za-z]+)/)?.[0]||'LMU';}
+const vehicleClasses = new Map([
+ ['GT3', ['GT3', 'gt3']], ['LMGT3', ['GT3', 'gt3']], ['GTE', ['GTE', 'gte']],
+ ['LMP2', ['LMP2', 'lmp2']], ['LMP3', ['LMP3', 'lmp3']],
+ ['HYPERCAR', ['Hypercar', 'hypercar']], ['LMP2_ELMS', ['LMP2 (ELMS)', 'lmp2-elms']]
+]);
+function vehicleClassBadge(value) {
+ const [label, color] = vehicleClasses.get(value.toUpperCase()) || [value, ''];
+ return `<span class="vehicle-class" data-class-color="${color}">${escapeHtml(label)}</span>`;
+}
 function renderSelection(){
  const car=currentCar(),track=currentTrack(),owned=catalog.cars.filter(c=>c.isOwned),key=car?modelKey(car):'';
  if(!vehicleClass)vehicleClass='all';
- const filtered=owned.filter(c=>(vehicleSeason==='all'||parts(c)[0]===vehicleSeason)&&(vehicleClass==='all'||parts(c)[1].replace('_ELMS','')===vehicleClass)&&(!carSearch||`${c.desc} ${c.fullPathTree} ${brandName(c)}`.toLowerCase().includes(carSearch.toLowerCase())));
+ const filtered=owned.filter(c=>(vehicleSeason==='all'||parts(c)[0]===vehicleSeason)&&(vehicleClass==='all'||parts(c)[1]===vehicleClass)&&(!carSearch||`${c.desc} ${c.fullPathTree} ${brandName(c)}`.toLowerCase().includes(carSearch.toLowerCase())));
  const favs=new Set(owned.filter(c=>labPreferences.cars.includes(c.id)).map(modelKey));
  const models=[...new Map(filtered.filter(c=>!favouriteCarsOnly||favs.has(modelKey(c))).map(c=>[modelKey(c),c])).values()].sort((a,b)=>parts(a)[2].localeCompare(parts(b)[2]));
- const seasons=[...new Set(owned.map(c=>parts(c)[0]))].sort().reverse(),classes=[...new Set(owned.map(c=>parts(c)[1].replace('_ELMS','')))].sort();
+ const seasons=[...new Set(owned.map(c=>parts(c)[0]))].sort().reverse(),classes=[...new Set(owned.map(c=>parts(c)[1]))].sort();
  const tracks=catalog.tracks.filter(t=>t.type!=='Showroom'),circuits=[...new Set(tracks.map(circuitName))].sort(),circuit=circuitName(track),layouts=tracks.filter(t=>circuitName(t)===circuit),teams=owned.filter(c=>modelKey(c)===key);
  return `<section class="section-block circuit-picker"><div><label class="input-label" for="circuitSelect">Circuit</label><select id="circuitSelect">${circuits.map(n=>option(n,n,n===circuit,!tracks.some(t=>circuitName(t)===n&&t.owned))).join('')}</select></div><div><label class="input-label" for="trackSelect">Layout / event configuration</label><select id="trackSelect">${layouts.map(t=>option(t.id,layoutName(t),t.id===track?.id,!t.owned)).join('')}</select></div><button class="icon-button" data-fav-track="${escapeHtml(track?.id||'')}" aria-label="Favourite current layout">${labPreferences.tracks.includes(track?.id)?'★':'☆'}</button><div class="track-details"><span class="pill">${escapeHtml(track?.countryCode||'')}</span><span class="pill">${escapeHtml(track?.trackLength||tracks.find(t=>t.id===track?.id)?.length||'—')} km</span></div><div class="favourite-tracks">${tracks.filter(t=>t.owned&&labPreferences.tracks.includes(t.id)).map(t=>`<button class="button" data-track="${escapeHtml(t.id)}">${escapeHtml(circuitName(t))} · ${escapeHtml(layoutName(t))}</button>`).join('')}</div></section>
- <section class="section-block"><h2>Car model</h2><div class="vehicle-filters"><input id="carSearch" type="search" value="${escapeHtml(carSearch)}" placeholder="Search model, brand or team" aria-label="Search cars"><button class="button quiet" data-favourite-cars aria-pressed="${favouriteCarsOnly}">${favouriteCarsOnly?'★':'☆'} Favourites</button><select id="vehicleSeason" aria-label="Livery season">${option('all','All livery seasons',vehicleSeason==='all')}${seasons.map(s=>option(s,s,s===vehicleSeason)).join('')}</select><select id="vehicleClass" aria-label="Vehicle class">${option('all','All classes',vehicleClass==='all')}${classes.map(s=>option(s,s,s===vehicleClass)).join('')}</select></div><div class="livery-choice"><label class="input-label" for="carSelect">Season · team · livery</label><select id="carSelect">${teams.sort((a,b)=>parts(b)[0].localeCompare(parts(a)[0])||a.desc.localeCompare(b.desc)).map(c=>option(c.id,parts(c)[0]+' · '+c.desc,c.id===car?.id)).join('')}</select></div><div class="vehicle-grid">${models.map(c=>`<article class="vehicle-card ${modelKey(c)===key?'active':''}"><button class="car-pick" data-car="${escapeHtml(c.id)}" aria-pressed="${modelKey(c)===key}"><span class="brand-art"><img class="brand-logo" data-light-variant="${['Alpine','Aston Martin','BMW','Cadillac','Genesis','Isotta Fraschini','Lexus','Ligier','Oreca','Toyota','Vanwall'].includes(brandName(c))}" data-brand="${escapeHtml(brandName(c))}" src="${brandLogoUrl(brandName(c))}" alt="${escapeHtml(brandName(c))}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="brand-wordmark" hidden>${escapeHtml(brandName(c))}</span></span><strong>${escapeHtml(parts(c)[2])}</strong><small>${escapeHtml(parts(c)[1].replace('_ELMS',' · ELMS'))} · ${owned.filter(v=>modelKey(v)===modelKey(c)).length} liveries</small></button><button class="icon-button" data-fav-car="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(parts(c)[2])}">${favs.has(modelKey(c))?'★':'☆'}</button></article>`).join('')||'<p class="empty-note">No matching models.</p>'}</div><p class="small-note">${models.length} models. Season entries share one card; distinct Evo models and classes stay separate.</p></section><button class="button quiet" data-dialog="defaultsDialog">Use circuit defaults</button>`;
+ <section class="section-block"><h2>Car model</h2><div class="vehicle-filters"><input id="carSearch" type="search" value="${escapeHtml(carSearch)}" placeholder="Search model, brand or team" aria-label="Search cars"><button class="button quiet" data-favourite-cars aria-pressed="${favouriteCarsOnly}">${favouriteCarsOnly?'★':'☆'} Favourites</button><select id="vehicleSeason" aria-label="Livery season">${option('all','All livery seasons',vehicleSeason==='all')}${seasons.map(s=>option(s,s,s===vehicleSeason)).join('')}</select></div><div class="vehicle-class-filters" role="group" aria-label="Vehicle class"><button class="button" data-vehicle-class="all" aria-pressed="${vehicleClass==='all'}">All classes</button>${classes.map(value=>`<button class="button" data-vehicle-class="${escapeHtml(value)}" aria-pressed="${vehicleClass===value}">${vehicleClassBadge(value)}</button>`).join('')}</div><div class="livery-choice"><label class="input-label" for="carSelect">Season · team · livery</label><select id="carSelect">${teams.sort((a,b)=>parts(b)[0].localeCompare(parts(a)[0])||a.desc.localeCompare(b.desc)).map(c=>option(c.id,parts(c)[0]+' · '+c.desc,c.id===car?.id)).join('')}</select></div><div class="vehicle-grid">${models.map(c=>`<article class="vehicle-card ${modelKey(c)===key?'active':''}"><button class="car-pick" data-car="${escapeHtml(c.id)}" aria-pressed="${modelKey(c)===key}"><span class="brand-art"><img class="brand-logo" data-light-variant="${['Alpine','Aston Martin','BMW','Cadillac','Genesis','Isotta Fraschini','Lexus','Ligier','Oreca','Toyota','Vanwall'].includes(brandName(c))}" data-brand="${escapeHtml(brandName(c))}" src="${brandLogoUrl(brandName(c))}" alt="${escapeHtml(brandName(c))}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="brand-wordmark" hidden>${escapeHtml(brandName(c))}</span></span><strong>${escapeHtml(parts(c)[2])}</strong>${vehicleClassBadge(parts(c)[1])}</button><button class="icon-button" data-fav-car="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(parts(c)[2])}">${favs.has(modelKey(c))?'★':'☆'}</button></article>`).join('')||'<p class="empty-note">No matching models.</p>'}</div><p class="small-note">${models.length} models. Season entries share one card; distinct Evo models and classes stay separate.</p></section><button class="button quiet" data-dialog="defaultsDialog">Use circuit defaults</button>`;
 };
 const baseRenderSummary=renderSummary;
 renderSummary=function(){baseRenderSummary();const track=currentTrack();if(track){$('selectionSummary').querySelector('h3').textContent=circuitName(track);$('selectionSummary').querySelector('p').textContent=layoutName(catalog?.tracks.find(t=>t.id===track.id)||track);}};
@@ -130,7 +139,20 @@ function addWeatherPreview(){
   $('sectionContent').prepend(preview);
 }
 const baseChange=change;
-change=async function(body){if(body.action==='assist'){notify('Driving assists are managed in LMU.',true);return;}const before=setup?clone(setup):null;mutationFailed=false;await baseChange(body);if(before&&setup&&!mutationFailed){let intent=null;if(body.action==='setting'&&!sameNumber(before.settings[body.key]?.currentValue,setup.settings[body.key]?.currentValue))intent={type:'setting',key:body.key,value:before.settings[body.key].currentValue};if(body.action==='assist')intent={type:'assist',key:body.key,value:before.assists[body.key].currentValue};if(body.action==='amount')intent={type:'amount',session:body.session,value:before.amounts[body.session]};if(intent){lastUndo=intent;$('lastChange').textContent=(body.key?label(body.key):SESSION_NAMES[body.session])+' updated · '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}updateLabControls();}};
+change=function(body){
+  if(body.action==='assist'){notify('Driving assists are managed in LMU.',true);return;}
+  return baseChange(body,before=>{
+    let intent;
+    if(body.action==='setting'&&!sameNumber(before.settings[body.key]?.currentValue,setup.settings[body.key]?.currentValue))
+      intent={type:'setting',key:body.key,value:before.settings[body.key].currentValue};
+    if(body.action==='amount')
+      intent={type:'amount',session:body.session,value:Math.min(before.amounts[body.session],1)};
+    if(intent){
+      lastUndo=intent;
+      $('lastChange').textContent=(body.key?label(body.key):SESSION_NAMES[body.session])+' updated ? '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    }
+  });
+};
 const baseCheckpoints=renderCheckpoints;
 renderCheckpoints=function(s){labState=s;baseCheckpoints(s);$('libraryCount').textContent=(s.checkpoints||[]).length;
  const list=(s.checkpoints||[]).filter(c=>c.track.toLowerCase()===(s.session?.track||'').toLowerCase());
@@ -148,7 +170,7 @@ function renderLabActivity(){const text=activityText(),filtered=logFilter==='iss
 function toggleFavourite(group,id){if(!id)return;const list=labPreferences[group],at=list.indexOf(id);if(at<0){if(list.length>=200){notify('Your favourites list is full.',true);return;}list.push(id);}else list.splice(at,1);persistPreferences();renderHome();renderLibrary();if(setup&&labPage==='setup')renderContent();}
 function snapshotPlan(){
   if(!setup)throw Error('Load LMU’s menu setup first.');
-  const target={car:currentCar()?.id,track:currentTrack()?.id,settings:{},assists:{},amounts:clone(setup.amounts),classes:clone(setup.selection.classesSelection||[]),fullGrid:!!setup.selection.fullGrid,weather:{},display:{}};
+  const target={car:currentCar()?.id,track:currentTrack()?.id,settings:{},assists:{},amounts:Object.fromEntries(Object.entries(setup.amounts).map(([session, amount])=>[session, Math.min(amount,1)])),classes:clone(setup.selection.classesSelection||[]),fullGrid:!!setup.selection.fullGrid,weather:{},display:{}};
   for(const [k,v] of Object.entries(setup.settings))if(!['SESSSET_num_qual_sessions','SESSSET_num_race_sessions','SESSSET_run_warmup'].includes(k))target.settings[k]=v.currentValue;
 
   for(const [k,v] of Object.entries(setup.settings))target.display[k]=v.stringValue||String(v.currentValue)+(k.endsWith('_Length')?' min':'');
@@ -166,7 +188,7 @@ function validatePlan(plan){
 }
 function planIntents(target){
   const intents=[];if(target.track)intents.push({type:'track',id:target.track,display:target.display?.track});if(target.car)intents.push({type:'car',id:target.car,display:target.display?.car});
-  for(const [s,v] of Object.entries(target.amounts))intents.push({type:'amount',session:s,value:v});
+  for(const [s,v] of Object.entries(target.amounts))intents.push({type:'amount',session:s,value:Math.min(v,1)});
   if(Object.hasOwn(target.settings,'SESSSET_weather'))intents.push({type:'setting',key:'SESSSET_weather',value:target.settings.SESSSET_weather});
   for(const [k,v] of Object.entries(target.settings))if(k!=='SESSSET_weather')intents.push({type:'setting',key:k,value:v,display:target.display?.[k]});
   // Old exports may contain assists; never apply user driving preferences.
@@ -237,9 +259,19 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.page)setPage(b.dataset.page);if(b.dataset.goto)setPage('setup',b.dataset.goto);
   if(b.dataset.close){const d=$(b.dataset.close);if(d.id==='planDialog'&&applyingPlan){cancelPlan=true;return;}d.close();}
+  if(b.dataset.vehicleClass){
+    vehicleClass=b.dataset.vehicleClass;
+    renderContent();
+    [...document.querySelectorAll('[data-vehicle-class]')].find(button=>button.dataset.vehicleClass===vehicleClass)?.focus();
+  }
   if(b.hasAttribute('data-favourite-cars')){favouriteCarsOnly=!favouriteCarsOnly;renderContent();}
   if(b.dataset.favCar)toggleFavourite('cars',b.dataset.favCar);if(b.dataset.favTrack)toggleFavourite('tracks',b.dataset.favTrack);if(b.dataset.favCheckpoint)toggleFavourite('checkpoints',b.dataset.favCheckpoint);
-  if(b.dataset.car&&modelKey(catalog.cars.find(c=>c.id===b.dataset.car)||{})!==modelKey(currentCar()||{}))change({action:'car',id:b.dataset.car});if(b.dataset.track)change({action:'track',id:b.dataset.track});
+  if(b.dataset.car){
+    const pendingCar=sessionOptions.findLast(edit=>edit.body.action==='car')?.body.id;
+    const selected=pendingCar ? catalog.cars.find(c=>c.id===pendingCar) : currentCar();
+    if(modelKey(catalog.cars.find(c=>c.id===b.dataset.car)||{})!==modelKey(selected||{}))change({action:'car',id:b.dataset.car});
+  }
+  if(b.dataset.track)change({action:'track',id:b.dataset.track});
   if(b.dataset.target)queueSessionValue(b.dataset.target,Number(b.dataset.value));
   if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);if(reviewPlan(p.name,planIntents(p.target)))pendingPlan.source={kind:'personal',id:p.id,name:p.name};}catch(err){notify(err.message,true);}}
   if(b.dataset.deletePlan){const p=labPreferences.plans.find(p=>p.id===b.dataset.deletePlan);if(p&&confirm('Delete saved preset “'+p.name+'”?')){const before=clone(labPreferences.plans);labPreferences.plans=labPreferences.plans.filter(v=>v.id!==p.id);if(!await persistPreferences())labPreferences.plans=before;renderPlans();}}
@@ -249,7 +281,7 @@ document.addEventListener('click',async e=>{
   if(b.dataset.logFilter){logFilter=b.dataset.logFilter;for(const v of document.querySelectorAll('[data-log-filter]'))v.classList.toggle('active',v===b);renderLabActivity();}
 
 });
-document.addEventListener('change',e=>{const t=e.target;if(t.id==='circuitSelect'){const next=catalog.tracks.find(v=>circuitName(v)===t.value&&v.owned);if(next)change({action:'track',id:next.id});}if(t.id==='vehicleSeason'){vehicleSeason=t.value;renderContent();}if(t.id==='vehicleClass'){vehicleClass=t.value;renderContent();}if(t.id==='librarySort'){librarySort=t.value;renderLibrary();}});
+document.addEventListener('change',e=>{const t=e.target;if(t.id==='circuitSelect'){const next=catalog.tracks.find(v=>circuitName(v)===t.value&&v.owned);if(next)change({action:'track',id:next.id});}if(t.id==='vehicleSeason'){vehicleSeason=t.value;renderContent();}if(t.id==='librarySort'){librarySort=t.value;renderLibrary();}});
 document.addEventListener('input',e=>{if(e.target.id==='librarySearch'){libraryQuery=e.target.value;renderLibrary();}if(e.target.id==='presetSearch'){presetQuery=e.target.value;renderPlans();renderOfficialSessions();}if(e.target.id==='allTemperature'){for(const w of TYRE_WHEELS)$('tyreTemperature'+w).value=e.target.value==='0'?'':e.target.value;updateTyreSettings();}if(e.target.id==='allCondition'){for(const w of TYRE_WHEELS)$('tyreCondition'+w).value=e.target.value;$('allConditionValue').textContent=e.target.value+'%';updateTyreSettings();}});
 $('applyPlanButton').addEventListener('click',applyPendingPlan);
 $('cancelPlanButton').addEventListener('click',()=>{if(applyingPlan){cancelPlan=true;$('planProgress').textContent='Stopping after the current request finishes…';}else $('planDialog').close();});

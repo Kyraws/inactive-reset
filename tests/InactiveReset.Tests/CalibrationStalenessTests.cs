@@ -1,3 +1,4 @@
+using System.Globalization;
 using InactiveReset.Core;
 using Xunit;
 
@@ -72,8 +73,8 @@ public sealed class CalibrationStalenessTests
 
         Assert.NotNull(line);
         Assert.Equal(OutcomeSeverity.Warning, line.Severity);
-        Assert.Contains("0.710", line.Sentence);
-        Assert.Contains("0.001", line.Sentence);      // the recorded 0.0005, formatted
+        Assert.Contains(0.71f.ToString("F3"), line.Sentence);
+        Assert.Contains(0.0005f.ToString("F3"), line.Sentence); // the recorded error, formatted
         Assert.Contains("0F6DCAC1", line.Sentence);   // measured on
         Assert.Contains("1AC2F605", line.Sentence);   // running
         Assert.Contains("stale", line.Sentence);
@@ -148,20 +149,25 @@ public sealed class CalibrationStalenessTests
         }
     }
 
-    [Fact]
-    public void AShippedCalibrationIsUsedWhenTheUserHasNone()
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("pt-BR")]
+    public void AShippedCalibrationIsUsedWhenTheUserHasNone(string culture)
     {
         var data = Directory.CreateTempSubdirectory("inactive-reset-cal-").FullName;
+        var originalCulture = CultureInfo.CurrentCulture;
         try
         {
-            Write(data, CalibrationProfile.DefaultDirectoryName, "shipped.json", 3.0f);
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+            Write(data, CalibrationProfile.DefaultDirectoryName, "shipped.json", 3.25f);
 
             var only = Assert.Single(CalibrationProfile.LoadAllForData(data));
-            Assert.Equal(3.0f, only.ForwardDistance);
+            Assert.Equal(3.25f, only.ForwardDistance);
             Assert.True(only.IsShipped);
         }
         finally
         {
+            CultureInfo.CurrentCulture = originalCulture;
             Directory.Delete(data, recursive: true);
         }
     }
@@ -170,7 +176,7 @@ public sealed class CalibrationStalenessTests
     {
         var directory = Path.Combine(data, folder);
         Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, file), $$"""
+        File.WriteAllText(Path.Combine(directory, file), FormattableString.Invariant($$"""
             {
               "track_name": "Circuit de Barcelona",
               "vehicle_name": "Richard Mille AF Corse 2025 #50:ELMS",
@@ -182,6 +188,6 @@ public sealed class CalibrationStalenessTests
                 "valid": true
               }
             }
-            """);
+            """));
     }
 }
