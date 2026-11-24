@@ -5,7 +5,7 @@ async function run(){
  const names=['Lab.html','App.css','Lab.css','Lab.workspace.css','Session.js','Practice.js','Lab.official.js','Lab.js','Lab.inputs.js','Lab.workspace.js'];
  const [html,css,labCss,workspaceCss,...scripts]=await Promise.all(names.map(n=>fetch(base+n).then(r=>r.text())));
  const frame=document.getElementById('preview'),ready=new Promise(r=>frame.onload=r);
- frame.srcdoc=html.replace(/<script[^>]*><\/script>/g,'').replace(/<link[^>]*>/g,'').replace('</head>','<style>'+css+labCss+workspaceCss+'</style></head>');await ready;
+ frame.srcdoc=html.replace(/<script[^>]*><\/script>/g,'').replace(/<link[^>]*>/g,'').replace('</head>','<style>'+css+labCss+workspaceCss.replaceAll('"Fonts/','"'+base+'Fonts/')+'</style></head>');await ready;
  const w=frame.contentWindow,d=frame.contentDocument,errors=[];
  w.chrome={webview:{postMessage(){}}};
  w.addEventListener('error',e=>errors.push(e.message));w.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
@@ -16,49 +16,134 @@ async function run(){
  let setup={selection:{selectedCar:car,trackInfo:track,classesSelection:['GT3'],fullGrid:false},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:1,RACE:0},settings:{SESSSET_Practice_Length:setting(45),SESSSET_WarmUp_Length:setting(10),SESSSET_weather:setting(4,'Scripted'),SESSSET_AI_Strength:setting(95,'95%'),SESSSET_Num_Opponents:setting(0),SESSSET_flag_rules:setting(2,'Full')},assists:{},weather:{PRACTICE:Object.fromEntries(['START','NODE_25','NODE_50','NODE_75','FINISH'].map(n=>[n,{WNV_RAIN_CHANCE:setting(0,'0%'),WNV_TEMPERATURE:setting(24,'24°C')}])),QUALIFY:{},RACE:{}}};
  for(const key of ['Qualify_Length','race_time','Race_Laps','practice1_starting_time','qualify_starting_time','warmup_starting_time','race_starting_time','private_prac','private_qual','Finish_Criteria','formation','Grid_Position','pract1_realroad_init','pract1_realroad_wet','pract1_realroad_temperatures','realroad_timescale_practice','qual1_realroad_init','qual1_realroad_wet','qual1_realroad_temperatures','realroad_timescale_qualify','race_realroad_init','race_realroad_wet','race_realroad_temperatures','realroad_timescale_race','timescaled_weather','AI_Aggression','Damage_Multi','Mech_Failures','Fuel_Usage','Tire_Wear','tire_warmers','tires_available_in_garage','keep_tire_inv_on_track_change','cut_rules','cuts_allowed','blue_flags','parc_ferme'])setup.settings['SESSSET_'+key]||=setting(1);
  for(const fields of Object.values(setup.weather.PRACTICE))for(const key of ['WNV_SKY','WNV_HUMIDITY','WNV_WINDSPEED','WNV_WINDDIRECTION'])fields[key]=setting(0);
+ setup.settings.SESSSET_practice1_starting_time=setting(960,'16:00');
+ setup.settings.SESSSET_qualify_starting_time=setting(-1,'Default ( 2:10 PM )');
  let checkpoints=[{id:'a',name:'Turn 1',track:'Barcelona',vehicle:'Team Car',lapDistance:400,x:50,z:0,speedKmh:100,gear:3,rollingEligible:true},{id:'b',name:'Entry',track:'Barcelona',vehicle:'Other Car',lapDistance:800,x:100,z:80,speedKmh:70,gear:2,rollingEligible:true},{id:'q',name:'Quick capture',quick:true,track:'Barcelona',vehicle:'Team Car',lapDistance:200,x:0,z:50,speedKmh:90,gear:3,rollingEligible:true},{id:'c',name:'Other track',track:'Spa',vehicle:'Car',lapDistance:300,x:0,z:0}];
- let driving=false;
- const native=()=>({connected:true,game:{running:true},session:{track:'Barcelona',vehicle:'Team Car',capturable:true},checkpoints,inGarage:!driving,tyreRules:{inGarage:!driving},rollingStartSupported:true,phase:'Idle',busy:false,log:[]});
+ let driving=false,gameClosed=false;
+ const native=()=>({connected:!gameClosed,game:{running:!gameClosed},session:{track:'Barcelona',vehicle:'Team Car',capturable:true},checkpoints,inGarage:!driving,tyreRules:{inGarage:!driving},rollingStartSupported:true,phase:'Idle',busy:false,log:[]});
  const map={id:'layout',track,points:[{type:0,x:0,z:0},{type:0,x:100,z:0},{type:0,x:100,z:100},{type:0,x:0,z:100},{type:1,x:-5,z:0},{type:1,x:-5,z:100},{type:149,x:40,z:70}]};
- let writes=[],managed=[],deleted,holdAmountSave;
- const events=Array.from({length:10},(_,i)=>({id:'event'+i,category:i<7?'beginner':i<9?'weekly':'special',title:i%2?'Long-distance multiclass championship rehearsal':'Official GT Sprint',content:{track:{name:i%2?'Circuit de Barcelona-Catalunya — Grand Prix':'Bahrain International Circuit — Outer',subItems:[]}},times:[],sessions:['Qualifying','Race'].map(type=>({type,duration:type==='Race'?'45m':'15m',timeOfDay:'15h',realRoad:'green',weather:[]}))}));
+ let writes=[],managed=[],deleted,holdAmountSave,failSetupRead=false,setupReads=0;
+ const laps=Array.from({length:50},(_,i)=>({Id:'lap-'+(i+1),Number:i+1,SegmentId:'recorded',Identity:{Track:'Barcelona',Vehicle:'Team Car'},Duration:i===9?91:100}));
+ const frames=[
+   {Sequence:1,Elapsed:0,X:0,Z:0},{Sequence:2,Elapsed:89.8,X:30,Z:10},{Sequence:3,Elapsed:90.2,X:50,Z:20},
+   {Sequence:4,Elapsed:92,X:50,Z:0},{Sequence:5,Elapsed:94,X:50,Z:0},
+   {Sequence:6,Elapsed:95,X:100,Z:100},{Sequence:7,Elapsed:96,X:50,Z:0}
+ ];
+ const events=['beginner','beginner','beginner','intermediate','intermediate','intermediate','advanced','advanced','weekly','weekly','special','special'].map((category,i)=>({id:'event'+i,category,title:i%2?'Long-distance multiclass championship rehearsal':'Official GT Sprint',content:{track:{name:i%2?'Circuit de Barcelona-Catalunya — Grand Prix':'Bahrain International Circuit — Outer',subItems:[]}},times:[],sessions:['Qualifying','Race'].map(type=>({type,duration:type==='Race'?'45m':'15m',timeOfDay:'15h',realRoad:'green',weather:[]}))}));
+ events[11].content.track={name:'LeMansWEC',subItems:[{name:'24 Heures du Mans',scn:'LeMansWEC_Alternate'}]};
+ events[7].content.track={name:'Daytona',subItems:[{name:'Daytona Road Course',scn:'Daytona'}]};
  async function fake(path,opts){
    const body=opts?.body?JSON.parse(opts.body):null;let value={};
    if(path==='/api/lab/preferences'){if(body){prefs=structuredClone(body);value={ok:true};}else value=prefs;}
    else if(path==='/api/state')value=native();
-   else if(path==='/api/session/setup')value=setup;
-   else if(path==='/api/session/catalog')value={cars:[car],tracks:[track]};
-   else if(path==='/api/session/state')value={pid:123,state:{settingMode:'SETTING_GRANDPRIX',gameState:driving?'GSTATE_DYN':'GSTATE_SETUP',gameSession:'PRACTICE1',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false}};
+   else if(path==='/api/session/setup'){
+     setupReads++;
+     if(failSetupRead)return {ok:false,json:async()=>({error:'Fixture setup unavailable'})};
+     value=setup;
+   }
+   else if(path==='/api/session/catalog')value={cars:[car,{...car,id:'gt3',fullPathTree:'2026, GT3, A much longer GT3 car model name'},{...car,id:'lmp2',fullPathTree:'2026, LMP2, Prototype'}],tracks:[track,{id:'lemans',owned:true,name:'24 Heures du Mans',sceneDesc:'LeMansWEC'},{id:'lemans-mulsanne',owned:true,name:'Circuit de la Sarthe Mulsanne',sceneDesc:'LeMansWEC_Mulsanne'},{id:'daytona',owned:true,name:'Daytona Road Course',sceneDesc:'Daytona'},{id:'daytona-short',owned:true,name:'Daytona Short',sceneDesc:'Daytona_Short'}]};
+   else if(path==='/api/session/state'){
+     if(gameClosed)return {ok:false,json:async()=>({error:'LMU closed'})};
+     value={pid:123,state:{settingMode:'SETTING_GRANDPRIX',gameState:driving?'GSTATE_DYN':'GSTATE_SETUP',gameSession:'PRACTICE1',navigationState:'NAV_MAIN_MENU'},loadingStatus:{loading:false}};
+   }
    else if(path==='/api/track-maps')value={tracks:[track]};
    else if(path.startsWith('/api/track-map?'))value=map;
+   else if(path==='/api/recordings/laps')value=laps;
+   else if(path.startsWith('/api/recordings/lap?'))value=frames;
+   else if(path==='/api/recordings/select')value={SegmentId:body.recording,Sequence:body.sequence,Checkpoint:{TrackName:'Barcelona',VehicleName:'Team Car',Gear:2},SpeedKmh:80};
    else if(path.startsWith('/api/official-sessions'))value={events,warnings:[],fetchedAt:new Date().toISOString()};
-   else if(path==='/api/session/action'){writes.push(body);if(body.action==='sessionValue')setup.settings[body.key]=setting(body.value);if(body.action==='amount'){await holdAmountSave;setup.amounts[body.session]=body.amount;}value=setup;}
+   else if(path==='/api/session/action'){
+     writes.push(body);
+     if(body.action==='sessionValue')setup.settings[body.key]=setting(body.value);
+     if(body.action==='setting'&&body.key==='SESSSET_Finish_Criteria'){
+       const mode=setup.settings[body.key].currentValue+(body.steps===0?-1:1);
+       setup.settings[body.key]=setting(mode,['Time and laps','Laps','Time','% Time and laps','% Track Laps','% Track Time'][mode]);
+     }
+     if(body.action==='raceMinutes'){
+       setup.settings.SESSSET_Finish_Criteria=setting(2,'Time');
+       setup.settings.SESSSET_race_time=setting(body.value,'');
+     }
+     if(body.action==='amount'){await holdAmountSave;setup.amounts[body.session]=body.amount;}
+     value=setup;
+   }
    else if(path==='/api/checkpoints/manage'){
      managed.push(body);
-     if(body.action==='delete'){deleted=checkpoints.find(c=>c.id===body.id);checkpoints=checkpoints.filter(c=>c.id!==body.id);value={ok:true,token:'undo'};}
+     if(body.action==='clearQuick'){checkpoints=checkpoints.filter(point=>!body.ids.includes(point.id));value={ok:true,count:body.ids.length};}
+     else if(body.action==='delete'){deleted=checkpoints.find(c=>c.id===body.id);checkpoints=checkpoints.filter(c=>c.id!==body.id);value={ok:true,token:'undo'};}
      else if(body.action==='undo'){checkpoints.push(deleted);value={ok:true,id:deleted.id};}
      else{const source=checkpoints.find(c=>c.id===body.id),copy={...source,id:'new',quick:false,name:body.name};if(body.action==='rename')checkpoints=checkpoints.filter(c=>c.id!==source.id);checkpoints.push(copy);value={ok:true,id:copy.id};}
    }
    return {ok:true,json:async()=>structuredClone(value)};
  }
- const ui=new w.Function('fetch','setInterval','clearInterval',scripts.join('\n')+'\nreturn {poll,refresh,setPage,loadSetup,renderCheckpoints,renderLibrary,mapSvg,inspectPreset,snapshotPlan,renderPlans,manageCheckpoint,undoCheckpoint,updateWorkspace,getPrefs:()=>labPreferences,getPreview:()=>libraryPreviewId,setProtectedForLayout(value){gameProtected=value;updateControls();},enableWeekend(){setup.amounts={PRACTICE:1,QUALIFY:1,WARMUP:1,RACE:1};renderContent();}};')(fake,()=>0,()=>{});
+ const ui=new w.Function('fetch','setInterval','clearInterval',scripts.join('\n')+'\nreturn {poll,refresh,setPage,loadSetup,renderCheckpoints,renderLibrary,mapSvg,inspectPreset,snapshotPlan,renderPlans,manageCheckpoint,undoCheckpoint,updateWorkspace,loadRecordedLaps,chooseRecordedLap,selectElapsed,parseLapElapsed,runPracticeInput,getTimelineSelection:()=>timelineSelection,getPrefs:()=>labPreferences,getPreview:()=>libraryPreviewId,setProtectedForLayout(value){gameProtected=value;updateControls();}};')(fake,()=>0,()=>{});
  w.dispatchEvent(new w.CustomEvent('input-bindings',{detail:{bindings:Object.fromEntries(['capture','teleport','standing','previous','next'].map((action,i)=>[action,{keyboard:{keyCode:67+i,modifiers:3},wheel:null}])),devices:[]}}));
  let count=0;const check=(ok,message)=>{if(!ok)throw Error(message);count++;};
- await until(()=>d.querySelector('[data-builder]')&&d.body.dataset.style==='redline','Workspace initialization');
- ui.setPage('setup','selection');
- const brand=d.querySelector('.car-pick .brand-art');
- brand.querySelector('img').dataset.lightVariant='true';
- check(w.getComputedStyle(brand).backgroundColor==='rgba(0, 0, 0, 0)','Manufacturer badge sits directly on the dark tile');
- check(w.getComputedStyle(brand.querySelector('img')).filter==='none','Manufacturer artwork keeps its original colors');
+  await until(()=>d.querySelector('[data-card]'),'Workspace initialization');
  ui.setPage('setup','sessions');
  check(d.querySelectorAll('input[type=checkbox][data-amount]').length===4&&d.querySelector('[data-amount=PRACTICE]').checked&&!d.querySelector('[data-amount=QUALIFY]').checked,'Weekend checkboxes reflect the enabled sessions');
- check(d.querySelectorAll('[data-builder]').length===5,'Builder combines all five groups');
- check(d.querySelectorAll('.builder-tabs [role=tab]').length===5&&d.querySelectorAll('[data-builder]:not([hidden])').length===1,'One builder tab is visible at a time');
  check(d.querySelectorAll('[data-weather-session]').length===1&&!d.querySelector('[data-weather-session=WARMUP]'),'Weather shows only enabled supported sessions');
- check(!d.querySelector('[data-bind=game]')&&!d.querySelector('[data-action=place-state]')&&!d.body.textContent.includes('Compact practice'),'No simulated state or compact utility');
- check(!d.body.textContent.includes('Race engineer')&&!d.body.textContent.includes('Mandatory'),'Unsupported prototype settings omitted');
  check(writes.length===0,'Initialization and preview never write to game');
- driving=true;await ui.poll();await ui.refresh();ui.setPage('practice');d.getElementById('practiceSavedView').click();
+ const quickCar=d.getElementById('quickCar'),quickCircuit=d.getElementById('quickCircuit');
+ quickCar.focus();await ui.loadSetup();
+ check(d.getElementById('quickCar')===quickCar&&d.getElementById('quickCircuit')===quickCircuit&&d.activeElement===quickCar,'Setup refresh preserves native quick selectors and focus');
+ driving=true;await ui.poll();
+ const fieldMutations=[];
+ const observer=new w.MutationObserver(records=>fieldMutations.push(...records));
+ observer.observe(d.getElementById('editorFields'),{attributes:true,attributeFilter:['disabled']});
+ quickCircuit.focus();await ui.poll();await ui.poll();
+ observer.disconnect();
+ check(fieldMutations.length===0&&d.activeElement===quickCircuit,'On-track polling keeps the editor enabled and the native circuit selector focused');
+ driving=false;await ui.poll();
+ frame.style.width='1040px';
+ await until(()=>w.innerWidth===1040,'Desktop minimum viewport');
+ d.querySelector('[data-builder-open=circuit]').click();
+ const circuitDialog=d.getElementById('builderDetail');
+ const initialCircuitTop=circuitDialog.getBoundingClientRect().top;
+ const layoutTop=()=>d.querySelector('.circuit-layouts h3').getBoundingClientRect().top;
+ const initialLayoutTop=layoutTop();
+ const circuitPreview=()=>d.querySelector('[data-card=circuit] .selection-preview');
+ const circuitHeight=circuitPreview().getBoundingClientRect().height;
+ const daytonaPhoto=d.querySelector('[data-preview-circuit=Daytona] img');
+ d.querySelector('[data-preview-circuit="Le Mans"]').click();
+ check(d.querySelector('.circuit-card img')&&d.querySelectorAll('.circuit-layouts [data-track]').length===2&&quickCircuit.value==='Barcelona','Circuit cards preview artwork and layouts before changing the draft');
+ circuitDialog.querySelector('[data-track=lemans-mulsanne]').click();
+ const leMansButtons=[...circuitPreview().querySelectorAll('.builder-layouts button')];
+ check(leMansButtons.map(button=>button.textContent).join('|')==='Grand Prix · WEC|Circuit de la Sarthe Mulsanne'&&leMansButtons.every(button=>button.scrollWidth<=button.clientWidth&&button.scrollHeight<=button.clientHeight),'Both full Le Mans layout names fit the main circuit card');
+ d.querySelector('[data-preview-circuit=Daytona]').click();
+ const daytonaLayouts=[...d.querySelectorAll('.circuit-layout-row .layout-tile')];
+ await until(()=>daytonaLayouts.every(layout=>layout.querySelector('svg')),'Daytona layout previews load');
+ check(daytonaPhoto===d.querySelector('[data-preview-circuit=Daytona] img')&&initialCircuitTop===circuitDialog.getBoundingClientRect().top,'Circuit browsing keeps photos mounted and the dialog in place');
+ check(layoutTop()===initialLayoutTop,'Circuit and layout changes hold the layout heading in place');
+ check(daytonaLayouts.length===2&&daytonaLayouts[0].offsetTop===daytonaLayouts[1].offsetTop,'Exact layouts have outlines and share one row');
+ daytonaLayouts[0].click();
+ check(d.querySelector('.circuit-art img').getAttribute('src')===daytonaPhoto.getAttribute('src')&&d.querySelector('.circuit-art [data-builder-map]').dataset.builderMap==='daytona','Main preview shares the photo and uses the selected layout geometry');
+ const selectedHeight=circuitPreview().getBoundingClientRect().height;
+ check(Math.abs(selectedHeight-circuitHeight)<.05,'Circuit layout count does not change the main preview height');
+ d.getElementById('builderDetail').close();
+ const reload=d.getElementById('builderReset'),start=d.getElementById('builderStart'),apply=d.getElementById('builderApply');
+ const readsBeforeReload=setupReads;
+ check(apply.classList.contains('primary')&&start.disabled,'Apply is primary while the draft has edits');
+ reload.click();
+ check(reload.textContent==='Are you sure?'&&setupReads===readsBeforeReload,'Reload confirms before reading LMU');
+ failSetupRead=true;reload.click();
+ await until(()=>d.getElementById('builderStatus').textContent.includes('Fixture setup unavailable'),'Failed reload is visible');
+ check(d.getElementById('quickCircuit').value==='Daytona'&&apply.classList.contains('primary'),'Failed reload keeps the edited draft and apply priority');
+ gameClosed=true;await ui.poll();
+ gameClosed=false;failSetupRead=false;await ui.poll();
+ check(d.getElementById('quickCircuit').value==='Daytona'&&apply.classList.contains('primary'),'Draft from a failed reload survives an LMU disconnect');
+ setup.settings.SESSSET_Num_Opponents=setting(7);
+ reload.click();reload.click();
+ await until(()=>d.getElementById('builderStatus').textContent.includes('Reloaded current LMU settings'),'Fresh setup reloaded');
+ check(d.getElementById('quickCircuit').value==='Barcelona'&&d.querySelector('[data-card=grid] .small-note').textContent.includes('7 AI')&&start.classList.contains('primary')&&!start.disabled&&writes.length===0,'Reload uses current LMU values including AI and restores Start priority without writes');
+ d.querySelector('[data-builder-open=car]').click();
+ const carRow=()=>d.querySelector('#builderDetail .vehicle-grid').getBoundingClientRect().height;
+ const allCarHeight=carRow();
+ d.querySelector('[data-vehicle-class=GT3]').click();
+ check(carRow()===allCarHeight&&d.querySelector('.livery-art').clientHeight===64&&d.querySelector('.livery-tile').getAttribute('aria-label').includes('Team Car'),'GT3 keeps the model row and livery artwork dimensions with an accessible livery name');
+ d.querySelector('[data-vehicle-class=LMP2]').click();
+ check(carRow()===allCarHeight,'Other classes keep the same model row height');
+ circuitDialog.close();
+ driving=true;await ui.poll();await ui.refresh();ui.setPage('practice');d.querySelector('#destinationList .destination-option').click();
  const activeCheckpoint=checkpoints.find(c=>c.id===d.getElementById('cp').value);
  activeCheckpoint.rollingEligible=false;
  activeCheckpoint.rollingUnavailableReason='Captured gear opposes the recorded direction of travel.';
@@ -76,33 +161,175 @@ async function run(){
  const selected=d.getElementById('cp').value;d.querySelector('#checkpointCards [data-preview-checkpoint=b]').click();
  check(ui.getPreview()==='b'&&d.getElementById('cp').value===selected,'Map preview does not change destination');
  check(!d.getElementById('practicePanel').hidden===false,'Preview stays in library');
- d.querySelector('button[data-map-checkpoint=b]').click();check(d.getElementById('cp').value==='b'&&!d.getElementById('practicePanel').hidden,'Explicit selection opens Practice without moving car');
+ d.querySelector('#libraryPreview button[data-map-checkpoint=b]').click();check(d.getElementById('cp').value==='b'&&!d.getElementById('practicePanel').hidden,'Explicit selection opens Practice without moving car');
  check(writes.length===0,'Map selection performs no game write');
  await ui.manageCheckpoint('copy','q');d.getElementById('checkpointEditName').value='Permanent';d.getElementById('checkpointEditForm').requestSubmit();
  await until(()=>!d.getElementById('checkpointEdit').open,'Permanent copy saved');
- check(managed[0].action==='copy'&&checkpoints.some(c=>c.id==='q')&&checkpoints.some(c=>c.name==='Permanent'),'Quick capture saved as permanent copy');
+ check(managed[0].action==='copy'&&d.getElementById('cp').value==='b'&&checkpoints.some(c=>c.id==='q')&&checkpoints.some(c=>c.name==='Permanent'),'Quick capture saved as permanent copy');
  await ui.manageCheckpoint('delete','a');check(!checkpoints.some(c=>c.id==='a'),'Delete reaches backend');await ui.undoCheckpoint();check(checkpoints.some(c=>c.id==='a'),'Undo restores deleted capture');
  prefs=ui.getPrefs();prefs.plans.push({id:'p',name:'My Practice',target:ui.snapshotPlan()});ui.renderPlans();ui.inspectPreset('p');
  check(d.getElementById('presetDetails').open&&d.getElementById('presetDetailsBody').textContent.includes('Practice duration'),'Preset drawer exposes actual saved controls');
- check(d.querySelectorAll('.preset-table-row').length===1,'Personal presets use the new table');
  d.getElementById('presetDetails').close();d.querySelector('[data-duplicate-preset=p]').click();await until(()=>ui.getPrefs().plans.length===2,'Preset duplicated');
  check(ui.getPrefs().plans[1].target.settings.SESSSET_Practice_Length===45,'Duplicate preserves configuration');
- ui.setPage('presets');check(d.getElementById('editor').scrollWidth<=d.getElementById('editor').clientWidth+2,'Preset table has no internal horizontal overflow');
- ui.setPage('settings');check(w.getComputedStyle(d.getElementById('inputBindingsPanel')).display!=='none'&&!d.querySelector('[data-settings-tab],[data-style-choice],button[data-theme],button[data-density]'),'Controls open directly without appearance settings');
- ui.setPage('setup');const handle=d.getElementById('summaryHandle');handle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));check(handle.getAttribute('aria-valuenow')==='304','Summary resize supports keyboard and persistence');
- check(d.querySelector('#sectionNav .rail-link').classList.contains('active'),'Unified builder remains highlighted for every group');
- check(errors.length===0,'No unhandled errors: '+errors.join('; '));
- check(d.getElementById('editor').scrollWidth<=d.getElementById('editor').clientWidth+2,'Builder has no internal horizontal overflow');
+
  check(writes.length===0,'All browsing and file operations leave game settings untouched');
  ui.setPage('setup','sessions');
- let releaseAmount;holdAmountSave=new Promise(resolve=>releaseAmount=resolve);
- d.querySelector('[data-amount=QUALIFY]').click();
- const warmup=d.querySelector('[data-amount=WARMUP]');
- check(!warmup.matches(':disabled')&&d.getElementById('startButton').disabled,'Weekend stays editable during a slow save while launch waits');
- warmup.click();
- check(writes.length===1&&!warmup.checked,'Second checkbox responds immediately and waits for the first LMU write');
- releaseAmount();await until(()=>!d.getElementById('startButton').disabled,'Both weekend saves');
- check(writes.length===2&&setup.amounts.QUALIFY===1&&setup.amounts.WARMUP===0,'Both checkbox edits are confirmed before launch unlocks');
+ driving=true;await ui.poll();
+ d.querySelector('[data-plan=p]')?.click();
+ check(d.getElementById('planDialog').open&&!d.getElementById('applyPlanButton').disabled,'Personal preset can be loaded during an active session');
+ d.getElementById('applyPlanButton').click();
+ check(!d.getElementById('planDialog').open&&writes.length===0,'Loading a preset on track stages it without making any writes');
+ d.querySelector('[data-builder-open=sessions]').click();
+ check(d.getElementById('builderDetail').getBoundingClientRect().width>430&&!d.getElementById('builderDetailBody').disabled,'Loaded session detail is wide and editable');
+ const detail=d.getElementById('builderDetail'), timingHeight=detail.getBoundingClientRect().height;
+ detail.querySelector('[data-amount=QUALIFY]').click();
+ detail.querySelector('[data-timing-stage=QUALIFY]').click();
+ check(detail.getBoundingClientRect().height===timingHeight&&detail.querySelector('select[aria-label="Private qualifying"]'),'Qualifying uses the same timing layout and privacy control as Practice');
+ check(detail.querySelector('#value-SESSSET_qualify_starting_time').value==='16:50','Sequential default follows Practice duration plus five minutes');
+ d.getElementById('builderDetail').close();
+ d.querySelector('[data-amount=WARMUP]').click();
+ check(writes.length===0&&d.getElementById('builderStart').disabled&&d.getElementById('builderApply').disabled,'On-track edits remain local until the menu');
+ driving=false;await ui.poll();
+ d.getElementById('builderApply').click();
+ await until(()=>!d.getElementById('builderStart').disabled,'Both stage edits confirmed');
+ check(writes.length===3&&setup.amounts.QUALIFY===1&&setup.amounts.WARMUP===0&&setup.settings.SESSSET_qualify_starting_time.currentValue===1010,'Apply confirms both stages and the sequential start before Start is enabled');
+ checkpoints.push({id:'elsewhere',quick:true,name:'Other quick capture',track:'Spa',vehicle:'Other Car',speedKmh:70,gear:2,rollingEligible:true});
+ ui.setPage('official');
+ check(d.querySelectorAll('.event-tile').length===12,'All 12 cached events appear on the board');
+ const daytonaTile=d.querySelector('[data-event-id=event7]');
+ const daytonaArt=daytonaTile.querySelector('img');
+ const tile=d.querySelector('[data-event-id=event11]');tile.focus();tile.click();
+ check(d.querySelector('[data-event-id=event7]')===daytonaTile&&daytonaTile.querySelector('img')===daytonaArt&&d.activeElement===tile,'Selection preserves unchanged event cards, artwork and focus');
+ check(d.querySelector('#officialFeatured h2').textContent===tile.querySelector('strong').textContent,'Selecting an event updates the featured panel');
+ check(tile.querySelector('small').textContent==='Le Mans'&&d.querySelector('#officialFeatured img').getAttribute('src').includes('kind=track-card'),'Le Mans tiles use the short venue name and request card artwork');
+ d.querySelector('[data-event-category=special]').click();
+ check(d.querySelectorAll('.event-group:not([hidden]) .event-tile').length===2,'Special filter keeps only its group');
+ check(d.querySelector('[data-event-id=event11][aria-pressed=true]'),'Filtering retains a matching featured event');
+ d.querySelector('[data-event-category=daily]').click();
+ check(d.querySelector('.event-tile').getAttribute('aria-pressed')==='true','Filtering features the first visible event when the previous selection is excluded');
+ events.splice(8,2);
+ await d.getElementById('refreshWorkspaceEvents').click();
+ await until(()=>!d.querySelector('[data-event-id=event8]'),'Refreshed event list loaded');
+ d.querySelector('[data-event-category=weekly]').click();
+ check(d.getElementById('officialFeatured').hidden&&!d.querySelector('#officialWorkspaceEvents .empty-note').hidden,'Empty filters hide the featured area');
+
+ const overlapping=checkpoints.find(point=>point.id==='a');
+ for(let i=0;i<40;i++){
+   checkpoints.push({...overlapping,id:'long-saved-'+i,name:'Saved checkpoint '+i});
+   checkpoints.push({...overlapping,id:'long-quick-'+i,name:'Quick capture '+i,quick:true,vehicle:'Team Car',lapDistance:i+1});
+ }
+ driving=true;await ui.poll();ui.setPage('practice');await ui.refresh();await ui.loadRecordedLaps();
+ check(d.querySelectorAll('#lapRail button').length===50 && d.querySelectorAll('#lapRail .best-lap').length===1,'50 complete laps and one Best marker appear');
+ check(d.getElementById('lapElapsed').disabled&&d.getElementById('lapElapsed').value==='','Elapsed editor starts blank and inactive');
+ d.querySelector('#destinationList .destination-option').click();
+ const target=d.getElementById('cp').value;
+ await ui.chooseRecordedLap('lap-1');
+ check(d.getElementById('cp').value===target && d.getElementById('lapElapsed').value==='','Lap preview preserves the selected checkpoint');
+ await ui.selectElapsed(ui.parseLapElapsed('130.15'));
+ check(ui.getTimelineSelection().Sequence===3&&d.getElementById('lapElapsed').value==='1:30.200','Compact elapsed input resolves to an actual retained frame');
+ ui.selectElapsed(ui.parseLapElapsed('2:00'));
+ check(ui.getTimelineSelection().Sequence===3&&d.getElementById('lapElapsed').getAttribute('aria-invalid')==='true','Out-of-range input keeps the valid target');
+ const svg=d.querySelector('#practiceMap svg'),pin=[...svg.querySelectorAll('.combined-pin')].find(p=>p.querySelector('title').textContent==='Turn 1'),point=new w.DOMPoint(0,0).matrixTransform(pin.getScreenCTM());
+ const beforePicker=ui.getTimelineSelection();
+ svg.dispatchEvent(new w.MouseEvent('click',{bubbles:true,clientX:point.x,clientY:point.y}));
+ check(!d.getElementById('nearbyTargets').hidden&&ui.getTimelineSelection()===beforePicker,'Overlapping pins open a picker without changing the target');
+ check(d.querySelectorAll('#nearbyTargets [data-kind=lap]').length===2&&d.querySelector('#nearbyTargets [data-kind=saved]')&&d.querySelector('#nearbyTargets [data-kind=quick]'),'One list choice per recorded pass, with saved and quick captures labeled separately');
+ d.querySelector('#nearbyTargets button').click();
+
+ await ui.runPracticeInput('nextQuick');const firstQuick=d.getElementById('cp').value;
+ await ui.runPracticeInput('next');const nextNamed=d.getElementById('cp').value;
+ await ui.runPracticeInput('nextQuick');
+ check(firstQuick.startsWith('long-quick-')&&!nextNamed.startsWith('long-quick-')&&d.getElementById('cp').value!==firstQuick,'Independent bindings remember each position');
+ const clearRequests=managed.length;
+ await ui.runPracticeInput('clearQuick');
+ check(managed.length===clearRequests&&d.getElementById('clearQuickStatus').textContent.includes('Barcelona'),'First clear only describes its scope');
+ await ui.runPracticeInput('clearQuick');
+ check(managed.at(-1).action==='clearQuick'&&managed.at(-1).ids.length===41&&checkpoints.some(point=>point.id==='elsewhere'),'Second clear keeps captures outside the selected scope');
+
+ d.getElementById('practiceTyresView').click();
+ check(d.getElementById('practiceTyres').open,'Tyre editor opens');
+ d.getElementById('practiceTyres').close();
+ check(errors.length===0,'No unhandled errors: '+errors.join('; '));
+ ui.setPage('setup','selection');
+ check(d.getElementById('editor').scrollWidth<=d.getElementById('editor').clientWidth,'Narrow builder stacks without horizontal overflow');
+ frame.style.width='1040px';
+ await until(()=>w.innerWidth===1040,'Desktop minimum viewport');
+ d.querySelector('[data-builder-open=sessions]').click();
+ const timing=d.getElementById('builderDetail'), stableHeight=timing.getBoundingClientRect().height;
+ timing.querySelector('[data-amount=WARMUP]').click();
+ timing.querySelector('[data-amount=RACE]').click();
+ const timingHeightByStage=[...timing.querySelectorAll('[data-timing-stage]')].map(tab=>tab.dataset.timingStage).map(stage=>{
+   timing.querySelector(`[data-timing-stage="${stage}"]`).click();
+   return timing.querySelector('.timing-options').getBoundingClientRect().height;
+ });
+ check(timingHeightByStage.length===4&&timingHeightByStage.every(height=>Math.abs(height-timingHeightByStage[0])<.05),'All four timing panels have the same height');
+ timing.querySelector('[data-timing-stage=RACE]').click();
+ check(timing.getBoundingClientRect().height===stableHeight&&timing.querySelector('#value-SESSSET_race_time')&&
+   timing.querySelector('select[aria-label="Race start"]')?.options[1].text==='Fast rolling'&&
+   !timing.querySelector('#value-SESSSET_Race_Laps')&&ui.snapshotPlan().settings.SESSSET_Finish_Criteria===2,'Race uses minutes and named starts without changing the dialog height');
+ check(timing.querySelector('#value-SESSSET_race_time').value==='20'&&d.getElementById('sessionSummary').textContent.includes('20 min'),'New Race defaults to 20 minutes in the editor and summary');
+ const timingBody=d.getElementById('builderDetailBody');
+ check(timingBody.scrollWidth<=timingBody.clientWidth,'Timing controls fit without horizontal scrolling');
+ const tabs=[...timing.querySelectorAll('[data-timing-stage]')];
+ check(tabs.every(tab=>Math.abs(tab.getBoundingClientRect().width-tabs[0].getBoundingClientRect().width)<.1),'All timing tabs are equally wide');
+ const closed=new Promise(resolve=>timing.addEventListener('close',resolve,{once:true}));
+ timing.close();await closed;
+ d.querySelector('[data-builder-open=grid]').click();
+ const aggression=()=>timing.querySelector('select[aria-label="AI aggression"]');
+ const aggressionWidth=aggression().getBoundingClientRect().width;
+ aggression().value='2';aggression().dispatchEvent(new w.Event('change',{bubbles:true}));
+ check(aggression().options[2].text==='High'&&aggression().getBoundingClientRect().width===aggressionWidth,'AI aggression uses a stable Low, Medium, High selector');
+ const strength=()=>timing.querySelector('input[aria-label="AI strength"]');
+ const enterStrength=value=>{strength().value=String(value);strength().dispatchEvent(new w.Event('change',{bubbles:true}));};
+ enterStrength(120);
+ check(strength().value==='105'&&timing.querySelector('[aria-label="Increase AI strength"]').disabled,'Typed strength clamps at the upper bound');
+ enterStrength(60);
+ check(strength().value==='75'&&timing.querySelector('[aria-label="Decrease AI strength"]').disabled,'Typed strength clamps at the lower bound');
+ timing.querySelector('[aria-label="Increase AI strength"]').click();
+ check(strength().value==='76'&&d.getElementById('quickStrength').value==='76'&&timing.querySelector('input[aria-label="AI strength slider"]').value==='76','A single step advances one point and synchronizes both sliders');
+ check(w.getComputedStyle(strength()).appearance==='textfield','Numeric inputs hide the duplicate native arrows');
+ const gridClosed=new Promise(resolve=>timing.addEventListener('close',resolve,{once:true}));
+ timing.close();await gridClosed;
+ frame.style.height='395px';
+ await new Promise(resolve=>w.requestAnimationFrame(resolve));
+ d.querySelector('[data-builder-open=weather]').click();
+ const weatherBody=d.getElementById('builderDetailBody');
+ weatherBody.scrollTop=85;
+ timing.scrollTop=85;
+ check((weatherBody.scrollTop>0||timing.scrollTop>0)&&w.getComputedStyle(timing).overflowY==='auto',`Dialog content can scroll at a short viewport (${w.innerHeight}px, dialog ${timing.clientHeight}/${timing.scrollHeight}, body ${weatherBody.clientHeight}/${weatherBody.scrollHeight})`);
+ const sky=()=>timing.querySelector('select[aria-label="Sky"]');
+ sky().value='4';sky().dispatchEvent(new w.Event('change',{bubbles:true}));
+ check(sky().selectedOptions[0].text==='Overcast'&&timing.querySelector('[data-weather-node=START] strong').textContent==='Overcast','Selecting a sky updates the editor and forecast with its name');
+ timing.close();
+ frame.style.height='680px';
+ driving=false;await ui.poll();
+ const legacy={id:'legacy-race',name:'Legacy race',target:{settings:{SESSSET_Finish_Criteria:5,SESSSET_race_time:35},amounts:{RACE:1},assists:{},weather:{},classes:['GT3'],fullGrid:false}};
+ ui.getPrefs().plans.push(legacy);
+ ui.setPage('presets');
+ ui.inspectPreset(legacy.id);
+ check(d.getElementById('presetDetailsBody').textContent.includes('35% track time'),'Legacy race details retain their percentage');
+ d.getElementById('presetDetails').close();
+ d.querySelector('[data-plan=legacy-race]').click();
+ check(d.getElementById('planChanges').textContent.includes('35% track time'),'Legacy preset review reports the original duration');
+ d.getElementById('applyPlanButton').click();
+ await until(()=>!d.getElementById('planDialog').open&&d.getElementById('sessionSummary').textContent.includes('35% track time'),'Legacy mode and duration loaded');
+ check(setup.settings.SESSSET_Finish_Criteria.currentValue===5&&setup.settings.SESSSET_race_time.currentValue===35,'Loading applies the original legacy mode and duration');
+ d.querySelector('[data-builder-open=sessions]').click();
+ timing.querySelector('[data-timing-stage=PRACTICE]').click();
+ const practice=timing.querySelector('#value-SESSSET_Practice_Length');
+ practice.value='55';practice.dispatchEvent(new w.Event('change',{bubbles:true}));
+ check(ui.snapshotPlan().settings.SESSSET_Finish_Criteria===5&&ui.snapshotPlan().settings.SESSSET_race_time===35,'Unrelated draft edits preserve legacy duration');
+ timing.querySelector('[data-timing-stage=RACE]').click();
+ const raceInput=()=>timing.querySelector('#value-SESSSET_race_time');
+ check(raceInput().value===''&&raceInput().parentElement.querySelector('.unit').textContent==='min','Editing a legacy race only offers minutes');
+ raceInput().value='10';raceInput().dispatchEvent(new w.Event('change',{bubbles:true}));
+ timing.querySelector('[data-amount=RACE]').click();
+ timing.querySelector('[data-amount=RACE]').click();
+ check(ui.snapshotPlan().settings.SESSSET_race_time===10&&d.getElementById('sessionSummary').textContent.includes('10 min'),'Re-enabling Race retains explicitly entered minutes in this draft');
+ timing.close();
+ d.getElementById('builderApply').click();
+ await until(()=>d.getElementById('builderStatus').textContent.includes('Session applied'),'Timed race applied');
+ check(writes.some(body=>body.action==='raceMinutes'&&body.value===10)&&setup.settings.SESSSET_Finish_Criteria.currentValue===2&&setup.settings.SESSSET_race_time.currentValue===10,'Entering 10 applies exactly 10 timed minutes');
  w.redlineTestUi=ui;
  document.getElementById('report').textContent='PASS '+count+' Redline checks passed';
 }

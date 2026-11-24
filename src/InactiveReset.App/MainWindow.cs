@@ -17,6 +17,10 @@ namespace InactiveReset.App;
 /// </summary>
 internal sealed class MainWindow : Form
 {
+    private const int DwmUseImmersiveDarkMode = 20, DwmCaptionColor = 35, DwmTextColor = 36;
+    private static readonly Color WorkspaceChrome = Color.FromArgb(23, 19, 17);
+    private static readonly Color WorkspaceText = Color.FromArgb(244, 234, 226);
+    private readonly Icon _appIcon;
     private readonly string _url;
     private readonly WebView2 _view = new();
     private readonly Label _status = new();
@@ -41,24 +45,36 @@ internal sealed class MainWindow : Form
         _learningTimer.Tick += (_, _) => { EndLearning(); _ = PublishInputsAsync("Assignment timed out. Release the button, then try again."); };
 
         Text = "Inactive Reset";
+        using (var icon = typeof(MainWindow).Assembly.GetManifestResourceStream("InactiveReset.ico")!)
+            _appIcon = new Icon(icon);
+        Icon = _appIcon;
         ClientSize = new Size(1280, 800);
         MinimumSize = SizeFromClientSize(new Size(1040, 680));
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(23, 25, 29);
+        BackColor = WorkspaceChrome;
 
         _status.Dock = DockStyle.Fill;
         _status.TextAlign = ContentAlignment.MiddleCenter;
-        _status.ForeColor = Color.Gainsboro;
+        _status.ForeColor = WorkspaceText;
         _status.Font = new Font("Segoe UI", 10F);
         _status.Text = "starting…";
         Controls.Add(_status);
 
         _view.Dock = DockStyle.Fill;
         _view.Visible = false;
-        _view.DefaultBackgroundColor = Color.FromArgb(23, 25, 29);
+        _view.DefaultBackgroundColor = WorkspaceChrome;
         Controls.Add(_view);
 
         Load += async (_, _) => await StartAsync();
+    }
+
+    [DllImport("dwmapi.dll", ExactSpelling = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, in int value, int size);
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _appIcon?.Dispose();
     }
 
     private async Task StartAsync()
@@ -160,6 +176,13 @@ internal sealed class MainWindow : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) && !SystemInformation.HighContrast)
+        {
+            int dark = 1, caption = ColorTranslator.ToWin32(WorkspaceChrome), text = ColorTranslator.ToWin32(WorkspaceText);
+            DwmSetWindowAttribute(Handle, DwmUseImmersiveDarkMode, in dark, sizeof(int));
+            DwmSetWindowAttribute(Handle, DwmCaptionColor, in caption, sizeof(int));
+            DwmSetWindowAttribute(Handle, DwmTextColor, in text, sizeof(int));
+        }
         RegisterKeys(_bindings);
         _wheel.Register(Handle);
     }
@@ -200,7 +223,7 @@ internal sealed class MainWindow : Form
         {
             if (!GameFocused()) return;
             var update = "";
-            if (action is "capture" or "previous" or "next")
+            if (action is "capture" or "previous" or "next" or "nextQuick" or "clearQuick")
             {
                 // Practice polling stops on Home; refresh here because occluded WebViews may defer fetch continuations.
                 using var state = JsonDocument.Parse(await InputStateClient.GetStringAsync(_url + "api/state"));

@@ -1,4 +1,5 @@
 using InactiveReset.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -33,6 +34,24 @@ public sealed class InputBindingsTests
         Assert.Equal(new KeyboardBinding(0x28, 3), bindings.Bindings["next"].Keyboard);
         Assert.Null(bindings.Bindings["capture"].Wheel);
         Assert.Throws<ArgumentException>(() => bindings.With("unknown", new()));
+    }
+
+    [Fact]
+    public void OlderBindingsKeepTheirAssignmentsAndAddUnassignedQuickActions()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var original = InputBindings.Defaults().With("next", new(Wheel: new("wheel", 21)));
+            original.Bindings.Remove("nextQuick");
+            original.Bindings.Remove("clearQuick");
+            File.WriteAllText(path, JsonSerializer.Serialize(original));
+            var loaded = InputBindings.Load(path);
+            Assert.Equal(original.Bindings["next"], loaded.Bindings["next"]);
+            Assert.Equal(new ActionBinding(), loaded.Bindings["nextQuick"]);
+            Assert.Equal(new ActionBinding(), loaded.Bindings["clearQuick"]);
+        }
+        finally { File.Delete(path); }
     }
 
     [Theory]

@@ -1,5 +1,5 @@
 'use strict';
-let labPage='home', labState=null, preferencesReady=false, preferencesWrites=Promise.resolve(), toastTimer;
+let labPage='setup', labState=null, preferencesReady=false, preferencesWrites=Promise.resolve(), toastTimer;
 let labPreferences={schema:1,theme:'midnight',style:'original',density:'comfortable',pins:['SESSSET_Num_Opponents','SESSSET_AI_Strength','SESSSET_weather'],cars:[],tracks:[],checkpoints:[],plans:[]};
 let vehicleSeason='all',vehicleClass='',favouriteCarsOnly=false,libraryQuery='',librarySort='name',onlyFavourites=false,logFilter='all';
 let pendingPlan=null,applyingPlan=false,cancelPlan=false,lastUndo=null,editingPreset=null,presetQuery='';
@@ -21,16 +21,10 @@ function persistPreferences(){
   preferencesWrites=preferencesWrites.then(async()=>{try{await request('/api/lab/preferences',snapshot);return true;}catch(e){notify('Your Lab choices could not be saved. '+e.message,true);return false;}});
   return preferencesWrites;
 }
-function effectiveTheme(){return 'midnight';}
-function applyAppearance(){
- labPreferences.style='redline';labPreferences.theme='midnight';labPreferences.density='comfortable';
- document.body.dataset.style='redline';document.body.dataset.theme='midnight';document.body.dataset.density='comfortable';
- for(const img of document.querySelectorAll('.brand-logo')){const src=brandLogoUrl(img.dataset.brand);if(img.getAttribute('src')===src)continue;img.hidden=true;img.nextElementSibling.hidden=false;img.onload=()=>{img.hidden=false;img.nextElementSibling.hidden=true;};img.src=src;}
- document.querySelector('.lab-brand small').textContent='REDLINE / PRACTICE WORKSPACE';
-}
 function setPage(page,nextSection){
-  const panels={home:'homePanel',setup:'setupPanel',practice:'practicePanel',library:'libraryPanel',activity:'activityPanel',settings:'settingsPanel',presets:'presetsPanel',official:'officialPanel'};
+  const panels={setup:'setupPanel',practice:'practicePanel',library:'libraryPanel',activity:'activityPanel',settings:'settingsPanel',presets:'presetsPanel',official:'officialPanel'};
   if(!panels[page])return;
+  if(typeof toggleSummary==='function')toggleSummary(false);
   labPage=page;for(const id of Object.values(panels))$(id).hidden=id!==panels[page];
   toggleRecordedLaps();
   document.body.dataset.page=page;
@@ -38,27 +32,15 @@ function setPage(page,nextSection){
   $('sessionSummary').hidden=$('summaryMeta').hidden=document.querySelector('.dock-journal').hidden=$('setupDock').hidden;
   $('dockEyebrow').textContent=$('setupDock').hidden?'YOUR PRACTICE':'YOUR SESSION';
   if(nextSection)baseSwitchSection(nextSection);
-  for(const b of document.querySelectorAll('.rail-link'))b.classList.toggle('active',b.dataset.page===page || page==='setup' && !!b.dataset.section);
+  for(const b of document.querySelectorAll('.workspace-nav [data-page]')){
+    if(b.dataset.page===page)b.setAttribute('aria-current','page');
+    else b.removeAttribute('aria-current');
+  }
   if(['practice','library','activity'].includes(page))refresh();else{clearInterval(timer);timer=null;period=0;}
-  if(page==='presets'){renderPlans();renderOfficialSessions();}if(page==='library')renderLibrary();if(page==='activity')renderLabActivity();
+  if(page==='official'&&typeof renderOfficialWorkspace==='function')renderOfficialWorkspace();if(page==='presets'){renderPlans();renderOfficialSessions();}if(page==='library')renderLibrary();if(page==='activity')renderLabActivity();
   $('editor').scrollTop=0;updateLabControls();
   if(typeof updateWorkspace==='function')updateWorkspace();
 }
-function choosePracticeView(id) {
-  for (const button of document.querySelectorAll('.practice-views button')) {
-    const panel = button.getAttribute('aria-controls');
-    const selected = panel === id;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-pressed', String(selected));
-    $(panel).hidden = !selected;
-  }
-  document.querySelector('.practice-content').scrollTop = 0;
-  toggleRecordedLaps();
-  if (id === 'practiceSaved' && typeof renderPracticeManagement === 'function') renderPracticeManagement();
-  if (id === 'timelinePanel') updateTimelineButtons(destinationState);
-}
-for (const button of document.querySelectorAll('.practice-views button'))
-  button.addEventListener('click', () => choosePracticeView(button.getAttribute('aria-controls')));
 const baseSwitchSection=switchSection;
 switchSection=next=>setPage('setup',next);
 const baseSchedule=schedule;
@@ -73,30 +55,34 @@ row=function(key,setting,action='setting',extra={}){
   return baseRow(key,setting,action,extra);
 };
 const baseRenderContent=renderContent;
-renderContent=function(){baseRenderContent();$('sectionContent').dataset.section=section;if(setup&&catalog){renderHome();if(section==='weather')addWeatherPreview();if(section==='sessions')addDurationShortcuts();}updateLabControls();};
+renderContent=function(){baseRenderContent();$('sectionContent').dataset.section=section;if(setup&&catalog){if(section==='weather')addWeatherPreview();if(section==='sessions')addDurationShortcuts();}updateLabControls();};
 const baseNavigation=renderNavigation;
-renderNavigation=function(){baseNavigation();renderMetrics();updateLabControls();maybeRefreshOfficialSessions();};
+renderNavigation=function(){baseNavigation();updateLabControls();maybeRefreshOfficialSessions();};
 const baseUpdateControls=updateControls;
 updateControls=function(){baseUpdateControls();updateLabControls();};
 function updateLabControls(){
-  const locked=!setup||!menuReady||starting||serverBusy||applyingPlan||(!savingOptions&&(saving||!!sessionValueEdits.size));
+  const locked=!canEditSessionDraft()||starting||serverBusy||applyingPlan||(saving&&!sessionValueSaving&&!savingOptions);
+  const optionsLocked=locked||!!sessionValueEdits.size;
   const busy=saving||starting||serverBusy||applyingPlan||!!sessionValueEdits.size;
-  $('editorFields').disabled=!menuReady||starting||serverBusy||applyingPlan||(saving&&!sessionValueSaving&&!savingOptions);$('savePlanButton').disabled=!setup||!preferencesReady||busy;
+  $('editorFields').disabled=locked;$('savePlanButton').disabled=!setup||!preferencesReady||busy;
+  for(const b of document.querySelectorAll('[data-dialog=defaultsDialog]'))b.disabled=optionsLocked||!menuReady;
   $('refreshLabButton').disabled=busy;
-  for(const b of document.querySelectorAll('[data-plan],[data-official-preset]'))b.disabled=busy||b.hasAttribute('data-official-preset')&&officialRefreshing;
-  for(const b of document.querySelectorAll('[data-change],[data-setting],[data-assist],[data-amount],[data-class],[data-car],[data-track],#circuitSelect,#trackSelect,#carSelect,#gridSource,[data-target],[data-weather-copy]')){if(b.dataset.lmuDisabled===undefined)b.dataset.lmuDisabled=String(b.disabled);b.disabled=locked||b.dataset.lmuDisabled==='true';}
-  if(!applyingPlan)$('applyPlanButton').disabled=busy||locked||!pendingPlan?.intents.length;
+  for(const b of document.querySelectorAll('[data-plan],[data-official-preset]'))b.disabled=busy;
+  for(const b of document.querySelectorAll('[data-change],[data-setting],[data-assist],[data-amount],[data-class],[data-car],[data-track],#circuitSelect,#trackSelect,#carSelect,#gridSource,[data-target],[data-weather-copy]')){if(b.dataset.lmuDisabled===undefined)b.dataset.lmuDisabled=String(b.disabled);b.disabled=(b.dataset.sessionValue?locked:optionsLocked)||b.dataset.lmuDisabled==='true';}
+  if(!applyingPlan&&pendingPlan){
+    const stage=pendingPlan.allowDraft&&!menuReady;
+    $('applyPlanButton').disabled=busy||locked||!(stage?pendingPlan.allIntents.length:menuReady&&pendingPlan.intents.length);
+    $('applyPlanButton').textContent=stage?'Load into draft':pendingPlan.official?'Apply to Session Builder':'Apply to LMU';
+  }
   const practiceBusy=!!labState?.busy;
   $('quickCaptureButton').disabled=!canCapture(labState||{});
   $('allCondition').disabled=$('allTemperature').disabled=practiceBusy;
-  for(const b of document.querySelectorAll('[data-tyre-preset]'))b.disabled=practiceBusy;
-  $('undoButton').disabled=busy||locked||!lastUndo;
+  $('undoButton').disabled=busy||locked||!menuReady||!lastUndo;
   renderAccessMessage();
   updateSessionValueControls();
   if(typeof updateWorkspace==='function')updateWorkspace();
 }
 function renderAccessMessage(){
-  renderMetrics();
   const switchHint=gameRunning?'LMU is already running. Close it before choosing a different launch mode.':null;
   $('launchButton').title=switchHint||'EAC off: all tools in single-player Practice. Online racing is unavailable.';
   $('launchEacButton').title=switchHint||'EAC on: online racing, local session setup and checkpoint capture. Teleporting and tyre preparation are disabled.';
@@ -107,43 +93,74 @@ function renderAccessMessage(){
     :gameProtected?'Easy Anti-Cheat is active. Events, saved presets and checkpoint capture remain available when LMU provides a car position. '+(online?'You are in multiplayer. Open LMU’s single-player main menu to edit or start a local session. ':'You can edit and start local sessions from LMU’s single-player main menu. ')+'To teleport or prepare tyres, close LMU and choose Launch local play, then load single-player Practice.'
     :online?'Events and saved data remain available. Session editing needs LMU’s single-player main menu; teleporting and tyre preparation need single-player Practice.'
     :'Choose an official event or build a session. Review and apply it, press Start session, then switch to LMU and press Drive. Teleporting and tyre preparation work only in single-player Practice. For online racing, close LMU first and choose Launch with EAC.';
-  $('accessNotice').hidden=gameRunning&&!gameProtected&&!online;
+  $('accessNotice').hidden=['official','practice'].includes(labPage)||gameRunning&&(labPage==='setup'||!gameProtected&&!online);
   $('launchChoices').hidden=gameRunning;
   $('launchLocalChoice').disabled=$('launchEacChoice').disabled=gameRunning||launching||saving||starting;
 }
-function renderMetrics(){
-  $('currentSetupSummary').textContent=setup ? (currentTrack()?.eventName||currentTrack()?.trackName||currentTrack()?.name||'Current session')+' · '+(currentCar()?.desc||'Choose your car') : 'Open LMU to prepare a session. Saved presets and checkpoints stay available here.';
-}
-function renderHome(){renderMetrics();renderOfficialSessions();renderPlans();maybeRefreshOfficialSessions();}
 function parts(car){return (car.fullPathTree||'Other, Other, Other').split(',').map(s=>s.trim());}
-function modelKey(car){return parts(car)[2].toLowerCase()+'|'+parts(car)[1].toLowerCase();}
-function circuitName(track){if(!track)return '';track=catalog?.tracks?.find(t=>t.id===track.id)||track;return (track.displayProperties?.shortName||track.shortName||track.trackName||track.name||'Unknown circuit').replace(/\s+\d+\.\d+$/, '').replace(/Aut.dromo Jos. Carlos Pace/,'Autódromo José Carlos Pace');}
+function modelKey(car){return carModel(car).toLowerCase()+'|'+parts(car)[1].toLowerCase();}
+function shortVenue(name){
+  const venues=[
+    ['Le Mans',/lemans|sarthe/],['Daytona',/daytona/],['Bahrain',/bahrain/],['Qatar',/qatar|lusail/],
+    ['COTA',/cota|circuitoftheamericas/],['Fuji',/fuji/],['Interlagos',/interlagos|josecarlospace/],
+    ['Barcelona',/barcelona/],['Imola',/imola|enzodinoferrari/],['Laguna Seca',/lagunaseca/],
+    ['Long Beach',/longbeach/],['Monza',/monza/],['Paul Ricard',/paulricard/],
+    ['Portimão',/portimao|algarve/],['Road Atlanta',/roadatlanta/],['Sebring',/sebring/],
+    ['Silverstone',/silverstone/],['Spa',/spa(?:wec|francorchamps|$)/]
+  ];
+  const key=name.normalize('NFD').replace(/[^a-z0-9]/gi,'').toLowerCase();
+  return venues.find(([,pattern])=>pattern.test(key))?.[0]||'';
+}
+function circuitName(track){
+  if(!track)return '';
+  track=catalog?.tracks?.find(t=>t.id===track.id)||track;
+  const name=track.displayProperties?.shortName||track.shortName||track.trackName||track.name||'Unknown circuit';
+  return shortVenue(track.sceneDesc||'')||shortVenue(name)||name.replace(/\s+\d+\.\d+$/, '');
+}
 function layoutName(track){
  const scene=track.sceneDesc||'',name=track.displayProperties?.name||track.name||track.eventName||track.type||'Grand Prix';
- if(/^(\d+ Hours|\d+ Heures|\d+ Miles|Rolex|Lone Star|Qatar \d+)/i.test(name))return /ELMS/.test(scene)?'Grand Prix · ELMS':'Grand Prix · WEC';
+ if(/^(\d+ Hours|\d+ Heures|\d+ Miles|Rolex|Lone Star|Qatar \d+)/i.test(name))return /ELMS/i.test(scene)?'Grand Prix · ELMS':'Grand Prix · WEC';
  const base=circuitName(track);return name.startsWith(base)?name.slice(base.length).trim()||'Grand Prix':name;
 }
-function brandLogoUrl(brand){return '/api/brands/'+encodeURIComponent(brand)+'?theme='+effectiveTheme();}
+function trackDisplay(track){
+  if(!track)return '';
+  const layout=layoutName(track);
+  return [circuitName(track),/^Grand Prix(?: · .+)?$/.test(layout)?'':layout].filter(Boolean).join(' · ');
+}
+function layoutQualifier(name){
+  return name.replaceAll('_',' ').match(/\b(Outer|Paddock|School|National|Short|No Chicane)\b/i)?.[0];
+}
+function liveTrackDisplay(name){
+  const id=typeof mappedLayout==='function'?mappedLayout(name):null;
+  const track=catalog?.tracks?.find(t=>t.id===id);
+  if(track)return trackDisplay(track);
+  const venue=shortVenue(name), layout=layoutQualifier(name);
+  return venue?[venue,layout].filter(Boolean).join(' · '):name;
+}
+function brandLogoUrl(brand){return '/api/brands/'+encodeURIComponent(brand);}
 function brandName(car){return car.manufacturer||parts(car)[2].match(/^(Aston Martin|Mercedes-AMG|Isotta Fraschini|[A-Za-z]+)/)?.[0]||'LMU';}
 const vehicleClasses = new Map([
  ['GT3', ['GT3', 'gt3']], ['LMGT3', ['GT3', 'gt3']], ['GTE', ['GTE', 'gte']],
- ['LMP2', ['LMP2', 'lmp2']], ['LMP3', ['LMP3', 'lmp3']],
- ['HYPERCAR', ['Hypercar', 'hypercar']], ['LMP2_ELMS', ['LMP2 (ELMS)', 'lmp2-elms']]
+ ['LMP2', ['LMP2 (WEC)', 'lmp2']], ['LMP3', ['LMP3', 'lmp3']],
+ ['HYPER', ['Hypercar', 'hypercar']], ['HYPERCAR', ['Hypercar', 'hypercar']], ['LMP2_ELMS', ['LMP2 (ELMS)', 'lmp2-elms']]
 ]);
 function vehicleClassBadge(value) {
  const [label, color] = vehicleClasses.get(value.toUpperCase()) || [value, ''];
  return `<span class="vehicle-class" data-class-color="${color}">${escapeHtml(label)}</span>`;
 }
-function renderSelection(){
+function renderSelection(panel){
  const car=currentCar(),track=currentTrack(),owned=catalog.cars.filter(c=>c.isOwned),key=car?modelKey(car):'';
  if(!vehicleClass)vehicleClass='all';
- const filtered=owned.filter(c=>(vehicleSeason==='all'||parts(c)[0]===vehicleSeason)&&(vehicleClass==='all'||parts(c)[1]===vehicleClass)&&(!carSearch||`${c.desc} ${c.fullPathTree} ${brandName(c)}`.toLowerCase().includes(carSearch.toLowerCase())));
+ const filtered=owned.filter(c=>(vehicleSeason==='all'||parts(c)[0]===vehicleSeason)&&(vehicleClass==='all'||parts(c)[1]===vehicleClass)&&(!carSearch||`${c.desc} ${c.fullPathTree} ${carModel(c)} ${brandName(c)}`.toLowerCase().includes(carSearch.toLowerCase())));
  const favs=new Set(owned.filter(c=>labPreferences.cars.includes(c.id)).map(modelKey));
- const models=[...new Map(filtered.filter(c=>!favouriteCarsOnly||favs.has(modelKey(c))).map(c=>[modelKey(c),c])).values()].sort((a,b)=>parts(a)[2].localeCompare(parts(b)[2]));
+ const models=[...new Map(filtered.filter(c=>!favouriteCarsOnly||favs.has(modelKey(c))).map(c=>[modelKey(c),c])).values()].sort((a,b)=>carModel(a).localeCompare(carModel(b)));
  const seasons=[...new Set(owned.map(c=>parts(c)[0]))].sort().reverse(),classes=[...new Set(owned.map(c=>parts(c)[1]))].sort();
  const tracks=catalog.tracks.filter(t=>t.type!=='Showroom'),circuits=[...new Set(tracks.map(circuitName))].sort(),circuit=circuitName(track),layouts=tracks.filter(t=>circuitName(t)===circuit),teams=owned.filter(c=>modelKey(c)===key);
- return `<section class="section-block circuit-picker"><div><label class="input-label" for="circuitSelect">Circuit</label><select id="circuitSelect">${circuits.map(n=>option(n,n,n===circuit,!tracks.some(t=>circuitName(t)===n&&t.owned))).join('')}</select></div><div><label class="input-label" for="trackSelect">Layout / event configuration</label><select id="trackSelect">${layouts.map(t=>option(t.id,layoutName(t),t.id===track?.id,!t.owned)).join('')}</select></div><button class="icon-button" data-fav-track="${escapeHtml(track?.id||'')}" aria-label="Favourite current layout">${labPreferences.tracks.includes(track?.id)?'★':'☆'}</button><div class="track-details"><span class="pill">${escapeHtml(track?.countryCode||'')}</span><span class="pill">${escapeHtml(track?.trackLength||tracks.find(t=>t.id===track?.id)?.length||'—')} km</span></div><div class="favourite-tracks">${tracks.filter(t=>t.owned&&labPreferences.tracks.includes(t.id)).map(t=>`<button class="button" data-track="${escapeHtml(t.id)}">${escapeHtml(circuitName(t))} · ${escapeHtml(layoutName(t))}</button>`).join('')}</div></section>
- <section class="section-block"><h2>Car model</h2><div class="vehicle-filters"><input id="carSearch" type="search" value="${escapeHtml(carSearch)}" placeholder="Search model, brand or team" aria-label="Search cars"><button class="button quiet" data-favourite-cars aria-pressed="${favouriteCarsOnly}">${favouriteCarsOnly?'★':'☆'} Favourites</button><select id="vehicleSeason" aria-label="Livery season">${option('all','All livery seasons',vehicleSeason==='all')}${seasons.map(s=>option(s,s,s===vehicleSeason)).join('')}</select></div><div class="vehicle-class-filters" role="group" aria-label="Vehicle class"><button class="button" data-vehicle-class="all" aria-pressed="${vehicleClass==='all'}">All classes</button>${classes.map(value=>`<button class="button" data-vehicle-class="${escapeHtml(value)}" aria-pressed="${vehicleClass===value}">${vehicleClassBadge(value)}</button>`).join('')}</div><div class="livery-choice"><label class="input-label" for="carSelect">Season · team · livery</label><select id="carSelect">${teams.sort((a,b)=>parts(b)[0].localeCompare(parts(a)[0])||a.desc.localeCompare(b.desc)).map(c=>option(c.id,parts(c)[0]+' · '+c.desc,c.id===car?.id)).join('')}</select></div><div class="vehicle-grid">${models.map(c=>`<article class="vehicle-card ${modelKey(c)===key?'active':''}"><button class="car-pick" data-car="${escapeHtml(c.id)}" aria-pressed="${modelKey(c)===key}"><span class="brand-art"><img class="brand-logo" data-light-variant="${['Alpine','Aston Martin','BMW','Cadillac','Genesis','Isotta Fraschini','Lexus','Ligier','Oreca','Toyota','Vanwall'].includes(brandName(c))}" data-brand="${escapeHtml(brandName(c))}" src="${brandLogoUrl(brandName(c))}" alt="${escapeHtml(brandName(c))}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="brand-wordmark" hidden>${escapeHtml(brandName(c))}</span></span><strong>${escapeHtml(parts(c)[2])}</strong>${vehicleClassBadge(parts(c)[1])}</button><button class="icon-button" data-fav-car="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(parts(c)[2])}">${favs.has(modelKey(c))?'★':'☆'}</button></article>`).join('')||'<p class="empty-note">No matching models.</p>'}</div><p class="small-note">${models.length} models. Season entries share one card; distinct Evo models and classes stay separate.</p></section><button class="button quiet" data-dialog="defaultsDialog">Use circuit defaults</button>`;
+ const circuitMarkup = `<section class="section-block circuit-picker"><div><label class="input-label" for="circuitSelect">Circuit</label><select id="circuitSelect">${circuits.map(n=>option(n,n,n===circuit,!tracks.some(t=>circuitName(t)===n&&t.owned))).join('')}</select></div><div><label class="input-label" for="trackSelect">Layout / event configuration</label><select id="trackSelect">${layouts.map(t=>option(t.id,layoutName(t),t.id===track?.id,!t.owned)).join('')}</select></div><button class="icon-button" data-fav-track="${escapeHtml(track?.id||'')}" aria-label="Favourite current layout">${labPreferences.tracks.includes(track?.id)?'★':'☆'}</button><div class="track-details"><span class="pill">${escapeHtml(track?.countryCode||'')}</span><span class="pill">${escapeHtml(track?.trackLength||tracks.find(t=>t.id===track?.id)?.length||'—')} km</span></div><div class="favourite-tracks">${tracks.filter(t=>t.owned&&labPreferences.tracks.includes(t.id)).map(t=>`<button class="button" data-track="${escapeHtml(t.id)}">${escapeHtml(circuitName(t))} · ${escapeHtml(layoutName(t))}</button>`).join('')}</div></section>`;
+ const carMarkup = `<section class="section-block"><h2>Car model</h2><div class="vehicle-filters"><input id="carSearch" type="search" value="${escapeHtml(carSearch)}" placeholder="Search model, brand or team" aria-label="Search cars"><button class="button quiet" data-favourite-cars aria-pressed="${favouriteCarsOnly}">${favouriteCarsOnly?'★':'☆'} Favourites</button><select id="vehicleSeason" aria-label="Livery season">${option('all','All livery seasons',vehicleSeason==='all')}${seasons.map(s=>option(s,s,s===vehicleSeason)).join('')}</select></div><div class="vehicle-class-filters" role="group" aria-label="Vehicle class"><button class="button" data-vehicle-class="all" aria-pressed="${vehicleClass==='all'}">All classes</button>${classes.map(value=>`<button class="button" data-vehicle-class="${escapeHtml(value)}" aria-pressed="${vehicleClass===value}">${vehicleClassBadge(value)}</button>`).join('')}</div><div class="livery-choice" ${panel==='car'?'hidden':''}><label class="input-label" for="carSelect">Season · team · livery</label><select id="carSelect">${teams.sort((a,b)=>parts(b)[0].localeCompare(parts(a)[0])||a.desc.localeCompare(b.desc)).map(c=>option(c.id,parts(c)[0]+' · '+c.desc,c.id===car?.id)).join('')}</select></div><div class="vehicle-grid horizontal-rail">${models.map(c=>`<article class="vehicle-card ${modelKey(c)===key?'active':''}"><button class="car-pick" data-car="${escapeHtml(c.id)}" aria-pressed="${modelKey(c)===key}"><span class="brand-art"><img class="brand-logo" data-brand="${escapeHtml(brandName(c))}" src="${brandLogoUrl(brandName(c))}" alt="${escapeHtml(brandName(c))}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="brand-wordmark" hidden>${escapeHtml(brandName(c))}</span></span><strong>${escapeHtml(carModel(c))}</strong>${vehicleClassBadge(parts(c)[1])}</button><button class="icon-button" data-fav-car="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(carModel(c))}">${favs.has(modelKey(c))?'★':'☆'}</button></article>`).join('')||'<p class="empty-note">No matching models.</p>'}</div><h3>Liveries</h3><div class="horizontal-rail" aria-label="Liveries">${teams.sort((a,b)=>parts(b)[0].localeCompare(parts(a)[0])||a.desc.localeCompare(b.desc)).map(c=>`<button class="button livery-tile" data-livery="${escapeHtml(c.id)}" aria-label="${escapeHtml(parts(c)[0]+' · '+c.desc)}" title="${escapeHtml(parts(c)[0]+' · '+c.desc)}" aria-pressed="${c.id===car?.id}"><span class="livery-art">${typeof artwork==='function'?artwork('car',carArtKey(c)):''}</span><strong class="livery-fallback">${escapeHtml(c.desc)}<br><small>${escapeHtml(parts(c)[0])}</small></strong></button>`).join('')}</div></section>`;
+ if(panel==='car')return carMarkup;
+ const defaults='<button class="button quiet" data-dialog="defaultsDialog">Use LMU circuit defaults</button>';
+ return circuitMarkup+(panel==='circuit'?'':carMarkup)+defaults;
 };
 const baseRenderSummary=renderSummary;
 renderSummary=function(){baseRenderSummary();const track=currentTrack();if(track){$('selectionSummary').querySelector('h3').textContent=circuitName(track);$('selectionSummary').querySelector('p').textContent=layoutName(catalog?.tracks.find(t=>t.id===track.id)||track);}};
@@ -170,9 +187,11 @@ change=function(body){
   });
 };
 const baseCheckpoints=renderCheckpoints;
-renderCheckpoints=function(s){labState=s;baseCheckpoints(s);$('libraryCount').textContent=(s.checkpoints||[]).length;
- const list=(s.checkpoints||[]).filter(c=>c.track.toLowerCase()===(s.session?.track||'').toLowerCase());
- $('destinationList').innerHTML=list.map(c=>`<button class="destination-option ${$('cp').value===c.id?'active':''}" data-pick-checkpoint="${escapeHtml(c.id)}" ${s.busy?'disabled':''} aria-pressed="${$('cp').value===c.id}"><strong>${escapeHtml(c.name)}</strong><span>${Math.round(c.lapDistance||0).toLocaleString()} m</span></button>`).join('')||'<p class="empty-note">'+(s.session?'No captures for this track yet.':'Load Practice to see destinations.')+'</p>';if(labPage==='library')renderLibrary();if(typeof renderPracticeManagement==='function')renderPracticeManagement();};
+renderCheckpoints=function(s){
+ labState=s;baseCheckpoints(s);$('libraryCount').textContent=(s.checkpoints||[]).filter(c=>!c.quick).length;
+ if(labPage==='library')renderLibrary();
+ if(typeof renderPracticeManagement==='function')renderPracticeManagement();
+};
 const baseActivity=renderActivity;
 renderActivity=function(s){baseActivity(s);labState=s;$('operationRibbon').hidden=!s.busy;$('operationText').textContent=s.phase==='Armed'?'LMU is ready. Press Drive in the game.':s.phaseMessage||'An operation is in progress.';if(labPage==='activity')renderLabActivity();updateLabControls();};
 function renderLibrary(){
@@ -183,14 +202,15 @@ function renderLibrary(){
 }
 function activityText(){return [...diagnosticLog,...(labState?.checkpointErrors||[]),...(labState?.log||[]),...(labState?.outcome?.lines||[]).map(l=>l.label+': '+l.value)].join('\n')||'No activity yet.';}
 function renderLabActivity(){const text=activityText(),filtered=logFilter==='issues'?text.split('\n').filter(l=>/error|fail|refus|unavail|unknown|cancel|mismatch|skipped checkpoint/i.test(l)).join('\n'):text;$('log').textContent=filtered;$('activityEmpty').hidden=!!filtered;}
-function toggleFavourite(group,id){if(!id)return;const list=labPreferences[group],at=list.indexOf(id);if(at<0){if(list.length>=200){notify('Your favourites list is full.',true);return;}list.push(id);}else list.splice(at,1);persistPreferences();renderHome();renderLibrary();if(setup&&labPage==='setup')renderContent();}
+function toggleFavourite(group,id){if(!id)return;const list=labPreferences[group],at=list.indexOf(id);if(at<0){if(list.length>=200){notify('Your favourites list is full.',true);return;}list.push(id);}else list.splice(at,1);persistPreferences();renderLibrary();if(setup&&labPage==='setup')renderContent();}
 function snapshotPlan(){
   if(!setup)throw Error('Load LMU’s menu setup first.');
   const target={car:currentCar()?.id,track:currentTrack()?.id,settings:{},assists:{},amounts:Object.fromEntries(Object.entries(setup.amounts).map(([session, amount])=>[session, Math.min(amount,1)])),classes:clone(setup.selection.classesSelection||[]),fullGrid:!!setup.selection.fullGrid,weather:{},display:{}};
   for(const [k,v] of Object.entries(setup.settings))if(!['SESSSET_num_qual_sessions','SESSSET_num_race_sessions','SESSSET_run_warmup'].includes(k))target.settings[k]=v.currentValue;
 
   for(const [k,v] of Object.entries(setup.settings))target.display[k]=v.stringValue||String(v.currentValue)+(k.endsWith('_Length')?' min':'');
-  target.display.car=(currentCar()?.desc||'')+' · '+parts(currentCar()||{})[2];target.display.track=currentTrack()?.eventName||currentTrack()?.trackName||'Saved circuit';
+  target.display.car=carModel(currentCar());target.display.track=trackDisplay(currentTrack())||'Saved circuit';
+  if(RACE_MODE in target.settings)target.display[RACE_MODE]=setup.settings[RACE_MODE].stringValue||SETTING_CHOICES[RACE_MODE][target.settings[RACE_MODE]];
   if(setup.settings.SESSSET_weather?.currentValue===4)for(const [s,nodes] of Object.entries(setup.weather)){target.weather[s]={};for(const [n,fields] of Object.entries(nodes)){target.weather[s][n]={};for(const [k,v] of Object.entries(fields))target.weather[s][n][k]=v.currentValue;}}
   return target;
 }
@@ -203,25 +223,44 @@ function validatePlan(plan){
   return plan;
 }
 function planIntents(target){
-  const intents=[];if(target.track)intents.push({type:'track',id:target.track,display:target.display?.track});if(target.car)intents.push({type:'car',id:target.car,display:target.display?.car});
+  const intents=[];if(target.track)intents.push({type:'track',id:target.track,display:target.display?.track});if(target.car)intents.push({type:'car',id:target.car});
   for(const [s,v] of Object.entries(target.amounts))intents.push({type:'amount',session:s,value:Math.min(v,1)});
   if(Object.hasOwn(target.settings,'SESSSET_weather'))intents.push({type:'setting',key:'SESSSET_weather',value:target.settings.SESSSET_weather});
-  for(const [k,v] of Object.entries(target.settings))if(k!=='SESSSET_weather')intents.push({type:'setting',key:k,value:v,display:target.display?.[k]});
+  const mode=target.settings[RACE_MODE], minutes=target.settings[RACE_MINUTES];
+  const timed=mode===TIMED_RACE&&Number.isInteger(minutes)&&minutes>=1&&minutes<=2000;
+  if(timed)intents.push({type:'raceMinutes',value:minutes});
+  else if(mode!==undefined)intents.push({type:'setting',key:RACE_MODE,value:mode,display:target.display?.[RACE_MODE]});
+  for(const [k,v] of Object.entries(target.settings))
+    if(k!=='SESSSET_weather'&&k!==RACE_MODE&&!(timed&&(k===RACE_MINUTES||k===RACE_LAPS)))
+      intents.push({type:'setting',key:k,value:v,display:target.display?.[k]});
   // Old exports may contain assists; never apply user driving preferences.
   if(target.classes)intents.push({type:'grid',classes:target.classes,fullGrid:target.fullGrid});
   for(const [s,nodes] of Object.entries(target.weather))for(const [n,fields] of Object.entries(nodes))for(const [k,v] of Object.entries(fields))intents.push({type:'weather',session:s,node:n,key:k,value:v});
   return intents;
 }
 function intentValue(i){if(i.type==='setting')return setup?.settings[i.key]?.currentValue;if(i.type==='assist')return setup?.assists[i.key]?.currentValue;if(i.type==='weather')return setup?.weather[i.session]?.[i.node]?.[i.key]?.currentValue;if(i.type==='amount')return setup?.amounts[i.session];if(i.type==='car')return currentCar()?.id;if(i.type==='track')return currentTrack()?.id;if(i.type==='grid')return JSON.stringify([setup?.selection.classesSelection,!!setup?.selection.fullGrid]);return null;}
-function needed(i){if(i.type==='weatherPreset'||i.type==='practiceConditions')return true;if(i.type==='grid')return JSON.stringify([i.classes,i.fullGrid])!==intentValue(i);if(['car','track'].includes(i.type))return i.id!==intentValue(i);return !sameNumber(i.value,intentValue(i));}
-function describeIntent(i){if(i.type==='setting'&&TIME_SETTINGS.has(i.key))return [label(i.key),TIME_MODES[i.value]||clockValue(i.value)];if(i.type==='practiceConditions')return ['Practice time & surface',String(Math.floor(i.time/60)).padStart(2,'0')+':'+String(i.time%60).padStart(2,'0')+' · '+i.road.replace('preset:','').replace('.RRBIN','').toLowerCase()+' · water '+(i.waterDepth<0?'track default':Math.round(i.waterDepth*100)+'%')];if(i.type==='car')return ['Car',i.display||catalog?.cars.find(c=>c.id===i.id)?.desc||'Saved car'];if(i.type==='track')return ['Circuit',i.display||catalog?.tracks.find(t=>t.id===i.id)?.name||'Saved circuit'];if(i.type==='grid')return ['Opponent classes',(i.classes.join(', ')||'None')+' · '+(i.fullGrid?'fill grid':'season grid')];if(i.type==='amount')return [SESSION_NAMES[i.session],i.value===0?'Disabled':i.value+' session'+(i.value>1?'s':'')];if(i.type==='weatherPreset')return [SESSION_NAMES[i.session]+' forecast',i.preset.toLowerCase()];return [(i.type==='weather'?SESSION_NAMES[i.session]+' · '+i.node.replace('NODE_','')+' · ':'')+label(i.key),i.display||(i.key==='SESSSET_Finish_Criteria'&&i.value===2?'Time':String(i.value))];}
-function reviewPlan(title,intents,description='These changes save to LMU. Review them before applying.'){
+function needed(i){if(i.type==='weatherPreset'||i.type==='practiceConditions')return true;if(i.type==='raceMinutes')return setup?.settings[RACE_MODE]?.currentValue!==TIMED_RACE||setup?.settings[RACE_MINUTES]?.currentValue!==i.value;if(i.type==='grid')return JSON.stringify([i.classes,i.fullGrid])!==intentValue(i);if(['car','track'].includes(i.type))return i.id!==intentValue(i);return !sameNumber(i.value,intentValue(i));}
+function describeIntent(i){if(i.type==='raceMinutes')return ['Race duration',i.value+' min'];if(i.type==='setting'&&TIME_SETTINGS.has(i.key))return [label(i.key),TIME_MODES[i.value]||clockValue(i.value)];if(i.type==='practiceConditions')return ['Practice time & surface',String(Math.floor(i.time/60)).padStart(2,'0')+':'+String(i.time%60).padStart(2,'0')+' · '+i.road.replace('preset:','').replace('.RRBIN','').toLowerCase()+' · water '+(i.waterDepth<0?'track default':Math.round(i.waterDepth*100)+'%')];if(i.type==='car')return ['Car',savedCarModel(i.id)];if(i.type==='track')return ['Circuit',i.display||catalog?.tracks.find(t=>t.id===i.id)?.name||'Saved circuit'];if(i.type==='grid')return ['Opponent classes',(i.classes.join(', ')||'None')+' · '+(i.fullGrid?'fill grid':'season grid')];if(i.type==='amount')return [SESSION_NAMES[i.session],i.value===0?'Disabled':i.value+' session'+(i.value>1?'s':'')];if(i.type==='weatherPreset')return [SESSION_NAMES[i.session]+' forecast',i.preset.toLowerCase()];return [(i.type==='weather'?SESSION_NAMES[i.session]+' · '+i.node.replace('NODE_','')+' · ':'')+label(i.key),settingChoice(i.key,i.value)||i.display||settingDisplay(i.key,i.value)];}
+function reviewPlan(title,intents,description='Review the preset before loading its settings.',allowDraft=false){
   if(saving||starting||serverBusy||applyingPlan||sessionValueEdits.size){notify('Wait for your changes to save before reviewing another plan.',true);return;}
-  pendingPlan={title,intents:intents.filter(i=>i.type!=='assist').filter(needed)};$('planTitle').textContent=title;$('planDescription').textContent=description;$('planProgress').textContent='';$('planChanges').innerHTML=pendingPlan.intents.map(i=>{const [k,v]=describeIntent(i);return `<div class="plan-change"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`;}).join('')||'<p class="empty-note">This setup already matches. No changes are needed.</p>';
-  $('applyPlanButton').disabled=!pendingPlan.intents.length||!setup||!menuReady;$('cancelPlanButton').textContent='Keep current setup';if(!menuReady)$('planProgress').textContent='You can review this plan now. Open LMU and go to its single-player main menu to apply it.';$('planDialog').showModal();return true;
+  const allIntents=intents.filter(i=>i.type!=='assist');
+  const raceMayChange=allIntents.some(i=>needed(i)&&(i.key===RACE_MODE||['car','track'].includes(i.type)||i.type==='amount'&&i.session==='RACE'));
+  pendingPlan={title,allIntents,allowDraft,intents:allIntents.filter(i=>needed(i)||raceMayChange&&(i.type==='raceMinutes'||[RACE_MODE,RACE_MINUTES,RACE_LAPS].includes(i.key)))};
+  const stage=allowDraft&&!menuReady&&canEditSessionDraft();
+  $('planTitle').textContent=title;$('planDescription').textContent=description;$('planProgress').textContent='';
+  const raceIntents=allIntents.filter(i=>[RACE_MODE,RACE_MINUTES,RACE_LAPS].includes(i.key));
+  const raceFields=Object.fromEntries(raceIntents.map(i=>[i.key,i.value]));
+  const changes=(stage?allIntents:pendingPlan.intents);
+  const rows=changes.filter(i=>!Object.hasOwn(raceFields,i.key)).map(describeIntent);
+  if(changes.some(i=>Object.hasOwn(raceFields,i.key)))rows.push(['Race duration',raceLengthSummary(raceFields,Object.fromEntries(raceIntents.map(i=>[i.key,i.display])))]);
+  $('planChanges').innerHTML=rows.map(([k,v])=>`<div class="plan-change"><span>${escapeHtml(k)}</span><strong>${escapeHtml(v)}</strong></div>`).join('')||'<p class="empty-note">This setup already matches. No changes are needed.</p>';
+  $('cancelPlanButton').textContent='Keep current setup';
+  if(!menuReady)$('planProgress').textContent=stage?'This replaces your draft. Return to the single-player main menu to apply it.':'Open the single-player main menu in LMU to apply.';
+  updateLabControls();$('planDialog').showModal();return true;
 }
 async function applyIntent(i){
   if(!needed(i))return;
+  if(i.type==='raceMinutes'){setup=await request('/api/session/action',{action:i.type,value:i.value});return;}
   if(i.type==='setting'&&(NUMERIC.has(i.key)||TIME_SETTINGS.has(i.key))){setup=await request('/api/session/action',{action:'sessionValue',key:i.key,value:i.value});return;}
   if(i.type==='practiceConditions'){setup=await request('/api/session/action',{action:'practiceConditions',time:i.time,road:i.road,waterDepth:i.waterDepth,loadTemperatures:i.loadTemperatures});return;}
   if(['car','track','grid','weatherPreset'].includes(i.type)){setup=await request('/api/session/action',{action:i.type,...i});return;}
@@ -242,29 +281,31 @@ async function applyPendingPlan(){
   finally{applyingPlan=false;saving=false;renderContent();renderSummary();updateControls();$('applyPlanButton').disabled=true;$('cancelPlanButton').textContent='Close review';}
 }
 function renderPlans(){
- const plans=labPreferences.plans.filter(p=>`${p.name} ${p.target.display?.car||''} ${p.target.display?.track||''}`.toLowerCase().includes(presetQuery.toLowerCase()));
- $('savedPlans').innerHTML=plans.map(p=>`<article class="saved-plan"><div><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.target.display?.track||'Saved circuit')} · ${escapeHtml(p.target.display?.car||'Saved car')}</p></div><div class="preset-actions"><button class="button" data-plan="${escapeHtml(p.id)}">Use preset</button><button class="button quiet" data-rename-plan="${escapeHtml(p.id)}">Rename</button><button class="button quiet" data-replace-plan="${escapeHtml(p.id)}" ${!setup?'disabled':''}>Update from session</button><button class="icon-button" data-delete-plan="${escapeHtml(p.id)}" aria-label="Delete ${escapeHtml(p.name)}">×</button></div></article>`).join('')||'<p class="empty-note">No matching presets. Save the current session to reuse it later.</p>';updateLabControls();
+ const plans=labPreferences.plans.filter(p=>`${p.name} ${savedCarModel(p.target.car)} ${p.target.display?.track||''}`.toLowerCase().includes(presetQuery.toLowerCase()));
+ $('savedPlans').innerHTML=plans.map(p=>`<article class="saved-plan"><div><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.target.display?.track||'Saved circuit')} · ${escapeHtml(savedCarModel(p.target.car))}</p></div><div class="preset-actions"><button class="button" data-plan="${escapeHtml(p.id)}">Use preset</button><button class="button quiet" data-rename-plan="${escapeHtml(p.id)}">Rename</button><button class="button quiet" data-replace-plan="${escapeHtml(p.id)}" ${!setup?'disabled':''}>Update from session</button><button class="icon-button" data-delete-plan="${escapeHtml(p.id)}" aria-label="Delete ${escapeHtml(p.name)}">×</button></div></article>`).join('')||'<p class="empty-note">No matching presets. Save the current session to reuse it later.</p>';updateLabControls();
 }
 function download(name,text,type='text/plain'){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function tyrePreset(kind){
- for(const wheel of TYRE_WHEELS){if(kind!=='reset')$('tyreCondition'+wheel).value=kind==='worn'?60:100;$('tyreTemperature'+wheel).value=kind==='warm'?'70':'';}
- $('allCondition').value=kind==='worn'?60:100;$('allConditionValue').textContent=$('allCondition').value+'%';
- updateTyreSettings();notify('Tyre choices updated. Prepare tyres to apply them.');
-}
 // A blank temperature delegates to LMU's selected compound and warmer setting.
 tyreOptions=function(){return {wheels:TYRE_WHEELS.map(wheel=>{
- const raw=$('tyreCondition'+wheel).value.trim(),conditionPercent=Number(raw),heat=$('tyreTemperature'+wheel).value.trim(),temperatureCelsius=heat===''?null:Number(heat);
- if(raw===''||!Number.isFinite(conditionPercent)||conditionPercent<0||conditionPercent>100)throw Error(wheel+' condition must be between 0 and 100 percent.');
- if(temperatureCelsius!==null&&(!Number.isFinite(temperatureCelsius)||temperatureCelsius<0||temperatureCelsius>150))throw Error(wheel+' temperature must be between 0 and 150 °C.');
+ const raw=$('tyreCondition'+wheel).value.trim(),conditionPercent=Number(raw),heat=$('tyreTemperature'+wheel).value.trim(),temperatureCelsius=heat===''||Number(heat)===0?null:Number(heat);
+ if($('tyreCondition'+wheel).validity.badInput||raw===''||!Number.isFinite(conditionPercent)||conditionPercent<0||conditionPercent>100)throw Error(wheel+' condition must be between 0 and 100 percent.');
+ if($('tyreTemperature'+wheel).validity.badInput||temperatureCelsius!==null&&(!Number.isFinite(temperatureCelsius)||temperatureCelsius<0||temperatureCelsius>150))throw Error(wheel+' temperature must be between 0 and 150 °C.');
  return {conditionPercent,temperatureCelsius};
 })};};
 updateTyreSettings=function(){
+ const conditions=TYRE_WHEELS.map(wheel=>$('tyreCondition'+wheel).value);
+ const sameCondition=conditions.every(value=>value===conditions[0]);
+ $('allConditionValue').textContent=sameCondition&&conditions[0]!==''?conditions[0]+'%':'Mixed';
+ $('allCondition').setAttribute('aria-valuetext',$('allConditionValue').textContent);
+ if(sameCondition&&conditions[0]!=='')$('allCondition').value=conditions[0];
  const heats=TYRE_WHEELS.map(wheel=>$('tyreTemperature'+wheel).value.trim()),sameHeat=heats.every(v=>v===heats[0]);
- const heatLabel=sameHeat?(heats[0]===''?'Game default':heats[0]+'°C'):'Mixed';
+ const heatLabel=sameHeat?(heats[0]===''||heats[0]==='0'?'Game':heats[0]+'°C'):'Mixed';
  $('allTemperatureValue').textContent=heatLabel;$('allTemperature').setAttribute('aria-valuetext',heatLabel);
  if(sameHeat)$('allTemperature').value=heats[0]===''?'0':heats[0];
  for(const wheel of TYRE_WHEELS){$('tyreTemperature'+wheel).disabled=false;$('tyreTemperatureEnabled'+wheel).checked=$('tyreTemperature'+wheel).value.trim()!=='';}
  try{$('tyreSummary').textContent=tyreOptions().wheels.map((w,i)=>TYRE_WHEELS[i]+' '+w.conditionPercent+'% / '+(w.temperatureCelsius===null?'game default':w.temperatureCelsius+'°C')).join(' · ');}catch(e){$('tyreSummary').textContent=e.message;}
+ updatePlacementControls();
+ updateTyreAction();
  savePracticePreferences();
 };
 for(const wheel of TYRE_WHEELS)if(!$('tyreTemperatureEnabled'+wheel).checked)$('tyreTemperature'+wheel).value='';
@@ -273,8 +314,7 @@ function editPreset(id,replace=false){const p=labPreferences.plans.find(p=>p.id=
 
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
-  if(b.dataset.page)setPage(b.dataset.page);if(b.dataset.goto)setPage('setup',b.dataset.goto);
-  if(b.dataset.practiceView)choosePracticeView(b.dataset.practiceView);
+  if(b.dataset.page)setPage(b.dataset.page);
   if(b.dataset.close){const d=$(b.dataset.close);if(d.id==='planDialog'&&applyingPlan){cancelPlan=true;return;}d.close();}
   if(b.dataset.vehicleClass){
     vehicleClass=b.dataset.vehicleClass;
@@ -284,17 +324,17 @@ document.addEventListener('click',async e=>{
   if(b.hasAttribute('data-favourite-cars')){favouriteCarsOnly=!favouriteCarsOnly;renderContent();}
   if(b.dataset.favCar)toggleFavourite('cars',b.dataset.favCar);if(b.dataset.favTrack)toggleFavourite('tracks',b.dataset.favTrack);if(b.dataset.favCheckpoint)toggleFavourite('checkpoints',b.dataset.favCheckpoint);
   if(b.dataset.car){
-    const pendingCar=sessionOptions.findLast(edit=>edit.body.action==='car')?.body.id;
+    const pendingCar=typeof builderDraft!=='undefined'&&builderDraft&&labPage==='setup'?builderDraft.selection.selectedCar?.id:sessionOptions.findLast(edit=>edit.body.action==='car')?.body.id;
     const selected=pendingCar ? catalog.cars.find(c=>c.id===pendingCar) : currentCar();
     if(modelKey(catalog.cars.find(c=>c.id===b.dataset.car)||{})!==modelKey(selected||{}))change({action:'car',id:b.dataset.car});
   }
   if(b.dataset.track)change({action:'track',id:b.dataset.track});
   if(b.dataset.target)queueSessionValue(b.dataset.target,Number(b.dataset.value));
-  if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);if(reviewPlan(p.name,planIntents(p.target)))pendingPlan.source={kind:'personal',id:p.id,name:p.name};}catch(err){notify(err.message,true);}}
+  if(b.dataset.plan){const p=labPreferences.plans.find(p=>p.id===b.dataset.plan);try{validatePlan(p);if(reviewPlan(p.name,planIntents(p.target),undefined,true))pendingPlan.source={kind:'personal',id:p.id,name:p.name};}catch(err){notify(err.message,true);}}
   if(b.dataset.deletePlan){const p=labPreferences.plans.find(p=>p.id===b.dataset.deletePlan);if(p&&confirm('Delete saved preset “'+p.name+'”?')){const before=clone(labPreferences.plans);labPreferences.plans=labPreferences.plans.filter(v=>v.id!==p.id);if(!await persistPreferences())labPreferences.plans=before;renderPlans();}}
-  if(b.dataset.weatherCopy){const source=setup.weather[weatherSession]||{},intents=[];if(b.dataset.weatherCopy==='points'){for(const node of Object.keys(source))if(node!==weatherNode)for(const [key,v] of Object.entries(source[weatherNode]||{}))intents.push({type:'weather',session:weatherSession,node,key,value:v.currentValue});}else{for(const [node,fields] of Object.entries(source))for(const [key,v] of Object.entries(fields))intents.push({type:'weather',session:b.dataset.weatherCopy,node,key,value:v.currentValue});}reviewPlan('Copy weather conditions',intents);}
-  if(b.dataset.tyrePreset)tyrePreset(b.dataset.tyrePreset);if(b.dataset.renamePlan)editPreset(b.dataset.renamePlan);if(b.dataset.replacePlan)editPreset(b.dataset.replacePlan,true);
-  if(b.dataset.pickCheckpoint){$('cp').value=b.dataset.pickCheckpoint;updateDestination();renderCheckpoints(labState);setPage('practice');notify('Checkpoint selected. Place it from the garage when ready.');}
+  if(b.dataset.weatherCopy){if(typeof copyBuilderWeather==='function'&&labPage==='setup'&&builderDraft){copyBuilderWeather();return;}const source=setup.weather[weatherSession]||{},intents=[];if(b.dataset.weatherCopy==='points'){for(const node of Object.keys(source))if(node!==weatherNode)for(const [key,v] of Object.entries(source[weatherNode]||{}))intents.push({type:'weather',session:weatherSession,node,key,value:v.currentValue});}else{for(const [node,fields] of Object.entries(source))for(const [key,v] of Object.entries(fields))intents.push({type:'weather',session:b.dataset.weatherCopy,node,key,value:v.currentValue});}reviewPlan('Copy weather conditions',intents);}
+  if(b.dataset.renamePlan)editPreset(b.dataset.renamePlan);if(b.dataset.replacePlan)editPreset(b.dataset.replacePlan,true);
+  if(b.dataset.pickCheckpoint&&typeof selectMapCheckpoint==='function')selectMapCheckpoint(b.dataset.pickCheckpoint);
   if(b.dataset.logFilter){logFilter=b.dataset.logFilter;for(const v of document.querySelectorAll('[data-log-filter]'))v.classList.toggle('active',v===b);renderLabActivity();}
 
 });
@@ -329,5 +369,5 @@ $('quickCaptureButton').addEventListener('click',quickCapture);
 
 $('refreshLabButton').addEventListener('click',async()=>{await loadSetup();await poll();if(['practice','library','activity'].includes(labPage))await refresh();notify('Refreshed from LMU.');});
 $('dismissLabToast').addEventListener('click',()=>$('labToast').hidden=true);
-async function initLab(){try{const p=await request('/api/lab/preferences');labPreferences=p;preferencesReady=true;}catch(e){notify('Saved Lab choices could not be read. '+e.message,true);}applyAppearance();renderHome();loadOfficialSessions();setPage('home');document.documentElement.removeAttribute('data-loading');}
+async function initLab(){void request('/api/vehicle-models').then(models=>{vehicleModels=new Map(Object.entries(models).map(([name,model])=>[name.toLowerCase(),model]));if(labPage==='presets')renderPlans();if(setup){renderContent();renderSummary();}}).catch(()=>{});try{const p=await request('/api/lab/preferences');labPreferences=p;preferencesReady=true;}catch(e){notify('Saved Lab choices could not be read. '+e.message,true);}if(typeof summaryWidth==='function')summaryWidth(labPreferences.summaryWidth||288);loadOfficialSessions();setPage('setup');document.documentElement.removeAttribute('data-loading');}
 initLab();

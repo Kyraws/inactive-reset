@@ -6,16 +6,21 @@ It reads the official SDK mapping without native memory attachment, including
 when EAC is enabled. Only the SDK's lock-coordination mapping is writable.
 Practice tools and `GET /api/recordings/status` expose status and errors.
 
-Open **Recorded laps** in Practice tools. Completed laps appear automatically
-while the panel is open. Choose a lap by lap time, circuit, car and recording
-date, then click its route or use the slider to select an exact sample.
+Open **Practice Teleport** and pick a recorded session by date, layout, car and
+complete lap count. The app numbers its retained complete laps and marks the
+quickest. LMU's lap number appears when the recorded frame includes it. Click the
+route, move the slider or type elapsed lap time to select a retained frame.
+
+Recording headers carry a session identity across continuous play and verified
+pause/resume. A clock reset, game identity change or loss of continuity starts
+a new session. Older files without this identity remain grouped by segment.
 
 Recorded speed/gear reset and standing pose reset use the existing production
 operation runner and its Practice, EAC, identity, motion, cancellation and cleanup
 gates. Both recorded modes additionally require the recorded executable build
 and car. Reset resolves the exact segment/sequence again; an expired sample is
 refused. The recorder stays read-only and independent of native attachment.
-Legacy checkpoints and learned-rest behaviour are unchanged. Optional version-1
+Legacy checkpoints remain supported. Optional version-1
 `restoration` checkpoint metadata retains source segment/sequence/time and SDK
 details; it does not enable additional native writes.
 
@@ -23,7 +28,8 @@ Pose uses existing reset/placement behavior; speed and gear require eligible
 motion and a supported live layout. Angular motion, suspension, arbitrary wheel
 state, tyres, fuel, energy, damage and the session clock are not restored. The
 selector states these limits and offers standing teleport for unsuitable motion.
-Recorded resets do not apply garage tyre preparation.
+Garage teleports can apply an explicit tyre condition and temperature override.
+On-track teleports use the currently fitted tyres. See [Tyres](TYRES.md).
 
 The speed reset starts with zero chassis angular velocity/momentum. Wheel spin
 is recomputed from selected longitudinal speed and the loaded wheels' radius,
@@ -34,14 +40,16 @@ recording. Recorded deflections, ride heights, loads and third-spring values
 remain observations. Restoring those scalars alone has no verified native
 reconstruction path. Standing garage placement uses normal engine placement.
 
-`GET /api/recordings/list` lists retained segments/ranges. `POST
-/api/recordings/select` accepts `recording` and `timestamp`. `POST /api/place`
-accepts `recording`, exact `sequence` and `restoreSpeed`. These share Core selection
+`GET /api/recordings/list` lists retained segments and ranges. `POST
+/api/recordings/select` accepts `recording` and either `sequence` or `timestamp`.
+`POST /api/place` accepts `recording`, exact `sequence`, `restoreSpeed`, and optional
+garage `tyres` overrides. These share Core selection
 and the existing operation path; client-supplied pose/state is never trusted.
 Refresh scans retained JSONL on demand; there is no persistent index. A corrupt
 complete record can fail that request; incomplete final lines remain recoverable.
-One owner-driven recording has validated moving capture and stale-time suspension
-for the car/build below. Timestamp reset integration is verified offline only.
+An owner-driven recording validated moving capture and stale-time handling in the
+conditions described below. See [Status](STATUS.md#recorded-live-scope) for the
+separate recorded-frame teleport trials and their limits.
 
 ## SDK evidence and field matrix
 
@@ -147,10 +155,16 @@ Sequence counts queued attempts (gaps expose dropped entries); header sequence
 identifies its first entry. Normal entries carry counts since the last successful
 enqueue; `shutdown-totals` summaries carry cumulative counts. Each header retains
 full executable and SDK-header identity. Files rotate at about 16 MiB; retention
-deletes oldest recording files before opening another, reserving room within a
-512 MiB store budget for the next file and bounded serialization overrun. No
-checkpoint, profile or non-JSONL file is removed. A full/unwritable store stops
-recording and exposes the error.
+deletes oldest recording files and their derived lap indexes before opening
+another, reserving room within a 512 MiB recording budget for the next file
+and bounded serialization overrun. A full or unwritable store stops recording
+and exposes the error.
+
+The lap browser saves a versioned index beside each recording part. The first
+scan of an unindexed part reads its telemetry. Later app launches reuse the
+index while the source file matches, and live refreshes read newly appended
+records. A stale or unreadable index is rebuilt from the recording. Exact frame
+selection still reads and validates the original telemetry.
 
 The 64 KiB maximum line size bounds schema payloads; normal samples are much
 smaller. At 50 Hz the worst permitted payload is about 3.1 MiB/s (roughly 2.7

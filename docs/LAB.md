@@ -1,7 +1,8 @@
 # Practice workspace
 
-The desktop app uses Redline with a fixed dark appearance. Open
-`inactive-reset-ui.exe`; the browser UI serves the same workspace.
+Open `inactive-reset-ui.exe` or the browser UI. It opens **Session & Conditions**.
+Use the workspace navigation to switch pages. Open the review panel from
+**Session summary** in the header.
 
 ## Launch and access
 
@@ -9,33 +10,43 @@ The desktop app uses Redline with a fixed dark appearance. Open
   Practice. Online racing is unavailable.
 - **Launch with EAC:** online racing in LMU, local-session setup through REST,
   and valid SDK checkpoint capture. Memory actions remain disabled.
-- Setup requires the single-player main menu in either mode. Loading,
-  multiplayer and active sessions lock editing. Dismiss LMU's startup prompt
-  manually. Close LMU before switching launch modes.
+- Apply and Start require the single-player main menu in either mode. While
+  a session is loaded, you can edit the next session or load a preset into
+  the draft. Dismiss LMU's startup prompt manually. Close LMU before switching
+  launch modes.
 - Capture needs an active session and valid current pose. Menu/loading guards
   reject stale telemetry left behind after a session ends.
 
 ## Session builder and layout
 
-The five tabs are Car & circuit, Weekend, Conditions, Competition and Rules.
-Content, ranges and accepted labels come from LMU. Model cards group seasons
-while keeping distinct Evo/regulation variants; livery and layout remain separate.
-Weekend uses horizontal rows. Conditions holds per-session surface controls and
-five-point weather for enabled Practice, Qualifying and Race. There is no separate
-Warmup forecast. Driving assists stay in LMU and are excluded from all presets,
-including old imports.
+The builder cards open detail dialogs for car and livery, circuit, session and
+time, AI grid, and weather. **Session rules** opens a separate dialog.
+Content and ranges come from LMU. Model cards group seasons while keeping
+distinct Evo and regulation variants. Select a circuit card to browse the
+layout row. It shows each layout's name and outline when geometry is
+available. Select a layout to update the draft and its main preview. Weather groups
+session-wide behaviour and track surface separately from the five forecast
+points for Practice, Qualifying and Race. Driving assists stay in LMU and
+are excluded from presets, including old imports.
 
-Builder edits save immediately with readback. Numeric/time edits coalesce while
-typing; failed saves retain drafts with retry/discard. Start waits for confirmed
-settings. See [Local sessions](SESSIONS.md) for the launch sequence.
+Session & time starts a newly enabled Race at 20 minutes and offers named race
+starts. Legacy preset durations stay in their original units until you edit Race
+duration in minutes.
+Unspecified starts can follow the previous enabled session. The draft adds
+five minutes to the previous scheduled finish and wraps after midnight.
+Choose a fixed time or an LMU start mode to override the sequence. Loading a
+preset keeps its supplied start times.
 
-Main views fit at 1040×680 and 1280×800. Long lists scroll within panels;
-dialogs/additional controls can scroll. Builder tabs support arrow keys. Setting
-notes remain accessible and appear on hover. The summary resizes by dragging or
-Left/Right keys and becomes a drawer at narrow widths. Overview fits ten event
-cards with both practice buttons visible. Controls opens bindings directly;
-appearance/density selectors and compact utility mode are removed. Old appearance
-preferences remain readable but do not affect presentation.
+For AI strength, drag the slider, type a percentage, or use the step buttons.
+The controls respect LMU's range. AI aggression and forecast sky use named
+choices. The same sky names appear in the official preset review.
+
+Builder edits stay in a draft until you select **Apply**. Apply writes to LMU
+with readback. Start waits for confirmed settings. See
+[Local sessions](SESSIONS.md) for the launch sequence.
+
+Use the Controls page to configure keyboard and wheel assignments. See
+[Testing](TESTING.md) for desktop window and keyboard coverage.
 
 ## Personal presets
 
@@ -48,8 +59,9 @@ import/export, including individual export. The builder shows the applied source
 and whether settings differ from its baseline. Restore opens a review; Update
 saves the confirmed setup. Save a personal copy to retain edits to official sources.
 
-Review works offline; applying requires the local main menu. Writes are sequential
-with readback. Failure stops remaining requests; cancellation finishes the pending
+Review works offline. When a session is loaded, **Load into draft** prepares a
+preset for later. Applying requires the local main menu. Writes are sequential
+with readback. Failure stops remaining requests. Cancellation finishes the pending
 request. Confirmed changes remain in LMU. Applying never starts a session. Undo
 covers the latest simple setting/session-count edit, not a whole plan. Unknown
 content/settings are refused; controls requiring over 64 individual steps need
@@ -57,7 +69,10 @@ manual adjustment. Saving/importing succeeds only after persistence.
 
 ## Official scheduled sessions
 
-Overview and Official races list RaceControl daily, weekly and special events.
+**Official Events** lists RaceControl daily, weekly and special events. Select a
+card to feature it. Changing the filter keeps the featured event if it still
+matches, otherwise the first visible event is featured. An empty filter hides
+the featured area.
 While LMU runs, its Steam ticket authenticates automatic refresh at most every
 15 minutes after success; Refresh events updates immediately. Tokens stay in
 memory. The app does not register for or join online events.
@@ -83,31 +98,37 @@ Unresolved inherited baselines are refused rather than guessed as Green.
 ## Practice and checkpoint library
 
 Capture saves the pose and simulation time of a fresh player-controlled frame.
-Selecting a destination never moves the car. Quick capture replaces its
-track/car slot only when the new frame is eligible for speed and gear.
-Named captures can also save standing destinations.
-Save as named copies the saved quick slot without recapturing the current car.
-Practice opens on **Recorded laps**. Choose a completed lap by time, circuit and
-car. Click the recorded route or use the slider to select a frame, then choose
-standing teleport or speed and gear when eligible. Switch to **Saved
-checkpoints** to capture or select a named destination or the quick slot.
-For a recorded point, enable **Override tyre condition and temperature** and
-edit the values in **Tyres**. Start the reset from the garage and press Drive
-when prompted. An on-track reset uses the currently fitted tyres.
+**Quick capture** adds a persistent destination for the loaded layout and car.
+The **+** beside a capture copies that exact frame to Saved Checkpoints. The
+**+** below Saved Checkpoints names the current position, including standing
+destinations. A saved row's **−** offers Undo after deletion.
+
+The map shows both checkpoint sources and the previewed recorded lap. Select
+a recording and a complete lap, then click its route, use the slider, or enter
+elapsed time such as `1:30.2` or `130.2`. Clicking overlapping targets opens a
+small list beside the map point. The list labels and color-codes saved
+checkpoints, quick captures, and recorded laps. It offers one sample for each
+pass through the clicked area. Use the slider or elapsed time to select an
+exact sample.
+Selection updates the active target. **Teleport standing** and **Teleport with
+speed & gear** act on that target when eligible.
 The library separates preview from selection and provides circuit/car filters,
 favourites, rename, delete and one-operation undo. See
 [Circuit maps and library](CIRCUIT_MAPS.md) for geometry, caching and recovery.
 
-Normal teleport restores speed/gear for an eligible moving capture in the
-capture car. Standing teleport can reuse another car's pose
-on the matching track. Actual ownership/state chooses garage placement with a
+Normal teleport restores speed/gear for an eligible moving capture in a
+compatible chassis. Standing teleport can reuse another car's checkpoint pose
+on the matching track. Recorded frames also require the captured build and a
+compatible chassis. Older captures resolve against the offline vehicle catalog
+where possible and otherwise require the original vehicle name.
+Actual ownership/state chooses garage placement with a
 Drive handoff or experimental on-track reset. See [Placement](PLACEMENT.md).
 
-Tyre preparation sets independent FL/FR/RL/RR condition and optional initial heat
-through the garage. Blank heat delegates to LMU; the all-wheel slider's zero
-clears overrides. Editing choices does not apply them. Prepare tyres or Apply on
-garage teleport uses the guarded handoff. On-track reset preserves fitted tyres
-and refuses conditioning. See [Tyres](TYRES.md) for verified scope.
+**Tyre preparation** sets independent FL/FR/RL/RR condition and optional initial
+heat. **Game** delegates heat to LMU. **Prepare tyres** and the **Apply tyres**
+switch on a garage teleport use the same draft. Switch to LMU and press **Drive**
+when prompted, or cancel before Drive. Turn off **Apply tyres** to teleport
+on track with the fitted tyres. See [Tyres](TYRES.md).
 
 ## Keyboard and wheel assignments
 
@@ -122,11 +143,14 @@ shortcuts are refused. Use a modifier or F1–F24.
 | Quick capture | Ctrl+Alt+C |
 | Teleport with speed and gear | Ctrl+Alt+R |
 | Standing teleport | Ctrl+Alt+Shift+R |
-| Previous / Next speed-ready checkpoint | Ctrl+Alt+Up / Down |
+| Previous / Cycle Saved Checkpoints | Ctrl+Alt+Up / Down |
+| Cycle Quick Captures | Unassigned |
+| Clear Quick Captures | Unassigned |
 
-Previous/Next wraps through eligible moving captures for the loaded track/car,
-including Quick capture, ordered by lap distance then name/ID. It selects without
-teleporting. Background input refreshes eligibility while LMU has focus.
+Each cycling binding wraps within its own eligible list for the loaded layout
+and car. **Clear Quick Captures** asks for a second press in the same scope
+and keeps other layouts' and cars' captures. Enable optional spoken feedback
+in **Controls**. Background input refreshes eligibility while LMU has focus.
 
 Bindings are atomically saved in `data/input-bindings.json`. Dispatch requires
 LMU focus, although Windows reserves shortcuts while the app runs. Controller
@@ -137,6 +161,6 @@ the wheel exclusively or send force feedback. Native rebinding/focus checks pass
 physical wheel testing was deferred.
 
 Activity retains progress, cancellation, diagnostics, issue filtering and export.
-Manufacturer logos come from installed `Bin/UI.zip`, with a text fallback; game
-artwork is not distributed. See [Status](STATUS.md) and [Testing](TESTING.md) for
+Manufacturer logos, liveries and circuit photos come from installed `Bin/UI.zip`
+with text fallbacks. See [Status](STATUS.md) and [Testing](TESTING.md) for
 validation and remaining limits.

@@ -336,7 +336,8 @@ internal static class Program
             Console.WriteLine("no completed AI-to-player transition observed; no inference made");
             return 4;
         }
-        var candidatePath = Path.Combine("artifacts", $"{hash[..8]}.candidate.json");
+        var cacheDir = Path.Combine("local-evidence", "spot-candidates");
+        var candidatePath = Path.Combine(cacheDir, $"{hash[..8]}.candidate.json");
         var candidateProbeMatched = true;
         if (File.Exists(candidatePath))
         {
@@ -418,7 +419,6 @@ internal static class Program
             Console.WriteLine("candidate cache skipped: live probe is modified or unverified");
             return 4;
         }
-        var cacheDir = Path.Combine("artifacts", "spot-candidates");
         Directory.CreateDirectory(cacheDir);
         var cachePath = Path.Combine(cacheDir, $"{hash}.candidate.json");
         var cache = JsonSerializer.Serialize(new

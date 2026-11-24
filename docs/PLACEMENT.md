@@ -1,6 +1,6 @@
 # Placement and cleanup
 
-Current implementation, reviewed on 2026-10-07.
+Garage placement, on-track reset and the conditions for restoring recorded motion.
 
 ## Sequence
 
@@ -62,7 +62,7 @@ process termination cannot run cleanup. Do not treat an error as a successful
 restoration.
 
 Garage return, cancellation and session end are reported separately from pit
-state clearing. They are not accepted as learning samples. `Completed` does
+state clearing. `Completed` does
 not guarantee that every sector or pit-flag repair succeeded; read those
 results separately.
 
@@ -88,12 +88,14 @@ guarantee of accurate intermediate splits.
 The app restores captured speed and gear automatically for normal teleport.
 **Standing teleport** explicitly skips motion restoration.
 Motion restoration requires a reset layout verified against the running engine,
-the capture car/track, and finite motion captured at 0.5 km/h or faster.
+the captured layout and a compatible chassis, and finite motion captured at
+0.5 km/h or faster.
 Reset uses the recorded linear velocity, including sideways and vertical motion.
 Gear must agree with the recorded direction of travel. The loaded gearbox,
 engine rev limit and other reset checks are verified at runtime.
-Unresolved engine layouts, older checkpoints without velocity and cross-car
-speed restoration are refused. Ordinary pose placement remains available.
+Unresolved engine layouts, older checkpoints without velocity and incompatible
+chassis are refused for speed restoration. Ordinary checkpoint pose placement
+remains available.
 
 Select the checkpoint in the garage, place it and press Drive when
 prompted. Keep pedals released and gear neutral. The app reads Hold Brakes and,
@@ -108,7 +110,7 @@ and applied throttle/brake, with a ten-second readiness deadline. Small slope
 creep is allowed. It then uses the verified direct-reset path to restore the
 checkpoint pose, linked-body/wheel motion and captured gear, avoiding a
 stationary-wheel wait that cannot succeed on some slopes. Captured speed and
-gear still require the capture car. Loaded drivetrain limits and complete
+gear still require a compatible chassis. Loaded drivetrain limits and complete
 paused-write verification remain in force, followed by resumed observation.
 The handoff clears inherited pit and partial-lap state before the original
 Flag Rules value is restored.
@@ -117,7 +119,7 @@ A failed precondition makes no motion write and reports that speed was not
 restored. A possible partial motion update leaves physics paused for recovery;
 the app never rolls back stale velocities or repeatedly writes to hold speed.
 Restart LMU before another reset if physics stays paused; Esc/Resume did not clear the app-set pause in the recorded failure. Spot/rule cleanup still
-runs under the existing policy. Rolling outcomes cannot feed stationary learning.
+runs under the existing policy.
 
 The separate automatic prototype was measured live on the Ferrari 296 LMGT3 at
 Monza: all 514 bytes (including pause set/restore) verified; first speed was
@@ -146,11 +148,17 @@ power outage cannot run cleanup; check that preference after an interrupted run.
 
 ## Experimental reset on track
 
-When the current engine reset layout resolves completely, the app shows **Reset on track** while driving. **Ctrl+Alt+R** restores the selected checkpoint with its captured speed and gear while LMU has focus. **Ctrl+Alt+Shift+R** performs a standing teleport. Both shortcuts also use the existing Drive handoff in the garage. The standing button remains available for checkpoints without eligible motion data; normal teleport refuses unsupported motion restoration rather than silently starting stationary. The app ignores repeated/busy requests. No garage return or Drive handoff is involved; the existing garage placement remains available.
+Use **Teleport with speed & gear** for eligible recorded motion or **Teleport
+standing** for a stationary return. While driving, either action requires a
+supported on-track reset layout. The default shortcuts are **Ctrl+Alt+R** and
+**Ctrl+Alt+Shift+R**, respectively, while LMU has focus. See
+[keyboard and wheel assignments](LAB.md#keyboard-and-wheel-assignments) for
+changing them. An unavailable speed-and-gear action leaves the standing option
+available when the destination passes its own checks.
 
 The backend selects the flow from live control ownership: garage placement keeps
 the Drive handoff; player-controlled cars use direct reset even with inherited
-pit state. The hotkey also works in the garage. A garage placement waiting only
+pit state. A garage placement waiting only
 for pit state to clear allows a direct reset; its original rule cleanup remains
 owned until that reset clears pit state or the driver returns to the garage.
 
@@ -202,4 +210,4 @@ preserved fitted tyre condition; they do not apply new tyre conditioning.
 
 Reset addresses are derived from the current mapped engine, cached by full executable hash, and checked against native code. Structure operands and moved globals/functions can be rediscovered automatically when their supported instruction shapes and layout relationships remain intact. A missing, duplicate, disagreeing or changed reset signature disables reset/speed restoration instead of falling back to previous offsets. Other independently supported features remain available. The app preserves checkpoints and does not download offset profiles.
 
-The offset refactor passed offline relocation, body-operand change, cache-tampering and failure checks. All 79 discovered values match the addresses used in the recorded live tests above. No live reset has been performed after this refactor because LMU was closed. These tests do not establish compatibility with every future patch; changed physics semantics, unsupported engine setters or an SDK ABI change require reviewed compatibility work and live validation.
+The original offset refactor passed offline relocation, body-operand change, cache-tampering and failure checks. Its 79 discovered values matched the addresses used in the earlier live tests. See [Status](STATUS.md#recorded-live-scope) for later recorded-frame garage trials. Changed physics semantics, unsupported engine setters or an SDK ABI change require compatibility work and live validation.

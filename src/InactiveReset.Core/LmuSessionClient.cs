@@ -30,8 +30,8 @@ public sealed class LmuSessionClient
     internal LmuSessionClient(HttpClient http, Func<LmuApiRoutes> routes)
     { _http = http; _routes = routes; }
 
-    public async Task<JsonObject> NavigationAsync(CancellationToken cancellation = default) =>
-        Object(await RequestAsync(HttpMethod.Get, "/navigation/state", cancellation: cancellation));
+    public async Task<JsonObject> NavigationAsync(CancellationToken cancellation = default, bool retryOnTimeout = false) =>
+        Object(await RequestAsync(HttpMethod.Get, "/navigation/state", cancellation: cancellation, retryNavigationTimeout: retryOnTimeout));
 
     public async Task<JsonObject> GameStateAsync(CancellationToken cancellation = default) =>
         Object(await RequestAsync(HttpMethod.Get, "/rest/sessions/GetGameState", cancellation: cancellation));
@@ -74,9 +74,9 @@ public sealed class LmuSessionClient
             ? ticket : throw new GateException("LMU did not provide a RaceControl authentication ticket.");
     }
 
-    public async Task RequirePracticeAsync(CancellationToken cancellation = default)
+    public async Task RequirePracticeAsync(CancellationToken cancellation = default, bool retryOnTimeout = false)
     {
-        var nav = await NavigationAsync(cancellation);
+        var nav = await NavigationAsync(cancellation, retryOnTimeout);
         var state = Object(nav["state"]);
         if (state["settingMode"]?.GetValue<string>() != "SETTING_GRANDPRIX" ||
             state["gameSession"]?.GetValue<string>()?.StartsWith("PRACTICE", StringComparison.Ordinal) != true ||
@@ -108,12 +108,20 @@ public sealed class LmuSessionClient
         var routes = _routes();
         var requests = new[] { "/rest/garage/UIScreen/SessionSetup", "/rest/sessions", "/rest/sessions/amount", "/rest/sessions/weather", "/rest/options/settings" };
         var results = await Task.WhenAll(requests.Select(path => RequestAsync(HttpMethod.Get, path, cancellation: cancellation, readRoutes: routes)));
+        var settings = Object(results[1]);
+        var options = Object(results[4]);
+        foreach (var (settingKey, optionKey) in new[] { ("SESSSET_AI_Strength", "GAMEOPT_ai_driverstrength"), ("SESSSET_Damage_Multi", "GAMEOPT_damagemultiplier") })
+        {
+            if (settings[settingKey] is not JsonObject setting || options[optionKey] is not JsonObject option) continue;
+            foreach (var bound in new[] { "minValue", "maxValue", "stepValue" })
+                if (option[bound] is JsonValue value) setting[bound] = value.DeepClone();
+        }
         var assists = new JsonObject();
-        foreach (var (key, value) in Object(results[4]))
+        foreach (var (key, value) in options)
             if (key.StartsWith("DRIVEAIDS_", StringComparison.Ordinal)) assists[key] = value?.DeepClone();
         return new JsonObject
         {
-            ["selection"] = results[0], ["settings"] = results[1], ["amounts"] = results[2],
+            ["selection"] = results[0], ["settings"] = settings, ["amounts"] = results[2],
             ["weather"] = results[3], ["assists"] = assists,
         };
     }
@@ -131,8 +139,28 @@ public sealed class LmuSessionClient
         await RequireMenuAsync(cancellation);
         string? absoluteKey = null;
         var absoluteValue = 0;
+        var timedRace = false;
         switch (Text(body, "action"))
         {
+            case "raceMinutes":
+            {
+                const int timed = 2;
+                var minutes = Integer(body, "value", 1, 2000);
+                var preset = await PresetAsync(cancellation);
+                if (preset["Player"]?["Game Options"] is not JsonObject options ||
+                    !options.ContainsKey("Race Finish Criteria") || !options.ContainsKey("Race Time") ||
+                    !options.ContainsKey("Race Length"))
+                    throw new GateException("LMU does not expose timed race settings.");
+                options["Race Finish Criteria"] = timed;
+                options["Race Time"] = minutes;
+                options["Race Length"] = minutes / 1440d;
+                await RequireMenuAsync(cancellation);
+                await PostAsync("/rest/sessions/SessionPresets/applyPreset", preset, cancellation);
+                absoluteKey = "SESSSET_race_time";
+                absoluteValue = minutes;
+                timedRace = true;
+                break;
+            }
             case "sessionValue":
             {
                 var key = Text(body, "key");
@@ -283,6 +311,8 @@ public sealed class LmuSessionClient
             default: throw new GateException("Unknown session action.");
         }
         var updatedSetup = await SetupAsync(cancellation);
+        if (timedRace && updatedSetup["settings"]?["SESSSET_Finish_Criteria"]?["currentValue"]?.GetValue<double>() != 2)
+            throw new GateException("LMU did not confirm timed race mode.");
         if (absoluteKey is not null && updatedSetup["settings"]?[absoluteKey]?["currentValue"]?.GetValue<double>() != absoluteValue)
             throw new GateException("LMU did not confirm the requested value. Check its allowed range and try again.");
         return updatedSetup;
@@ -410,7 +440,7 @@ public sealed class LmuSessionClient
     private Task<JsonNode?> PostAsync(string path, JsonNode? body, CancellationToken cancellation) =>
         RequestAsync(HttpMethod.Post, path, body, cancellation: cancellation);
 
-    private async Task<JsonNode?> RequestAsync(HttpMethod method, string path, JsonNode? body = null, string? rawBody = null, CancellationToken cancellation = default, bool allowUnavailable = false, LmuApiRoutes? readRoutes = null)
+    private async Task<JsonNode?> RequestAsync(HttpMethod method, string path, JsonNode? body = null, string? rawBody = null, CancellationToken cancellation = default, bool allowUnavailable = false, LmuApiRoutes? readRoutes = null, bool retryNavigationTimeout = false)
     {
         using var request = new HttpRequestMessage(method, (method == HttpMethod.Get ? readRoutes ?? _routes() : _routes()).Resolve(method, path));
         if (method == HttpMethod.Post) request.Content = new StringContent(rawBody ?? body?.ToJsonString() ?? "null", Encoding.UTF8, rawBody is null ? "application/json" : "text/plain");
@@ -423,7 +453,17 @@ public sealed class LmuSessionClient
             return string.IsNullOrWhiteSpace(text) ? null : JsonNode.Parse(text);
         }
         catch (HttpRequestException ex) { throw new GateException($"LMU's menu connection is unavailable. Launch local play and wait for its main menu. {ex.Message}"); }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new GateException($"LMU did not respond in time ({method} {path}). Check the game before repeating the action."); }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        {
+            if (retryNavigationTimeout && method == HttpMethod.Get && path == "/navigation/state")
+            {
+                using var retry = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                retry.CancelAfter(TimeSpan.FromSeconds(3));
+                try { return await RequestAsync(method, path, cancellation: retry.Token); }
+                catch (OperationCanceledException) when (retry.IsCancellationRequested && !cancellation.IsCancellationRequested) { }
+            }
+            throw new GateException($"LMU did not respond in time ({method} {path}). Check the game before repeating the action.");
+        }
     }
 
     private static JsonObject Object(JsonNode? node) => node as JsonObject ?? throw new GateException("LMU returned an unexpected menu response.");

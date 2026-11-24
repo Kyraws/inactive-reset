@@ -7,7 +7,7 @@ reproduce the result.
 ## Before changing code
 
 Read the [architecture](ARCHITECTURE.md), [placement sequence](PLACEMENT.md),
-[known limitations](STATUS.md), and [glossary](CONTEXT.md). The
+[known limitations](STATUS.md), and [glossary](../GLOSSARY.md). The
 [research summary](research/README.md) contains historical evidence, not current
 implementation requirements. Agent implementation issues live under `.scratch/`
 as described in [the issue guide](agents/issue-tracker.md).
@@ -54,8 +54,13 @@ Do not infer live success from instruction matches or mathematical residuals.
 
 ## Updating documentation
 
-Update current guides when code changes. Keep them concise, use repository
-paths as evidence, and state implementation limits. Consolidate useful historical
-evidence into `docs/research/` and remove superseded investigations.
-Label planned behaviour as planned. Claims about accuracy or compatibility need
-recorded test conditions; avoid universal promises.
+Put setup and workflows in the relevant user guide, implementation in
+[Architecture](ARCHITECTURE.md), and verification commands and expectations in
+[Testing](TESTING.md). Use [Status](STATUS.md) to summarize limitations and link
+to dated outcomes. Keep detailed historical results in [research](research/README.md)
+with their test conditions and scope.
+
+Link to the owning guide when a fact is needed elsewhere. The release copies
+these guides into the ZIP, so use shipped documentation for relative links.
+Refer to source-only paths in code formatting when readers need to find them in
+the checkout. Label planned behavior explicitly.

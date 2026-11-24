@@ -10,8 +10,8 @@ From the repository root in PowerShell:
 .\build.cmd test -Configuration Release
 ```
 
-This runs C# unit/HTTP integration tests and all five actual-WebView2 suites,
-plus a production-page and layout smoke check. The isolated test host uses fake
+This runs C# unit/HTTP integration tests, five WebView2 fixture suites and
+production-page smoke checks. The isolated test host uses fake
 menu responses and refuses native memory attachment, so an installed/running
 LMU is not required. Test data uses unique temporary folders.
 
@@ -27,14 +27,12 @@ and installed-menu compatibility checks. Missing fixtures are reported as skips;
 those skips do not establish build compatibility. Direct `dotnet test` without
 a filter still includes both categories.
 
-The Redline suite covers builder/weather, map preview versus selection, checkpoint
-file actions, preset management, Controls and summary resizing. Populated layouts
-are checked at 1040×680 and 1280×800, including ten events and both practice buttons.
-Assertions detect overflow and clipped actions; rendered screenshots are retained.
-Backend/HTTP regressions cover map validation/cache and checkpoint file integrity.
-Responsive smoke checks emulate exact CSS viewports in a smaller native host,
-so CI desktop limits cannot clamp the requested test size. Screenshots capture
-the full emulated viewport.
+Browser checks cover session editing and save recovery, presets, checkpoint
+preview versus selection, recorded-frame selection, placement gates and native
+bindings. Keep assertions on what users can do and the effects those actions
+produce. Review visual changes in the production page at the desktop minimum
+client size of 1040×680 and at a narrower viewport. CI checks frontend
+functionality and safety gates.
 
 `.\build.cmd package` runs the repeatable suite, publishes and packages the app,
 then extracts the ZIP outside the checkout. Its smoke check runs CLI help/list
@@ -48,8 +46,8 @@ settings, refused writes, identity/build checks, and cancellation/session
 ownership. For concurrent saves, accept either complete winner rather than
 requiring a particular thread order.
 
-UI checks focus on reachable controls, state transitions, visible errors and
-small rounding allowances for layout. They wait for readiness with bounded
+UI checks focus on reachable controls, state transitions, and visible errors.
+They wait for readiness with bounded
 deadlines, not an exact response time. Do not add pixel-perfect baselines,
 exact total test-count requirements, arbitrary coverage percentages, or fixed
 millimetre limits across all game content. Wording changes alone should not
@@ -88,7 +86,7 @@ Official-session checks cover authenticated read-only requests, exclusion of
 unexpected event types, alternating configurations within one series, atomic
 cache persistence, credential exclusion, partial/total failure and successful
 serialization through the real HTTP endpoint. Browser checks cover the simplified
-Overview, distinct Qualifying/Race presets, catalog/weather mapping, failed-sync
+Official Events, distinct Qualifying/Race presets, catalog/weather mapping, failed-sync
 retention, review without writes and the apply-to-session-page flow. Core tests
 check Practice time/surface validation, preservation of unrelated preset fields
 and refused readback. Dated live menu checks are recorded in [Lab](LAB.md#official-scheduled-sessions).
@@ -104,7 +102,7 @@ and refused readback. Dated live menu checks are recorded in [Lab](LAB.md#offici
 | Direct reset | Linked-body pose/inertia transforms, SDK-origin conversion, cached Euler convention, separate collision-body motion, bulk tyre-record flag extraction and truncated-layout rejection, on-track/garage gates, observed-travel checks including the recorded explosion/pit recovery, and hotkey dispatch; live long-distance reliability remains unverified |
 | Rolling restoration | Body/wheel payloads through 350 km/h without an upper ceiling, orientation conversion, loaded gear ratio/rev-limit calculations, pause ownership and partial-failure handling, handoff timing, assist preference cleanup, and matching capture-car gates; offline checks do not establish live compatibility |
 | Capture selection | Exact IDs, case-insensitive names on the loaded track, same-name captures from different cars, and ambiguity rejection |
-| Vehicle identity | Same-track pose reuse, loaded-car calibration checks, and separate cross-car learned corrections |
+| Vehicle identity | Same-track pose reuse, exact checkpoint selection, and loaded-car calibration checks |
 | Learning | Correction calculations, build separation, and rejection of unsuitable samples |
 | Discovery | Structural and instruction-anchor matching, retuned/relocated tuning storage, moved pit-speed fields and branch destinations, disagreement, section bounds, and ambiguity rejection |
 | Indexed placement gate | Accepts either normal-slot override state; rejects changed readers, profile, destination mode, pit index, table pointer, or planned entry |
@@ -152,7 +150,7 @@ The automatic-discovery tests check four recorded builds independently:
 and skip reason. A missing image skips only that build's check. The separate
 discovery/cache integration test needs the `66942337` image.
 
-Expected paths are `artifacts/LMU_runtime_<build>.bin`. The baseline image can
+Expected paths are `local-evidence/runtime/LMU_runtime_<build>.bin`. The baseline image can
 instead be supplied through `INACTIVE_RESET_BASELINE_DUMP` for `0F6DCAC1`.
 These captures are private mapped game images and are not distributed or stored
 in Git. CI can run the portable maths, cache, transaction, and reporting tests
@@ -217,7 +215,7 @@ prototype and manual Resume are recorded in [Status](STATUS.md).
 
 Rolling-start sequence tests cover preparation failure cleanup, complete
 verification before Resume, keeping partial motion updates paused, capture/build/
-vehicle eligibility, and exclusion from stationary learning. Handoff checks
+vehicle eligibility. Handoff checks
 cover the minimum delay, sustained readiness, readiness loss, timeout, cancelled
 waits and driving-control/replay/pit-state gates. Hold Brakes coverage checks
 original On/Off preservation, ambiguous write failures, rejected changes,

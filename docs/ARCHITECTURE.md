@@ -8,16 +8,17 @@ for build-specific measurements. The solution targets Windows x64 / .NET 8.
 | Location | Responsibility |
 | --- | --- |
 | `src/InactiveReset.Core` | Memory access, discovery, telemetry, checkpoint/calibration formats, placement, motion, tyres, rules and LMU menu API |
-| `src/InactiveReset.Ui` | Loopback HTTP server, embedded Redline workspace, maps/preset/library stores and background operation runner |
+| `src/InactiveReset.Ui` | Loopback HTTP server, embedded Practice workspace, maps/preset/library stores and background operation runner |
 | `src/InactiveReset.App` | Windows Forms/WebView2 host, keyboard and Raw Input bindings |
 | `src/InactiveReset.Cli` | Console commands and optional browser server |
 | `tools/InactiveReset.Reanchor` | Maintainer-only analysis, mapped-module capture and experimental probes |
 | `tests/` | C# regressions/integration tests, WebView2 suites, package smoke and live checklist |
 | `tools/` | SDK layout generation, discovery-resource generation, Ghidra evidence and native observers |
 
-The UI and CLI share Core and `PlacementReport`, but orchestrate independently.
-CLI placement saves `RestLearning`/observations; UI placement currently only loads
-learning. Front-end behavior must be verified separately.
+The desktop app and `cli serve` host the same loopback HTTP server. Standalone
+CLI commands and the HTTP placement runner share destination resolution,
+garage placement and outcome reporting in Core. The HTTP runner also coordinates
+recorded-frame selection, on-track reset and cleanup across requests.
 
 ## Launch, API and telemetry
 
@@ -72,8 +73,8 @@ loads. Older captures can lack motion. Pose reuse requires the loaded track and
 uses the loaded car's constants; speed/gear additionally require the capture car
 and eligible straight, approximately level motion. Standing teleport skips motion.
 
-Planning prefers learned corrections, then eligible manual calibration, then live
-engine-derived rest values. Indexed calibration requires a matching executable
+Planning prefers eligible calibration, then live engine-derived rest values.
+Indexed calibration requires a matching executable
 hash; the ordinary path currently accepts unlocked cross-build calibration.
 Ordinary PitPos inversion includes yaw, clearance search and fitted signed lateral
 settling. Indexed placement writes `pitIndex*3+2` and omits ordinary clearance
@@ -92,7 +93,6 @@ linked/collision-body and wheel updates, road-cache refresh, lap repair, complet
 verification, resume and observation. It refuses cached collision pairs. Garage
 tyre preparation is a separate guarded handoff; on-track reset preserves fitted
 tyres and refuses conditioning. Fuel, damage and captured tyre restoration are absent.
-Rolling outcomes cannot train stationary learning.
 
 ## Workspace, storage and build
 
@@ -105,16 +105,20 @@ an open issue. The server binds `127.0.0.1` and requires JSON POSTs for actions.
 
 | Location | Contents |
 | --- | --- |
-| `data/checkpoints/`, `.deleted/` | User captures and recoverable deletions |
-| `data/profiles/`, `profiles-default/` | User and tracked shipped calibrations |
-| `data/learned-rest/`, `observations/` | Build/checkpoint corrections and CLI observations |
-| `data/ui-lab.json`, `input-bindings.json` | Personal presets/preferences and native bindings |
-| `data/official-sessions.json`, `circuit-maps/` | Official-event and map caches |
-| `offsets/*.auto.json` | Ignored build-discovery caches |
-| `artifacts/`, `dist/` | Build/test/research output and release executables/ZIP |
+| `data/checkpoints/` | Saved destinations. Its `.deleted/` directories hold recoverable deletions. |
+| `data/recordings/` | Driving telemetry used by Recorded laps. The recorder rotates older files. Copy important drives outside the managed directory. See the [recording retention policy](TELEMETRY_TIMELINE.md#persistence-budget-and-recovery). |
+| `data/profiles/` | User calibrations. An older build's calibration can still be useful when revisiting it. |
+| `data/profiles-default/` | Tracked calibration shipped in release packages. |
+| `data/learned-rest/`, `data/observations/` | Historical build-specific corrections and diagnostics from the retired automatic-learning feature. Current placement does not read or update these records. |
+| `data/ui-lab.json`, `data/input-bindings.json` | Personal presets and workspace preferences, and keyboard/wheel bindings, respectively. |
+| `data/official-sessions.json`, `data/circuit-maps/` | Refreshable caches for official events and circuit geometry. Clearing them removes offline access until refresh. Earlier event configurations may no longer be available. |
+| `data/fetch-consent.json` | Legacy setting from before local discovery. The current app has no reader. |
+| `offsets/shared-memory.json`, `offsets/*.auto.json` | Shipped SDK layout and rebuildable local build-discovery caches, respectively. |
+| `artifacts/`, `dist/` | Generated build and test output, and release packages, respectively. |
+| `local-evidence/`, `experiments/` | Retained private research and disposable experiments, respectively. See the [cleanup guide](REPOSITORY.md). |
 
 Executables search upward for data/offsets unless overridden. `build.cmd` delegates
-to `scripts/build.ps1`; the root solution maps configurations to x64 and
+to `build.ps1`; the root solution maps configurations to x64 and
 `Directory.Build.props` centralizes settings/output. `package` tests Release,
 publishes App/CLI, stages SDK layout/calibrations/legal files and linked guides,
 then smoke-tests the extracted ZIP outside the checkout. Maintainer executables,

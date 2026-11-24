@@ -1,6 +1,6 @@
 # Circuit maps and checkpoint library
 
-The Redline workspace reads layout geometry from LMU's own read-only track-map
+The Practice workspace reads layout geometry from LMU's own read-only track-map
 API. It does not ship third-party circuit drawings or use illustrative marker
 positions. The installed menu's `getTrackMap` helper supplies the route; missing
 map support leaves the checkpoint lists available.
@@ -49,8 +49,6 @@ selection behavior. Marker alignment with the driven car remains unverified.
 Rename and permanent-copy operations preserve the complete capture file and
 refuse overwriting another checkpoint. Renaming Quick capture is refused; use
 **Save as named** to retain the replaceable quick slot.
-Learned placement corrections are keyed by checkpoint name. Renaming or copying
-does not migrate that separate history; existing learned files are retained.
 
 Delete moves a capture into `data/checkpoints/.deleted/` with a non-JSON extension,
 so it is excluded from the library. **Undo delete** restores the latest deletion

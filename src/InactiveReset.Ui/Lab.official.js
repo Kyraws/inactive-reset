@@ -28,21 +28,34 @@ function officialNextTime(event){
   return future.length?'Next: '+future[0].toLocaleString([], {weekday:'short',hour:'2-digit',minute:'2-digit'}):'Check LMU for the next start';
 }
 function officialButtons(event){
-  return (event.sessions||[]).map(s=>`<button class="button" data-official-preset="${escapeHtml(officialPresetId(event,s))}" ${officialRefreshing||saving||starting||serverBusy||applyingPlan?'disabled':''}>${s.type==='Qualifying'?'Qualifying':'Race'} practice</button>`).join('');
+  return (event.sessions||[]).map(s=>`<button class="button" data-official-preset="${escapeHtml(officialPresetId(event,s))}" ${saving||starting||serverBusy||applyingPlan?'disabled':''}>${s.type==='Qualifying'?'Qualifying':'Race'} practice</button>`).join('');
 }
-function officialTrack(event){return event.content?.track?.subItems?.[0]?.name||event.content?.track?.name||'Unknown circuit';}
+function officialScene(event){return event.content?.track?.subItems?.[0]?.scn||'';}
+function officialVenue(event){
+  const track=event.content?.track;
+  return shortVenue(officialScene(event))||shortVenue(track?.name||'')||shortVenue(track?.friendly||'')||track?.friendly||track?.name||'Unknown circuit';
+}
+function officialTrack(event){
+  const track=event.content?.track;
+  const name=track?.subItems?.[0]?.name||track?.name||'';
+  const layout=layoutQualifier(officialScene(event))||layoutQualifier(name);
+  return [officialVenue(event),layout].filter(Boolean).join(' · ');
+}
+function officialForecast(session){
+  return `<table class="official-forecast"><thead><tr><th>Session point</th><th>Sky</th><th>Air</th><th>Rain chance</th></tr></thead><tbody>${(session.weather||[]).map((point,index)=>
+    `<tr><th scope="row">${['Start','25%','50%','75%','Finish'][index]}</th><td>${escapeHtml(settingDisplay('WNV_SKY',point.sky))}</td><td>${escapeHtml(settingDisplay('WNV_TEMPERATURE',point.temperature))}</td><td>${escapeHtml(settingDisplay('WNV_RAIN_CHANCE',point.rainChange))}</td></tr>`).join('')}</tbody></table>`;
+}
 function officialRoadName(road){return ({green:'Green','preset:LIGHT.RRBIN':'Light','preset:MEDIUM.RRBIN':'Medium','preset:HEAVY.RRBIN':'Heavy','preset:SATURATED.RRBIN':'Saturated'})[road]||'Unresolved';}
 function officialRoadLabel(session){return officialRoadName(session.practiceRealRoad||(session.realRoad!=='natural'?session.realRoad:null))+(session.realRoad==='natural'?' base · inherited online':'');}
 function renderOfficialSessions(){
   const events=officialSessions.events||[];
-  $('refreshOfficialButton').disabled=officialRefreshing;
-  $('refreshOfficialButton').textContent=officialRefreshing?'Refreshing…':'Refresh events';
+  $('refreshWorkspaceEvents').disabled=officialRefreshing;
+  $('refreshWorkspaceEvents').textContent=officialRefreshing?'Refreshing…':'Refresh events';
   const saved=officialSessions.fetchedAt?new Date(officialSessions.fetchedAt).toLocaleString():'';
-  $('officialStatus').textContent=[officialRefreshing?'Refreshing official events…':saved?'Saved '+saved+'. Available offline.':'Launch LMU and refresh to save official sessions.',officialError,...(officialSessions.warnings||[])].filter(Boolean).join(' ');
-  $('officialEvents').innerHTML=events.map(e=>`<article class="settings-card official-event"><div class="official-event-meta"><span>${escapeHtml(OFFICIAL_CATEGORIES[e.category]||'Official')}</span>${e.stale?'<span>Saved · refresh unavailable</span>':''}</div><h3>${escapeHtml(e.title)}</h3><p>${escapeHtml(officialTrack(e))}</p><p class="small-note">${escapeHtml(officialNextTime(e))}</p><div class="preset-actions">${officialButtons(e)}</div></article>`).join('')||'<p class="empty-note">No official sessions saved yet. Launch local play, wait for LMU’s main menu, then refresh events.</p>';
+  $('workspaceOfficialStatus').textContent=[officialRefreshing?'Refreshing official events…':saved?'Saved '+saved+'. Available offline.':'Launch LMU and refresh to save official sessions.',officialError,...(officialSessions.warnings||[])].filter(Boolean).join(' ');
   const query=typeof presetQuery==='string'?presetQuery.toLowerCase():'';
   const presets=events.flatMap(e=>(e.sessions||[]).map(s=>({event:e,session:s}))).filter(({event:e,session:s})=>`${e.title} ${officialTrack(e)} ${s.type}`.toLowerCase().includes(query));
-  $('officialPresets').innerHTML=presets.map(({event:e,session:s})=>`<article class="saved-plan"><div><h3>${escapeHtml(e.title)} · ${escapeHtml(s.type)}</h3><p>${escapeHtml(officialTrack(e))} · ${escapeHtml(s.duration)} · ${escapeHtml(s.timeOfDay)} · solo Practice</p><p class="small-note">Starting grip: ${escapeHtml(officialRoadLabel(s))}</p>${e.stale?'<p class="small-note">Saved conditions; source refresh unavailable.</p>':''}</div><div class="preset-actions"><button class="button" data-official-preset="${escapeHtml(officialPresetId(e,s))}" ${saving||starting||serverBusy||applyingPlan?'disabled':''}>Use preset</button></div></article>`).join('')||'<p class="empty-note">No matching official presets. Refresh official events on Overview to save them.</p>';
+  $('officialPresets').innerHTML=presets.map(({event:e,session:s})=>`<article class="saved-plan"><div><h3>${escapeHtml(e.title)} · ${escapeHtml(s.type)}</h3><p>${escapeHtml(officialTrack(e))} · ${escapeHtml(s.duration)} · ${escapeHtml(s.timeOfDay)} · solo Practice</p><p class="small-note">Starting grip: ${escapeHtml(officialRoadLabel(s))}</p>${e.stale?'<p class="small-note">Saved conditions; source refresh unavailable.</p>':''}</div><div class="preset-actions"><button class="button" data-official-preset="${escapeHtml(officialPresetId(e,s))}" ${saving||starting||serverBusy||applyingPlan?'disabled':''}>Use preset</button></div></article>`).join('')||'<p class="empty-note">No matching official presets. Open Official Events to refresh them.</p>';
 }
 function officialNumber(value,label,min,max){
   if(value===null||value===undefined||value===''||!Number.isFinite(Number(value))||Number(value)<min||Number(value)>max)throw Error('Unsupported official '+label+'.');
@@ -61,7 +74,7 @@ function officialTime(text){
 }
 function officialPlan(event,session){
   if(!setup||!catalog)throw Error('Open LMU and wait for its single-player main menu to prepare this preset. Its saved conditions are available offline.');
-  const scene=event.content?.track?.subItems?.[0]?.scn;
+  const scene=officialScene(event);
   const tracks=catalog.tracks.filter(t=>t.owned&&t.sceneDesc?.toLowerCase()===scene?.toLowerCase());
   if(tracks.length!==1)throw Error('Install and own the exact '+officialTrack(event)+' layout before using this preset.');
   const packages=new Set((event.content.cars||[]).flatMap(c=>[c.name,c.friendly]).filter(Boolean).map(s=>s.toLowerCase()));
@@ -69,7 +82,7 @@ function officialPlan(event,session){
   const car=eligible.find(c=>c.id===currentCar()?.id)||eligible.find(c=>c.primaryVehFile)||eligible[0];
   if(!car)throw Error('Install and own one of this event’s eligible cars before using its preset.');
   const s=event.settings||{},settings={SESSSET_Practice_Length:officialDuration(session.duration),SESSSET_Num_Opponents:0,SESSSET_weather:4,SESSSET_timescaled_weather:1};
-  const rules={raceTimeScale:['SESSSET_race_timescale',0,60],realRoadScale:['SESSSET_realroad_timescale_practice',0,60],fuelConsumptionMultiplier:['SESSSET_Fuel_Usage',0,7],tyreWearMultiplier:['SESSSET_Tire_Wear',0,7],damageMultiplier:['SESSSET_Damage_Multi',0,100]};
+  const rules={raceTimeScale:['SESSSET_race_timescale',-1,60],realRoadScale:['SESSSET_realroad_timescale_practice',0,60],fuelConsumptionMultiplier:['SESSSET_Fuel_Usage',0,7],tyreWearMultiplier:['SESSSET_Tire_Wear',0,7],damageMultiplier:['SESSSET_Damage_Multi',0,100]};
   for(const [source,[key,min,max]] of Object.entries(rules))if(s[source]!==undefined)settings[key]=officialNumber(s[source],source,min,max);
   if(typeof s.tyreWarmers==='boolean')settings.SESSSET_tire_warmers=s.tyreWarmers?1:0;
   for(const key of Object.keys(settings))if(!setup.settings[key])throw Error('LMU does not expose '+label(key)+' for this preset.');
@@ -82,12 +95,39 @@ function officialPlan(event,session){
   const road=session.practiceRealRoad||(session.realRoad!=='natural'?session.realRoad:null);
   if(!road)throw Error(Object.hasOwn(session,'practiceRealRoad')?'This event inherits grip but supplies no explicit starting surface. Choose the track grip manually.':'Refresh official events to load the inherited starting grip for this preset.');
   if(!['green','preset:LIGHT.RRBIN','preset:MEDIUM.RRBIN','preset:HEAVY.RRBIN','preset:SATURATED.RRBIN'].includes(road))throw Error('This preset uses an unsupported track surface.');
-  return {car:car.id,track:tracks[0].id,settings,assists:{},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:0,RACE:0},classes:[],fullGrid:false,weather:{PRACTICE:weather},display:{car:car.desc,track:officialTrack(event)},practiceConditions:{time:officialTime(session.timeOfDay),road,waterDepth:officialNumber(session.waterDepth,'track water depth',-0.01,1),loadTemperatures:officialNumber(session.loadTempsFromFile??0,'surface temperature source',0,1)===1}};
+  return {car:car.id,track:tracks[0].id,settings,assists:{},amounts:{PRACTICE:1,QUALIFY:0,WARMUP:0,RACE:0},classes:[],fullGrid:false,weather:{PRACTICE:weather},display:{car:carModel(car),track:officialTrack(event)},practiceConditions:{time:officialTime(session.timeOfDay),road,waterDepth:officialNumber(session.waterDepth,'track water depth',-0.01,1),loadTemperatures:officialNumber(session.loadTempsFromFile??0,'surface temperature source',0,1)===1}};
 }
 function reviewOfficialPreset(id){
-  for(const event of officialSessions.events||[])for(const session of event.sessions||[])if(officialPresetId(event,session)===id){
-    try{const target=officialPlan(event,session),intents=planIntents(target),weather=intents.findIndex(i=>i.type==='weather');intents.splice(weather<0?intents.length:weather,0,{type:'practiceConditions',...target.practiceConditions});const inherited=session.realRoad==='natural'?' Starting grip uses the event’s '+officialRoadName(target.practiceConditions.road)+' base. Additional rubber or water carried over from online traffic is not reproduced.':'';if(reviewPlan(event.title+' · '+session.type,intents,'Solo Practice using this session’s time, surface, five weather points and supported simulation rules.'+inherited+' Online BoP, fixed setups and tyre allocation are not copied.')){pendingPlan.official=true;pendingPlan.source={kind:'official',id,name:event.title+' / '+session.type};}}
-    catch(e){notify(e.message,true);}return;
+  for (const event of officialSessions.events || []) for (const session of event.sessions || []) {
+    if (officialPresetId(event,session) !== id) continue;
+    const title = 'Review ' + session.type.toLowerCase() + ' practice';
+    const description = event.title + ' · Solo Practice. Online BoP, fixed setups, tyre allocations and traffic-created surface conditions are outside this preset.';
+    let target, blocker = '', intents = [];
+    try {
+      target = officialPlan(event,session);
+      intents = planIntents(target);
+      const weather = intents.findIndex(i=>i.type==='weather');
+      intents.splice(weather<0?intents.length:weather,0,{type:'practiceConditions',...target.practiceConditions});
+    } catch(e) { blocker = e.message; }
+    if (!reviewPlan(title,intents,description,true)) return;
+    if (!blocker) {
+      pendingPlan.official = true;
+      pendingPlan.source = {kind:'official',id,name:event.title+' / '+session.type};
+    }
+    const summary = [
+      ['Circuit',officialTrack(event)],
+      ['Solo Practice',session.duration + ' · 0 AI'],
+      ['In-game start',session.timeOfDay],
+      ['Starting grip',officialRoadLabel(session)]
+    ];
+    const row = ([label,value]) => `<div class="plan-change"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+    $('planChanges').innerHTML = summary.map(row).join('') +
+      '<h3>Weather timeline</h3>' + officialForecast(session) +
+      (!blocker && intents.length ? '<details><summary>Simulation and weather settings</summary>' + intents.map(describeIntent).map(row).join('') + '</details>' : '');
+    if(blocker)$('planProgress').textContent = blocker;
+    updateLabControls();
+    $('cancelPlanButton').textContent = 'Cancel';
+    return;
   }
 }
-document.addEventListener('click',e=>{const button=e.target.closest('button');if(!button||button.disabled)return;if(button.id==='refreshOfficialButton')refreshOfficialSessions();if(button.dataset.officialPreset)reviewOfficialPreset(button.dataset.officialPreset);});
+document.addEventListener('click',e=>{const button=e.target.closest('button');if(!button||button.disabled)return;if(button.id==='refreshWorkspaceEvents')refreshOfficialSessions();if(button.dataset.officialPreset)reviewOfficialPreset(button.dataset.officialPreset);});

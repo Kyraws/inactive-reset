@@ -298,7 +298,7 @@ hash supplied. Paths default to repository `offsets/` and `data/`;
 
 Append `--arm` to attempt ONE 24-byte write to the candidate world/local
 velocity fields and record two seconds of SDK speed, position, elapsed time and
-motion-block readings under `artifacts/velocity-probe/`. Observe natural driving
+motion-block readings under `local-evidence/velocity-probe/`. Observe natural driving
 first to cross-check the motion fields against SDK velocity. Stop the car in a
 clear area before an armed test. The probe does not restore gear, engine speed,
 wheel rotation or angular velocity. It does not loop writes or restore stale

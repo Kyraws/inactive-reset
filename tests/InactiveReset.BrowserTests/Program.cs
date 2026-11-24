@@ -95,55 +95,6 @@ internal static class Program
                         await WaitFor("(()=>{const t=document.getElementById('report')?.textContent||'';return /^(PASS|FAIL)/.test(t)||/checks passed$/.test(t)})()", "Suite did not finish");
                         var report = JsonSerializer.Deserialize<string>(await core.ExecuteScriptAsync("document.getElementById('report').textContent"))!;
                         if (report.StartsWith("FAIL")) throw new Exception(report);
-                        if (page == "redline-ui")
-                        {
-                            await core.ExecuteScriptAsync("document.getElementById('preview').contentWindow.redlineTestUi.enableWeekend()");
-                            foreach (var (width, height) in new[] { (1040, 680), (1280, 800) })
-                            {
-                                await core.ExecuteScriptAsync($"Object.assign(document.getElementById('preview').style,{{width:'{width}px',height:'{height}px'}})");
-                                foreach (var section in new[] { "selection", "sessions", "weather", "grid", "rules" })
-                                {
-                                    await core.ExecuteScriptAsync($"document.getElementById('preview').contentWindow.redlineTestUi.setPage('setup','{section}')");
-                                    await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),p=d.querySelector('[data-builder]:not([hidden])');return e.scrollHeight<=e.clientHeight+2 && p.scrollHeight<=p.clientHeight+2;})()", $"Builder {section} needs scrolling at {width}x{height}: " + await core.ExecuteScriptAsync("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),p=d.querySelector('[data-builder]:not([hidden])');return JSON.stringify({editor:[e.clientHeight,e.scrollHeight],panel:[p.clientHeight,p.scrollHeight]});})()"));
-                                }
-                                foreach (var screen in new[] { "practice", "library", "presets", "settings", "activity", "home", "official" })
-                                {
-                                    await core.ExecuteScriptAsync($"document.getElementById('preview').contentWindow.redlineTestUi.setPage('{screen}')");
-                                    await Check("(()=>{const e=document.getElementById('preview').contentDocument.getElementById('editor');return e.scrollHeight<=e.clientHeight+2;})()", $"Page {screen} needs scrolling at {width}x{height}");
-                                    if (screen == "practice")
-                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),p=d.querySelector('.tyre-toolbar');return p.scrollHeight<=p.clientHeight+2 && ['capBtn','tyreResetBtn'].every(id=>d.getElementById(id).getBoundingClientRect().bottom<=e.getBoundingClientRect().bottom);})()", $"Practice actions need scrolling at {width}x{height}");
-                                    if (screen == "settings")
-                                    {
-                                        await Check("(()=>{const e=document.getElementById('preview').contentDocument.getElementById('editor');return e.scrollHeight<=e.clientHeight+2;})()", $"Input bindings need scrolling at {width}x{height}");
-                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor'),b=d.querySelector('[data-input=defaults]');return b.getBoundingClientRect().bottom<=e.getBoundingClientRect().bottom && b.getBoundingClientRect().bottom<=d.getElementById('inputBindingsPanel').getBoundingClientRect().bottom;})()", $"Input binding footer is clipped at {width}x{height}");
-                                    }
-                                    if (screen == "library")
-                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('editor');return [...d.querySelectorAll('#libraryPreview button')].every(b=>b.getBoundingClientRect().bottom<=e.getBoundingClientRect().bottom);})()", $"Checkpoint actions are clipped at {width}x{height}");
-                                    if (screen is "home" or "official")
-                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,root=d.getElementById(d.body.dataset.page==='home'?'officialEvents':'officialWorkspaceEvents'),cards=[...root.querySelectorAll('.official-event')];return cards.length===10 && cards.every(card=>[...card.querySelectorAll('[data-official-preset]')].length===2 && [...card.querySelectorAll('[data-official-preset]')].every(b=>{const r=b.getBoundingClientRect(),c=card.getBoundingClientRect();return r.height>=25 && r.bottom<=c.bottom+1 && r.left>=c.left && r.right<=c.right+1;}));})()", $"Official practice buttons are clipped at {width}x{height}");
-                                    if (screen == "home")
-                                    {
-                                        await Check("(()=>{const e=document.getElementById('preview').contentDocument.getElementById('officialEvents');return e.scrollHeight<=e.clientHeight+2;})()", $"The ten-event Overview needs scrolling at {width}x{height}");
-                                        await core.ExecuteScriptAsync("document.getElementById('preview').contentWindow.redlineTestUi.setProtectedForLayout(true)");
-                                        await Check("(()=>{const d=document.getElementById('preview').contentDocument,e=d.getElementById('officialEvents');return !d.getElementById('accessNotice').hidden && e.scrollHeight<=e.clientHeight+2;})()", $"The EAC notice crowds out Overview actions at {width}x{height}");
-                                        await core.ExecuteScriptAsync("document.getElementById('preview').contentWindow.redlineTestUi.setProtectedForLayout(false)");
-                                    }
-                                    if (width == 1040 && screen is "practice" or "library" or "settings" or "home" or "official")
-                                    {
-                                        await core.ExecuteScriptAsync("document.getElementById('preview').contentDocument.getElementById('labToast').hidden=true");
-                                        using var fitScreenshot = File.Create(Path.Combine(output, $"redline-fit-{screen}-{width}.png"));
-                                        await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, fitScreenshot);
-                                    }
-                                }
-                            }
-                            await core.ExecuteScriptAsync("Object.assign(document.getElementById('preview').style,{width:'1280px',height:'800px'})");
-                            foreach (var screen in new[] { "setup", "library", "practice", "presets" })
-                            {
-                                await core.ExecuteScriptAsync($"document.getElementById('preview').contentWindow.redlineTestUi.setPage('{screen}')");
-                                using var screenshot = File.Create(Path.Combine(output, "redline-" + screen + ".png"));
-                                await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
-                            }
-                        }
                         return report;
                     });
 
@@ -153,6 +104,8 @@ internal static class Program
                 {
                     await Navigate(host.Server.Url);
                     await WaitFor("getComputedStyle(document.body).visibility==='visible' && document.getElementById('connection').textContent.includes('main menu')", "Production page did not initialize");
+
+                    await Check("document.querySelector('.workspace-nav [aria-current=page]').dataset.page==='setup' && !document.getElementById('setupPanel').hidden && document.querySelector('.skip-link').hash==='#editor'", "Session & Conditions did not open as the default workspace");
                     await core.ExecuteScriptAsync("document.querySelector('[data-page=library]').click()");
                     await WaitFor("document.getElementById('checkpointCards').textContent.includes('Valid checkpoint')", "Library did not render its valid checkpoint");
                     await core.ExecuteScriptAsync("document.querySelector('[data-page=activity]').click()");
@@ -164,12 +117,31 @@ internal static class Program
                     return "Real HTTP page, assets, startup, library, diagnostic filters and disconnected action gates";
                 });
 
+                await Run("supporting-pages", async () =>
+                {
+                    form.ClientSize = new Size(1040, 680);
+                    try
+                    {
+                        await WaitFor("innerWidth===1040 && innerHeight===680", "Minimum desktop viewport did not resize");
+                        foreach (var (page, control) in new[] { ("presets", "presetSearch"), ("library", "librarySearch"), ("settings", "practiceVoice"), ("activity", "exportActivityButton") })
+                        {
+                            await core.ExecuteScriptAsync($"setPage('{page}')");
+                            await Check($"(()=>{{const editor=document.getElementById('editor');const control=document.getElementById('{control}');return !!editor.querySelector('.lab-panel:not([hidden]) > .redesign-header h1') && control.getBoundingClientRect().width>0 && editor.scrollWidth<=editor.clientWidth;}})()", $"{page} heading or controls did not fit the minimum viewport");
+                        }
+                    }
+                    finally { form.ClientSize = new Size(1320, 900); }
+                    return "Shared headings and visible controls fit the 1040×680 client without horizontal scrolling";
+                });
+
                 await Run("recording-selection", async () =>
                 {
+                    form.ClientSize = new Size(1040, 680);
+                    await WaitFor("innerWidth===1040 && innerHeight===680", "Minimum desktop viewport did not resize");
                     var directory = Path.Combine(host.DataDirectory, "recordings");
                     Directory.CreateDirectory(directory);
-                    var identity = new InactiveReset.Core.RecordingIdentity("game.exe", new string('A', 64), "sdk", "track", "car", 1, 123);
-                    var sample = new InactiveReset.Core.TelemetrySnapshot("track", "car",
+                    const string car = "TF Sport 2026 #2:LM";
+                    var identity = new InactiveReset.Core.RecordingIdentity("game.exe", new string('A', 64), "sdk", "track", car, 1, 123);
+                    var sample = new InactiveReset.Core.TelemetrySnapshot("track", car,
                         new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)), 0, 2, 10.125,
                         LocalVelocityMetresPerSecond: new(0, 0, -10))
                     { Details = new(1, 10, 5, true, 0, 0, new Dictionary<string, double?>(), [], null) { IdentityMatches = true } };
@@ -184,61 +156,32 @@ internal static class Program
                         Point(43, 10.4, 100, 8, 7), Point(44, 10.6, 500, 5, 12),
                     }.Select(e => JsonSerializer.Serialize(e)));
                     await core.ExecuteScriptAsync("setPage('practice')");
-                    await Check("document.getElementById('practiceLapsView').getAttribute('aria-pressed')==='true' && document.getElementById('practiceSaved').hidden && document.getElementById('practiceTyres').hidden && document.getElementById('timelineActions').hidden", "Practice should open directly to lap selection");
-                    await WaitFor("document.getElementById('timelineRecording').options[0].textContent==='No completed laps yet'", "An incomplete lap appeared");
+                    await Check("!document.getElementById('practiceSaved').hidden && document.getElementById('timelineScrub').disabled && document.getElementById('lapElapsed').value===''", "Practice shows both destination sources and an inactive scrubber");
+                    await WaitFor("document.getElementById('timelineSession').options[0].textContent==='No completed laps'", "An incomplete lap appeared");
+                    var emptyWidth = await core.ExecuteScriptAsync("document.getElementById('timelineSession').getBoundingClientRect().width");
                     File.AppendAllLines(path, new[] { Point(45, 10.8, 0, 0, 0) }.Select(e => JsonSerializer.Serialize(e)));
-                    await WaitFor("document.getElementById('timelineRecording').options.length===2", "Completed lap did not appear automatically");
-                    await core.ExecuteScriptAsync("const lapPicker=document.getElementById('timelineRecording');lapPicker.selectedIndex=1;lapPicker.dispatchEvent(new Event('change'))");
-                    await WaitFor("!!document.querySelector('#timelineMap svg')", "Recorded lap map did not render");
-                    await Check("getComputedStyle(document.querySelector('.lap-road')).stroke === 'rgb(255, 255, 255)' && getComputedStyle(document.querySelector('.lap-road-speed')).stroke === 'rgb(85, 220, 130)' && !!document.querySelector('.lap-road-speed').getAttribute('d') && lapPoints.map(point=>point.SpeedEligible).join() === 'true,true,false'", "Lap map did not mark speed eligibility in green and standing-only in white");
-                    await Check("document.getElementById('timelineRecording').selectedOptions[0].textContent.includes('Lap 1 · 0:00.600 · track / car')", "Lap label lacks duration and identity");
-                    await core.ExecuteScriptAsync("(()=>{const svg=document.querySelector('#timelineMap svg');const [x,y]=document.getElementById('timelineScrub').projectedPoints[1];const point=new DOMPoint(x,y).matrixTransform(svg.getScreenCTM());svg.dispatchEvent(new MouseEvent('click',{clientX:point.x,clientY:point.y}));})()");
-                    await WaitFor("timelineSelection?.Sequence===43", "Map click did not select the exact recorded point");
-                    await Check("document.getElementById('timelineSelection').textContent.includes('100 m along lap · 36.0 km/h · gear 2') && document.getElementById('timelineStanding').disabled && document.getElementById('timelineReset').disabled", "Selected point details or disconnected reset gate failed");
+                    await WaitFor("document.querySelectorAll('#lapRail button').length===1", "Completed lap did not appear automatically");
+                    const string longCircuit = "An unusually long circuit layout name for the recorded session width check";
+                    var otherIdentity = identity with { Track = longCircuit, ProcessId = 124 };
+                    var otherStart = new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: otherIdentity, Utc: DateTimeOffset.UtcNow, SegmentId: "other");
+                    var otherFrames = new[] { Point(41, 10, 500, 0, 3), Point(42, 10.2, 0, 0, 0), Point(43, 10.4, 100, 8, 7), Point(44, 10.6, 500, 5, 12), Point(45, 10.8, 0, 0, 0) }
+                        .Select(p => p with { Identity = otherIdentity, SegmentId = "other", Sample = p.Sample! with { TrackName = longCircuit } });
+                    File.WriteAllLines(Path.Combine(directory, "other.jsonl"), otherFrames.Prepend(otherStart).Select(e => JsonSerializer.Serialize(e)));
+                    await WaitFor("document.getElementById('timelineSession').options.length===2", "Second recording did not appear");
+                    await Check($"(()=>{{const picker=document.getElementById('timelineSession');return picker.getBoundingClientRect().width==={emptyWidth} && picker.options[picker.selectedIndex].text.includes('track · 1 completed lap') && Array.from(picker.options).some(o=>/\\d.*\\d:\\d.*unusually long circuit.*1 completed lap/.test(o.text)) && picker.getBoundingClientRect().right<=document.getElementById('editor').getBoundingClientRect().right;}})()", "Chooser width, selection, date/time or completed-lap label changed with long recordings");
+                    await core.ExecuteScriptAsync("document.querySelector('#lapRail button').click()");
+                    await WaitFor("!!document.querySelector('#practiceMap .recorded-line')", "Recorded lap map did not render");
+                    await Check("document.getElementById('timelineMapMeta').textContent.includes('Recorded lap 1 · 0:00.600 · track · Corvette GT3') && document.getElementById('lapElapsed').value===''", "Lap metadata or empty elapsed state is incorrect");
+                    await core.ExecuteScriptAsync("selectElapsed(parseLapElapsed('0:00.210'))");
+                    await WaitFor("timelineSelection?.Sequence===43", "Elapsed time did not select the nearest retained frame");
+                    await Check("document.getElementById('destinationName').textContent.includes('Recorded lap 1 · 0:00.200') && document.getElementById('placeBtn').disabled && document.getElementById('standingBtn').disabled", "Selected frame or disconnected reset gate failed");
                     using (var screenshot = File.Create(Path.Combine(output, "recording-selection.png")))
                         await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
-                    await core.ExecuteScriptAsync("const lapSlider=document.getElementById('timelineScrub');lapSlider.value=0;lapSlider.dispatchEvent(new Event('input'));lapSlider.dispatchEvent(new Event('change'))");
-                    await WaitFor("timelineSelection?.Sequence===42", "Slider did not select the exact recorded point");
-                    await core.ExecuteScriptAsync("document.querySelector('#timelineTyres [data-practice-view]').click()");
-                    await Check("document.getElementById('timelinePanel').hidden && !document.getElementById('practiceTyres').hidden", "Tyres view did not hide checkpoint navigation");
-                    await core.ExecuteScriptAsync("document.getElementById('practiceLapsView').click()");
-                    await Check("timelineSelection?.Sequence===42 && !document.getElementById('timelineActions').hidden", "Switching tools lost the selected lap point");
-                    await core.ExecuteScriptAsync("""
-                        (async () => {
-                          const originalFetch = window.fetch, originalNavigation = navigation, originalState = destinationState;
-                          const override = document.getElementById('overrideRecordedTyres');
-                          window.recordedResetRequests = [];
-                          window.fetch = (path, options) => {
-                            if (path !== '/api/place') return originalFetch(path, options);
-                            window.recordedResetRequests.push(JSON.parse(options.body));
-                            return Promise.resolve({json: async () => ({ok:true})});
-                          };
-                          try {
-                            navigation = {state:{settingMode:'SETTING_GRANDPRIX', gameState:'GSTATE_DYN', gameSession:'PRACTICE1'}};
-                            destinationState = {connected:true, rollingStartSupported:true, inGarage:false};
-                            override.checked = true;
-                            override.dispatchEvent(new Event('change'));
-                            window.recordedTyresBlocked = document.getElementById('timelineReset').disabled;
-                            await resetTimelineSample(false);
-                            navigation = {state:{settingMode:'SETTING_GRANDPRIX', gameState:'GSTATE_DYN', gameSession:'PRACTICE1'}};
-                            destinationState = {connected:true, rollingStartSupported:true, inGarage:true};
-                            document.getElementById('tyreConditionFL').value = 65;
-                            document.getElementById('tyreTemperatureFL').value = 72;
-                            document.getElementById('tyreTemperatureEnabledFL').checked = true;
-                            await resetTimelineSample(false);
-                          } finally {
-                            window.fetch = originalFetch;
-                            override.checked = false;
-                            override.dispatchEvent(new Event('change'));
-                            navigation = originalNavigation;
-                            destinationState = originalState;
-                          }
-                        })();
-                        """);
-                    await WaitFor("recordedTyresBlocked && recordedResetRequests.length===1 && recordedResetRequests[0].sequence===42 && recordedResetRequests[0].tyres.wheels[0].conditionPercent===65 && recordedResetRequests[0].tyres.wheels[0].temperatureCelsius===72", "Recorded reset did not gate on-track overrides or send the garage tyre settings");
-                    await core.ExecuteScriptAsync("document.getElementById('practiceSavedView').click()");
-                    await Check("document.getElementById('practiceMap').getBoundingClientRect().bottom <= document.getElementById('destinationList').getBoundingClientRect().top", "Saved checkpoint map is not above the list");
-                    return "Auto-refresh, completed lap labels, route-map clicks, slider selection and disconnected reset gates";
+                    await core.ExecuteScriptAsync("document.getElementById('practiceTyresView').click()");
+                    await Check("document.getElementById('practiceTyres').open && timelineSelection?.Sequence===43", "Tyre editor lost the active target");
+                    await core.ExecuteScriptAsync("document.getElementById('practiceTyres').close()");
+                    form.ClientSize = new Size(1320, 900);
+                    return "Stable chooser with long labels at 1040×680, model details, elapsed-frame selection and disconnected reset gates";
                 });
 
                 await Run("first-use-access", async () =>
@@ -262,10 +205,10 @@ internal static class Program
                     await WaitFor("document.getElementById('startButton').disabled && document.getElementById('stateBanner').textContent.includes('multiplayer')", "Multiplayer gate did not appear");
                     await Capture("eac-online");
                     host.Menu.Available = false; host.GameRunning = false; host.Protected = false;
-                    await core.ExecuteScriptAsync("setPage('home');poll()");
-                    await WaitFor("!document.getElementById('launchChoices').hidden", "Launch choices did not appear while LMU was closed");
+                    await core.ExecuteScriptAsync("poll()");
+                    await WaitFor("!document.getElementById('accessNotice').hidden && !document.getElementById('launchChoices').hidden", "Launch choices did not appear while LMU was closed");
                     await Check("!document.getElementById('launchLocalChoice').disabled && !document.getElementById('launchEacChoice').disabled && document.getElementById('accessText').textContent.includes('review')", "First-use launch choices or next step missing");
-                    await Check("!document.getElementById('currentSetupSummary').textContent.includes('Test track') && document.getElementById('saveStatus').textContent.includes('closed')", "Closed game retained a stale session or in-sync message");
+                    await Check("document.getElementById('editorFields').hidden && document.getElementById('saveStatus').textContent.includes('closed')", "Closed game retained a stale session or in-sync message");
                     await Capture("first-launch");
                     host.Menu.Available = true; host.Menu.Mode = "SETTING_GRANDPRIX"; host.GameRunning = true;
                     await core.ExecuteScriptAsync("poll()");
@@ -274,30 +217,6 @@ internal static class Program
                     await core.ExecuteScriptAsync("setPage('practice')");
                     return "First launch, both EAC modes, multiplayer lock, per-action explanations and recovery";
                 });
-                // CI desktops can constrain native windows; keep the host smaller than every tested viewport.
-                form.ClientSize = new Size(800, 560);
-                foreach (var (width, height) in new[] { (1100, 720), (900, 600) })
-                    foreach (var style in new[] { "original", "redline" })
-                        await Run($"layout-{style}-{width}", async () =>
-                        {
-                            await core.CallDevToolsProtocolMethodAsync("Emulation.setDeviceMetricsOverride",
-                                JsonSerializer.Serialize(new { width, height, deviceScaleFactor = 1, mobile = false }));
-                            await WaitFor($"document.documentElement.clientWidth==={width} && document.documentElement.clientHeight==={height}",
-                                $"Viewport did not reach {width}x{height}");
-                            await core.ExecuteScriptAsync($"document.body.dataset.style='{style}';document.body.dataset.theme='midnight';document.body.dataset.density='compact'");
-                            await Check("document.documentElement.scrollWidth<=document.documentElement.clientWidth+2", "Horizontal overflow");
-                            await Check("getComputedStyle(document.getElementById('practicePanel')).display!=='none'", "Practice panel hidden");
-                            await core.ExecuteScriptAsync("setPage('setup','sessions')");
-                            await Check("document.querySelector('input[type=time][data-session-value]')!==null && document.documentElement.scrollWidth<=document.documentElement.clientWidth+2", "Direct time editor is missing or causes overflow");
-                            await Check("document.getElementById('editor').scrollWidth<=document.getElementById('editor').clientWidth+2 && document.getElementById('editor').clientWidth>400", "Builder content overflows or has insufficient space");
-                            using var screenshot = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot",
-                                JsonSerializer.Serialize(new { format = "png", captureBeyondViewport = true, clip = new { x = 0, y = 0, width, height, scale = 1 } })));
-                            File.WriteAllBytes(Path.Combine(output, $"session-edits-{style}-{width}.png"),
-                                Convert.FromBase64String(screenshot.RootElement.GetProperty("data").GetString()!));
-                            await core.ExecuteScriptAsync("setPage('practice')");
-                            return "No horizontal overflow; Practice remains reachable";
-                        });
-                await core.CallDevToolsProtocolMethodAsync("Emulation.clearDeviceMetricsOverride", "{}");
                 if (host.Menu.Writes != 0) throw new Exception("Browser smoke checks unexpectedly changed game settings");
                 await Navigate("about:blank");
                 await PlaywrightChecks.RunAsync($"http://127.0.0.1:{debugPort}", Run);

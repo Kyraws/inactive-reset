@@ -43,7 +43,7 @@ Run the corresponding resolver test against a saved mapped image before loading
 an observer. For the spot test's recorded D9B92CA9 fixture:
 
 ```text
-tools/observer/build/spot_resolver_test.exe artifacts/LMU_runtime_D9B92CA9.bin
+tools/observer/build/spot_resolver_test.exe local-evidence/runtime/LMU_runtime_D9B92CA9.bin
 ```
 
 The captures are local and not distributed. Several tests assert exact addresses

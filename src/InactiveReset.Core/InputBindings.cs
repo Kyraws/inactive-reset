@@ -8,7 +8,7 @@ public sealed record ActionBinding(KeyboardBinding? Keyboard = null, WheelBindin
 
 public sealed class InputBindings
 {
-    public static readonly string[] Actions = ["capture", "teleport", "standing", "previous", "next"];
+    public static readonly string[] Actions = ["capture", "teleport", "standing", "previous", "next", "nextQuick", "clearQuick"];
     public Dictionary<string, ActionBinding> Bindings { get; init; } = [];
     public static InputBindings Defaults() => new()
     {
@@ -17,6 +17,7 @@ public sealed class InputBindings
             ["capture"] = new(new(0x43, 3)), ["teleport"] = new(new(0x52, 3)),
             ["standing"] = new(new(0x52, 7)), ["previous"] = new(new(0x26, 3)),
             ["next"] = new(new(0x28, 3)),
+            ["nextQuick"] = new(), ["clearQuick"] = new(),
         }
     };
 
@@ -60,6 +61,11 @@ public sealed class InputBindings
         if (new FileInfo(path).Length > 32768) throw new ArgumentException("Input settings file is too large.");
         var result = JsonSerializer.Deserialize<InputBindings>(File.ReadAllText(path))
             ?? throw new ArgumentException("Input settings are empty.");
+        if (result.Bindings is { Count: 5 })
+        {
+            result.Bindings.TryAdd("nextQuick", new());
+            result.Bindings.TryAdd("clearQuick", new());
+        }
         result.Validate();
         return result;
     }

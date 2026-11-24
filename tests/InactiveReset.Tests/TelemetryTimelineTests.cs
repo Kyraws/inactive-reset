@@ -61,17 +61,30 @@ public sealed class TelemetryTimelineTests : IDisposable
         var lap = Assert.Single(timeline.ListLaps());
         Assert.Equal(0.6, lap.Duration, 6);
         var points = timeline.LapPoints(lap.Id);
+        Assert.Equal(0, points[0].Elapsed);
+        Assert.All(points, point => Assert.InRange(point.Elapsed, 0, lap.Duration));
         Assert.Equal(new long[] { 2, 3, 4 }, points.Select(point => point.Sequence));
         Assert.Equal(new[] { true, true, false }, points.Select(point => point.SpeedEligible));
         Assert.Equal(250, timeline.Select(lap.SegmentId, sequence: 3).Checkpoint.LapDistance);
         Assert.Equal(lap, Assert.Single(timeline.ListLaps()));
         Assert.Same(points, timeline.LapPoints(lap.Id));
 
+        var firstPart = Path.Combine(_directory, "recordings", "a.jsonl");
+        using (File.Open(firstPart, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var reopened = new TelemetryTimeline(_directory);
+            Assert.Equal(lap, Assert.Single(reopened.ListLaps()));
+            Assert.Equal(points, reopened.LapPoints(lap.Id));
+        }
+        File.WriteAllText(firstPart + TelemetryTimeline.LapIndexSuffix, "{interrupted");
+        Assert.Equal(lap, Assert.Single(new TelemetryTimeline(_directory).ListLaps()));
+
         Part("c", Point(7, 12, 500), Point(8, 12.2, 0));
         Assert.Equal(lap, Assert.Single(timeline.ListLaps()));
-        File.Delete(Path.Combine(_directory, "recordings", "a.jsonl"));
+        File.Delete(firstPart);
         Assert.Empty(timeline.ListLaps());
         Assert.Throws<GateException>(() => timeline.LapPoints(lap.Id));
+        Assert.False(File.Exists(firstPart + TelemetryTimeline.LapIndexSuffix));
     }
 
     [Fact]

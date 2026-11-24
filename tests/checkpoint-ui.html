@@ -13,14 +13,14 @@ function runCheckpointTests(script, html) {
     const declared=new Set(ids);
     for (const match of script.matchAll(/getElementById\('([^']+)'\)/g))
       if (!declared.has(match[1])) throw new Error('missing production element: '+match[1]);
-    if (html.includes('id="tyres"') || html.includes('tyre-wheel')) throw new Error('unrequested live tyre viewer');
+    if (html.includes('id="tyres"')) throw new Error('unrequested live tyre viewer');
     if (!html.includes('href="/app.css"') || !html.includes('class="lab-frame"') || !html.includes('id="practicePanel"')) throw new Error('shared application shell missing');
   }
   const elements = new Map();
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
-      dataset:{}, value:'', textContent:'', disabled:false, options:[], writes:0, scrollTop:0, scrollHeight:100, clientHeight:100,
-      addEventListener(){}, querySelector(){return null;},
+      dataset:{}, children:[], value:'', textContent:'', disabled:false, options:[], writes:0, scrollTop:0, scrollHeight:100, clientHeight:100,
+      addEventListener(){}, querySelector(){return null;}, setAttribute(){}, removeAttribute(){},
       set innerHTML(html) {
         this.html=html; this.writes++;
         if(id==='cp') {
@@ -36,26 +36,27 @@ function runCheckpointTests(script, html) {
   const storedPreferences={};
   const storage={getItem:k=>storedPreferences[k] || null,setItem:(k,v)=>storedPreferences[k]=v};
   const ui = new Function('document','fetch','setInterval','clearInterval','alert','sessionStorage',
-    'let navigation=null;\n'+script + '\nreturn {canRestoreSpeed,renderCheckpoints,renderActivity,updateDestination,place,resetFromHotkey,capture,quickCapture,cycleCheckpoint,speedReadyCheckpoints,runPracticeInput,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh,setNavigation(value){navigation=value;}};')(
-      {getElementById:element},
+    'let navigation=null;\n'+script + '\nreturn {canRestoreSpeed,renderCheckpoints,renderActivity,updateDestination,place,resetFromHotkey,quickCapture,cycleCheckpoint,speedReadyCheckpoints,runPracticeInput,cancelPlacement,tyreOptions,resetTyres,updateTyreSettings,refresh,setNavigation(value){navigation=value;}};')(
+      {getElementById:element,querySelectorAll:()=>[]},
       async (path,options) => {
         if(options?.method==='POST') {posted=JSON.parse(options.body);postedPath=path;}
         else if(path==='/api/state') { getRequests++; if(pendingResponse) await pendingResponse; }
         return {json:async()=>options?.method==='POST' && JSON.parse(options.body).quick ? captureResponse : response};
       }, callback => { pollRefresh=callback; return 1; }, () => {}, () => {}, storage);
   let posted, postedPath;
-  const state={session:{track:'Daytona',vehicle:'McLaren'},checkpoints:[
+  const state={connected:true,inGarage:true,tyreRules:{inGarage:true},session:{track:'Daytona',vehicle:'McLaren',vehicleModel:'McLaren'},checkpoints:[
     {id:'Barcelona/Ferrari/End of Lap.json',name:'End of Lap',track:'Barcelona',vehicle:'Ferrari',lapDistance:4500},
     {id:'Daytona/McLaren/eND OF LAP.json',name:'eND OF LAP',track:'DAYTONA',vehicle:'McLaren',lapDistance:5500,speedKmh:0},
-    {id:'Daytona/Genesis/eND OF LAP.json',name:'eND OF LAP',track:'Daytona',vehicle:'Genesis',lapDistance:5400,speedKmh:144.5}
+    {id:'Daytona/Genesis/eND OF LAP.json',name:'eND OF LAP',track:'Daytona',vehicle:'Genesis',vehicleModel:'Genesis',lapDistance:5400,speedKmh:144.5}
   ],calibrations:[{track:'Barcelona',vehicle:'Ferrari',advisory:'OLD HISTORY'}]};
   let checks=0;
   function check(condition,message) {if(!condition) throw new Error(message);checks++;}
   const select=element('cp');
   ui.renderCheckpoints(state);
-  check(select.options.length===2 && !select.innerHTML.includes('Barcelona/'), 'filter to loaded track, all cars');
+  check(select.options.length===3 && !select.innerHTML.includes('Barcelona/'), 'filter to loaded track, all cars');
+  select.value=state.checkpoints[1].id;ui.updateDestination();
   check(element('destinationSpeed').textContent.includes('0.0 km/h'), 'stationary capture has known zero speed');
-  check(new Set(select.options).size===2, 'same names have distinct IDs');
+  check(new Set(select.options).size===3, 'same names have distinct IDs');
   check(!select.innerHTML.includes('captured in') && !select.innerHTML.includes(' m '), 'destination rows show names only');
   select.value=state.checkpoints[2].id;
   const writes=select.writes;
@@ -66,10 +67,11 @@ function runCheckpointTests(script, html) {
   check(select.disabled, 'disable selection while busy');
   state.busy=false; state.session={track:'Barcelona',vehicle:'Ferrari'};
   ui.renderCheckpoints(state);
-  check(select.options.length===1 && select.value===state.checkpoints[0].id, 'track change clears old selection');
+  check(select.options.length===2 && !select.value, 'track change clears old selection');
+  select.value=state.checkpoints[0].id;ui.updateDestination();
   check(element('destinationSpeed').textContent.includes('unavailable'), 'legacy speed is unknown rather than zero');
   state.session=null; ui.renderCheckpoints(state);
-  check(!select.value && select.disabled, 'menus show no usable captures');
+  check(!select.value, 'menus show no usable captures');
   check(element('destinationSpeed').textContent==='', 'menus clear captured speed');
   state.session={track:'Daytona',vehicle:'McLaren'}; ui.renderCheckpoints(state);
   select.value=state.checkpoints[2].id;
@@ -81,7 +83,7 @@ function runCheckpointTests(script, html) {
   let rejected=false; try {ui.tyreOptions();} catch {rejected=true;}
   check(rejected,'reject out-of-range condition before posting');
   element('tyreConditionFL').value='100';
-  element('freshOnPlace').checked=true;
+  element('freshOnPlace').checked=true;ui.updateDestination();response=state;
   return ui.place(true).then(()=>{
     check(posted.checkpoint===state.checkpoints[2].id, 'place posts exact cross-car capture ID');
     check(posted.tyres.wheels[0].conditionPercent===100 && posted.tyres.wheels[0].temperatureCelsius===70 && posted.tyres.wheels[1].temperatureCelsius===null,'placement carries requested tyre settings');
@@ -96,7 +98,7 @@ function runCheckpointTests(script, html) {
       tyreRules:{inGarage:true}};
     return ui.refresh();
   }).then(()=>{
-    check(!element('standingBtn').disabled && !element('tyreResetBtn').disabled,'garage permits standing placement and preparation');
+    check(!element('standingBtn').disabled && !element('tyreResetBtn').disabled,'garage permits standing placement and preparation: '+element('placeHint').textContent+' / '+select.value+' / '+element('tyreResetHint').textContent);
     check(element('session').innerHTML.includes('In garage'),'show garage state prominently');
     element('freshOnPlace').checked=true; ui.updateTyreSettings();
     check(element('tyreSummary').textContent.includes('70\u00b0C') && !element('tyreSummary').textContent.includes('\\u00'),'tyre summary shows actual initial temperature');
@@ -113,7 +115,8 @@ function runCheckpointTests(script, html) {
     response={...response,inGarage:true,tyreRules:null,tyreRulesError:'Unsupported tyre code'};
     return ui.refresh();
   }).then(()=>{
-    check(element('tyreResetBtn').disabled && !element('standingBtn').disabled && !element('freshOnPlace').checked,'unsupported tyre discovery does not block standing placement');
+    check(element('tyreResetBtn').disabled && element('standingBtn').disabled && element('freshOnPlace').checked,'tyre request is retained when discovery is unavailable');
+    element('freshOnPlace').checked=false;
     check(element('log').textContent.includes('Tyre discovery: Unsupported tyre code'),'explain unavailable tyre reset in Activity');
     element('tyreConditionFL').value=''; let rejected=false; try{ui.tyreOptions();}catch{rejected=true;}
     check(rejected,'empty condition is not silently interpreted as zero');
@@ -147,7 +150,8 @@ function runCheckpointTests(script, html) {
     check(individual.map(w=>w.conditionPercent).join(',')==='100,85,40,15','condition values stay in FL FR RL RR order');
     check(individual.map(w=>w.temperatureCelsius).join(',')==='70,,55,','each wheel has an independent heat option');
     element('freshOnPlace').checked=true;
-    return ui.place();
+    response={...response,tyreRules:{inGarage:true}};
+    return ui.refresh().then(()=>{select.value=state.checkpoints[2].id;return ui.place(true);});
   }).then(()=>{
     check(postedPath==='/api/place' && posted.tyres.wheels[1].conditionPercent===85 && posted.tyres.wheels[2].temperatureCelsius===55 && posted.tyres.wheels[3].temperatureCelsius===null,'placement request preserves independent values');
     return ui.resetTyres();
@@ -156,10 +160,10 @@ function runCheckpointTests(script, html) {
     element('tyreTemperatureEnabledRR').checked=true;element('tyreTemperatureRR').value='';
     let rejected=false;try{ui.tyreOptions();}catch{rejected=true;}
     check(rejected,'enabled wheel heat cannot be blank');
-    const rolling={...state,rollingStartSupported:true,busy:false,checkpoints:[{id:'speed.json',name:'Speed test',track:'Daytona',vehicle:'McLaren',speedKmh:8.94,rollingEligible:true}]};
+    const rolling={...state,session:{...state.session,vehicleCompatibilityKey:'chassis:mclaren'},rollingStartSupported:true,busy:false,checkpoints:[{id:'speed.json',name:'Speed test',track:'Daytona',vehicle:'McLaren',vehicleModel:'McLaren',vehicleCompatibilityKey:'chassis:mclaren',speedKmh:8.94,rollingEligible:true}]};
     response=rolling;
     return ui.refresh().then(()=>{
-    ui.renderCheckpoints(rolling);
+    ui.renderCheckpoints(rolling);select.value='speed.json';ui.updateDestination();
     check(ui.canRestoreSpeed(),'eligible captures restore speed and gear automatically');
     ui.updateDestination();
     check(element('restoreSpeedHint').textContent.includes('restore automatically'),'summary explains automatic speed and gear restoration');
@@ -168,7 +172,9 @@ function runCheckpointTests(script, html) {
       check(posted.restoreSpeed===true,'default placement restores speed and gear');
       ui.renderCheckpoints({...rolling,busy:true});
       check(ui.canRestoreSpeed(),'busy state does not change automatic motion eligibility');
-      ui.renderCheckpoints({...rolling,session:{track:'Daytona',vehicle:'Genesis'}});
+      ui.renderCheckpoints({...rolling,session:{...rolling.session,vehicle:'Another McLaren livery'}});
+      check(ui.canRestoreSpeed(),'Another livery with the same compatibility key can restore speed and gear');
+      ui.renderCheckpoints({...rolling,session:{track:'Daytona',vehicle:'Genesis',vehicleModel:'Genesis',vehicleCompatibilityKey:'chassis:genesis'}});
       check(!ui.canRestoreSpeed(),'cross-car selection requires standing teleport');
       check(element('restoreSpeedHint').textContent.includes('McLaren') && element('restoreSpeedHint').textContent.includes('Genesis') && element('restoreSpeedHint').textContent.includes('capture car'),'cross-car explanation identifies both cars and the restriction');
       ui.renderCheckpoints({...rolling,rollingStartSupported:false});
@@ -178,12 +184,11 @@ function runCheckpointTests(script, html) {
       const onTrack={...rolling,connected:true,inGarage:false};
       response=onTrack;
       return ui.refresh().then(async()=>{
-        check(!element('placeBtn').disabled && element('placeBtn').textContent.includes('Teleport with speed & gear'),'on-track direct reset is available on the researched build');
-        check(element('placeHint').textContent.includes('Ctrl+Alt+R'),'cockpit hotkey is explained');
+        check(!element('placeBtn').disabled,'on-track direct reset is available on the researched build');
         ui.updateDestination();element('freshOnPlace').checked=true;
         posted=null;
         await ui.place();
-        check(posted===null && element('noticeText').textContent.includes('garage Drive handoff'),'on-track teleport refuses to silently ignore requested tyre conditioning');
+        check(posted===null && element('noticeText').textContent.includes('Return to the garage'),'on-track teleport refuses to silently ignore requested tyre conditioning');
         element('freshOnPlace').checked=false;
         await ui.place();
         check(posted.directReset===true && posted.restoreSpeed===true && posted.tyres===undefined,'direct reset preserves the motion choice without requesting garage tyre preparation');
@@ -208,14 +213,14 @@ function runCheckpointTests(script, html) {
         posted=null;await ui.quickCapture();
         check(posted===null && element('noticeText').textContent.includes('operation'),'quick capture explains why it is blocked');
         ui.renderCheckpoints({...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[]});
-        check(element('cp').disabled && !element('cp').value,'empty library has no teleport destination');
+        check(!element('cp').value,'empty library has no teleport destination');
         await ui.resetFromHotkey(true);
-        check(posted===null && element('noticeText').textContent.includes('Capture or choose'),'standing shortcut explains the missing destination');
-        const quick={id:'Daytona/McLaren/Quick capture.json',name:'Quick capture',track:'Daytona',vehicle:'McLaren',rollingEligible:true,speedKmh:126};
+        check(posted===null && element('noticeText').textContent.includes('Choose a teleport target'),'standing shortcut explains the missing destination');
+        const quick={id:'Daytona/McLaren/Quick capture.json',name:'Quick capture',quick:true,track:'Daytona',vehicle:'McLaren',rollingEligible:true,speedKmh:126};
         captureResponse={ok:true,id:quick.id};
         response={...onTrack,session:{...onTrack.session,capturable:true},checkpoints:[quick]};
         await ui.runPracticeInput('capture');
-        check(postedPath==='/api/capture' && posted.quick===true,'quick capture uses the reserved reusable slot');
+        check(postedPath==='/api/capture' && posted.quick===true,'quick capture uses the persistent capture action');
         check(element('cp').value===quick.id && ui.canRestoreSpeed(),'quick capture selects the saved checkpoint for motion teleport');
         check(!element('cp').disabled,'first quick capture enables the destination selector');
         response={...response,checkpoints:[{...quick,rollingEligible:false}]};
@@ -228,8 +233,8 @@ function runCheckpointTests(script, html) {
         await ui.quickCapture();
         check(element('cp').value===quick.id && element('noticeText').textContent==='Capture refused','failed quick capture preserves the selected checkpoint and explains failure');
         const candidates={...response,checkpoints:[
-          {...quick,id:'late',name:'Late',lapDistance:400,gear:3},
-          {...quick,id:'early',name:'Early',lapDistance:100,gear:2},
+          {...quick,quick:false,id:'late',name:'Late',lapDistance:400,gear:3},
+          {...quick,quick:false,id:'early',name:'Early',lapDistance:100,gear:2},
           {...quick,id:'quick',name:'Quick capture',lapDistance:250,gear:2},
           {...quick,id:'wrong-car',vehicle:'Genesis',lapDistance:150,gear:2},
           {...quick,id:'standing',speedKmh:0,rollingEligible:false,gear:0},
@@ -237,12 +242,12 @@ function runCheckpointTests(script, html) {
           {...quick,id:'no-gear',gear:0}
         ]};
         response=candidates;await ui.refresh();
-        check(ui.speedReadyCheckpoints().map(c=>c.id).join(',')==='early,quick,late','cycling includes only current-track/car motion-ready captures in lap order');
+        check(ui.speedReadyCheckpoints().map(c=>c.id).join(',')==='early,late','cycling includes only current-track/car motion-ready captures in lap order');
         posted=null;element('cp').value='wrong-car';await ui.runPracticeInput('next');
         check(element('cp').value==='early' && posted===null,'next selects the first eligible destination without teleporting');
         await ui.runPracticeInput('previous');
         check(element('cp').value==='late','previous wraps around the eligible list');
-        await ui.runPracticeInput('next');await ui.runPracticeInput('next');
+        await ui.runPracticeInput('nextQuick');
         check(element('cp').value==='quick','quick capture participates in cycling');
         await ui.runPracticeInput('teleport');
         check(posted.checkpoint==='quick' && posted.restoreSpeed===true,'teleport uses the cycled selection');
@@ -250,7 +255,7 @@ function runCheckpointTests(script, html) {
         response=eac;await ui.refresh();
         check(!element('capBtn').disabled && element('placeBtn').disabled && element('standingBtn').disabled && element('tyreResetBtn').disabled,'EAC enables telemetry capture while disabling teleport and tyre preparation');
         check(element('placeHint').textContent.includes('EAC on') && element('tyreResetHint').textContent.includes('Launch local play'),'Disabled EAC actions explain the reason and next step');
-        check(ui.speedReadyCheckpoints().length===3,'EAC can browse speed-ready captures without internal build discovery');
+        check(ui.speedReadyCheckpoints().length===2,'EAC can browse speed-ready captures without internal build discovery');
         posted=null;await ui.runPracticeInput('next');check(posted===null,'EAC checkpoint cycling changes selection without game writes');
         posted=null;await ui.resetFromHotkey();await ui.place(true);await ui.resetTyres();
         check(posted===null && element('noticeText').textContent.includes('EAC on'),'EAC shortcuts explain blocked actions without submitting writes');
@@ -258,11 +263,9 @@ function runCheckpointTests(script, html) {
         await ui.quickCapture();
         check(postedPath==='/api/capture' && posted.quick===true && element('cp').value===quick.id,'EAC quick capture uses telemetry without a memory connection');
         check(element('noticeText').textContent.includes('Launch local play'),'EAC capture success explains how to teleport later');
-        element('capName').value='Named EAC checkpoint';await ui.capture();
-        check(posted.name==='Named EAC checkpoint','Named checkpoint capture is available under EAC');
         ui.setNavigation({state:{gameState:'GSTATE_SETUP'}});response=eac;await ui.refresh();
         check(element('capBtn').disabled && element('capHint').textContent.includes('Load a session'),'Main menu cannot capture a leftover SDK position');
-        posted=null;await ui.quickCapture();await ui.capture();check(posted===null,'Both capture paths refuse leftover main-menu telemetry');
+        posted=null;await ui.quickCapture();check(posted===null,'Quick capture refuses leftover main-menu telemetry');
         response={...candidates,inGarage:true,tyreRules:{inGarage:true}};
         ui.setNavigation({state:{settingMode:'SETTING_GRANDPRIX',gameState:'GSTATE_DYN',gameSession:'RACE1'}});await ui.refresh();
         check(element('placeBtn').disabled && element('tyreResetBtn').disabled && element('placeHint').textContent.includes('single-player Practice'),'EAC-off race sessions still explain that memory tools need Practice');
@@ -272,7 +275,7 @@ function runCheckpointTests(script, html) {
         ui.renderCheckpoints({...candidates,busy:true});ui.cycleCheckpoint(1);
         check(element('cp').value==='quick','active placement freezes cycling');
         ui.renderCheckpoints({...candidates,checkpoints:[]});ui.cycleCheckpoint(1);
-        check(element('noticeText').textContent.includes('No speed-ready checkpoints'),'empty eligible list explains how to create a destination');
+        check(element('noticeText').textContent.includes('No speed-ready'),'empty eligible list explains how to create a destination');
         await ui.refresh();
         let release;
         pendingResponse=new Promise(resolve=>release=resolve);

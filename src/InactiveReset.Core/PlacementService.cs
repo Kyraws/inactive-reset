@@ -45,7 +45,6 @@ public sealed record PlacementPlan
     /// <summary>Where this plan's D and L came from.</summary>
     public required RestSource RestSource { get; init; }
     public SessionIdentity PlacementIdentity => new(Calibration.TrackName, Calibration.VehicleName);
-    public string LearningKey => Checkpoint.LearningKey(PlacementIdentity.VehicleName);
 
     public float ResidualMetres => MathF.Sqrt(
         MathF.Pow(ForwardRecheck.X - Target.RestPosition.X, 2)
@@ -132,8 +131,8 @@ public sealed record PlacementOutcome
 /// <summary>
 /// What the session actually has loaded, as the game reports it.
 ///
-/// Checkpoint geometry must match the loaded track. Calibration and learned
-/// corrections must match the loaded car, which may differ from the capture car.
+/// Checkpoint geometry must match the loaded track. Calibration must match the
+/// loaded car, which may differ from the capture car.
 /// </summary>
 public readonly record struct SessionIdentity(string TrackName, string VehicleName)
 {
@@ -183,24 +182,40 @@ public sealed class PlacementService(GameSession session)
 {
     private readonly GameSession _session = session;
 
+    public static (Checkpoint Checkpoint, SessionIdentity Identity) ResolveDestination(
+        string offsetDirectory, string checkpointDirectory, string name, Checkpoint? selected = null)
+    {
+        SessionIdentity? live = null;
+        try
+        {
+            var path = Path.Combine(offsetDirectory, "shared-memory.json");
+            if (!File.Exists(path))
+                throw new SharedMemoryException($"missing {path}. Regenerate it with tools/dump-sdk-offsets.");
+            using var reader = new SharedMemoryReader(SharedMemoryOffsets.Load(path));
+            live = SessionIdentity.From(reader);
+        }
+        catch (SharedMemoryException)
+        {
+        }
+
+        var checkpoint = selected ?? Checkpoint.Require(checkpointDirectory, name, live);
+        var identity = SessionIdentity.RequireKnown(live);
+        identity.RequireMatches(checkpoint);
+        return (checkpoint, identity);
+    }
+
     /// <summary>
     /// Compute a plan using live reads without writing game memory.
-    /// Constants come from learned values, an eligible calibration, or the
-    /// running engine. A placeholder supplies the default vertical offset.
+    /// Constants come from an eligible calibration or the running engine.
     /// </summary>
     public PlacementPlan Plan(
-        Checkpoint checkpoint, CalibrationProfile calibration, LearnedRest? learned = null,
-        SessionIdentity? sessionIdentity = null)
+        Checkpoint checkpoint, string dataDirectory, SessionIdentity? sessionIdentity)
     {
         var identity = SessionIdentity.RequireKnown(sessionIdentity);
         identity.RequireMatches(checkpoint);
+        var calibration = CalibrationProfile.Find(dataDirectory, identity.TrackName, identity.VehicleName)
+            ?? CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName);
         identity.RequireCalibration(calibration);
-        if (learned is not null &&
-            (!string.Equals(learned.BuildSha256, _session.ExecutableSha256, StringComparison.OrdinalIgnoreCase)
-             || !string.Equals(learned.TrackName, identity.TrackName, StringComparison.OrdinalIgnoreCase)
-             || !string.Equals(learned.VehicleName, identity.VehicleName, StringComparison.OrdinalIgnoreCase)
-             || !string.Equals(learned.CheckpointName, checkpoint.LearningKey(identity.VehicleName), StringComparison.OrdinalIgnoreCase)))
-            throw new CalibrationException("learned offsets do not match this build, loaded car and checkpoint");
 
         var model = calibration.ToPlacementModel(_session.ReadEngineTunables());
 
@@ -208,27 +223,19 @@ public sealed class PlacementService(GameSession session)
         // first and then decide the constants from what it says.
         var live = new LiveStateReader(_session).Read(model);
 
-        // Learned beats measured beats derived. Learned came from THIS
-        // checkpoint's own placements; a profile was measured by hand for this
-        // track and vehicle; derived works anywhere but has only ever been
-        // fitted on one track. Old learned files have no H and retain the
-        // calibration's vertical offset until a near-target sample supplies it.
-        var rest = learned is not null
-            ? new RestConstants(learned.Forward, learned.Lateral, RestSource.Learned)
-            : !calibration.IsPlaceholder && (!live.IndexedDestination ||
+        var rest = !calibration.IsPlaceholder && (!live.IndexedDestination ||
                 string.Equals(calibration.ExecutableSha256, _session.ExecutableSha256, StringComparison.OrdinalIgnoreCase))
-                ? new RestConstants(model.RestForwardDistance, model.RestLateralOffset, RestSource.Profile)
-                : (live.IndexedDestination ? IndexedPlacementMath.Derive(live.Container) : RestModel.Derive(live.Container))
-                  ?? throw new CalibrationException(
-                      $"no calibration for '{checkpoint.TrackName}' / '{checkpoint.VehicleName}', and "
-                      + "this build's offset profile does not carry the engine placement fields, so "
-                      + "nothing can be derived either.");
+            ? new RestConstants(model.RestForwardDistance, model.RestLateralOffset, RestSource.Profile)
+            : (live.IndexedDestination ? IndexedPlacementMath.Derive(live.Container) : RestModel.Derive(live.Container))
+              ?? throw new CalibrationException(
+                  $"no calibration for '{checkpoint.TrackName}' / '{checkpoint.VehicleName}', and "
+                  + "this build's offset profile does not carry the engine placement fields, so "
+                  + "nothing can be derived either.");
 
         model = model with
         {
             RestForwardDistance = rest.Forward,
             RestLateralOffset = rest.Lateral,
-            RestVerticalOffset = learned?.Vertical ?? model.RestVerticalOffset,
         };
 
         var target = Geometry.BuildTargetFromRecordedPose(checkpoint.Pose);
@@ -256,6 +263,43 @@ public sealed class PlacementService(GameSession session)
         };
     }
 
+    public PlacementOutcome Place(
+        PlacementPlan plan, string offsetDirectory, LmuSessionClient menu,
+        Action<PlacementProgress>? progress = null, CancellationToken cancellation = default,
+        bool clearPitFlag = true, int? setSector = LapValidityController.LastSector,
+        TyreResetOptions? tyreOptions = null, bool restoreSpeed = false)
+    {
+        using var tyres = tyreOptions is null ? null : new TyreResetPreparation(_session, offsetDirectory, tyreOptions);
+        var slot = plan.Live.Container.SlotIndex;
+        var reader = new LiveStateReader(_session);
+        bool SameContext() => !_session.Process.HasExited && reader.ResolveSlotIndex() == slot &&
+            _session.Memory.ReadUInt64(_session.Resolve(_session.Offsets.SpotTable.IndexedDestination ??
+                _session.Offsets.SpotTable.PitPosTable, "placement table")) == plan.Live.Globals.PitPosTable;
+
+        if (restoreSpeed && plan.CanProceed && reader.ReadControlOwner(slot) != 1)
+            throw new GateException("Return to the garage before preparing a rolling start.");
+        using var brakeHold = restoreSpeed && plan.CanProceed
+            ? RollingBrakeHold.Prepare(menu, SameContext,
+                message => progress?.Invoke(new(PlacementPhase.Gating, message)), cancellation) : null;
+
+        RollingMotionResult RestoreMotion()
+        {
+            try
+            {
+                // A car can creep on a slope after Drive.
+                RollingMotion.WaitForGarageHandoff(_session, plan.Checkpoint, offsetDirectory, menu, SameContext,
+                    message => progress?.Invoke(new(PlacementPhase.Restoring, message)), cancellation);
+                return DirectReset.Restore(_session, plan.Checkpoint, offsetDirectory, menu, true,
+                    message => progress?.Invoke(new(PlacementPhase.Restoring, message)), cancellation).Motion
+                    ?? throw new GateException("Reset completed without verified speed and gear restoration.");
+            }
+            finally { brakeHold?.Restore(); }
+        }
+
+        return PlacePrepared(plan, progress, cancellation: cancellation, clearPitFlag: clearPitFlag,
+            setSector: setSector, tyres: tyres, restoreMotion: restoreSpeed ? RestoreMotion : null);
+    }
+
     /// <summary>
     /// Perform the placement.
     ///
@@ -277,7 +321,7 @@ public sealed class PlacementService(GameSession session)
     /// <see cref="LapValidityController.SetSector"/> for why the value is a
     /// constant and why it is safe when the car is placed earlier in the lap.
     /// </param>
-    public PlacementOutcome Place(
+    private PlacementOutcome PlacePrepared(
         PlacementPlan plan,
         Action<PlacementProgress>? progress = null,
         TimeSpan? timeout = null,

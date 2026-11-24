@@ -74,11 +74,10 @@ joins online races. Official-event presets reproduce supported conditions in sol
 
 ## App tour
 
-![Inactive Reset walkthrough of every app page and all five session-builder tabs](docs/media/interface.gif)
+![Earlier Inactive Reset walkthrough with sample data](docs/media/interface.gif)
 
-*Overview, all five builder tabs, Official races, Session presets, Practice tools,
-Checkpoint library, Activity and Controls. Actual app UI shown with sample data;
-the car emblem is loaded from the installed game.*
+*Earlier interface walkthrough. The current app opens Session & Conditions and
+provides direct navigation to the other pages.*
 
 Reset and moving restoration are experimental and depend on verified engine
 layouts. Unsupported game changes disable the affected capability. Fuel, damage
@@ -94,14 +93,6 @@ The desktop host and command-line tool share a C# core. A loopback HTTP server
 connects the embedded workspace to session management, checkpoint storage and
 background operations. SDK telemetry is separate from native memory attachment;
 local session setup uses the game's menu API.
-
-| Engineering challenge | Approach and source |
-| --- | --- |
-| Read game state | [Shared-memory reader](src/InactiveReset.Core/SharedMemoryReader.cs) uses a generated SDK layout for telemetry; capture guards reject menu/loading leftovers. |
-| Adapt to executable changes | [Automatic discovery](src/InactiveReset.Core/AutomaticOffsets.cs) derives addresses from mapped code using structural resolvers and instruction anchors, verifies probes, and checks caches against the current executable. Missing or ambiguous evidence refuses use; matching code does not prove live compatibility. |
-| Limit temporary memory changes | [Spot transaction](src/InactiveReset.Core/SpotWriteTransaction.cs) checks build identity, writable pages and planned bytes, verifies writes by readback, and attempts restoration on normal or exceptional exit. Its scope is the spot-entry bytes; rule/lap cleanup is separate, and process termination cannot run disposal. |
-| Enforce operation boundaries | [Game attachment](src/InactiveReset.Core/GameSession.cs) refuses EAC/protected launch. Memory actions additionally require active offline single-player Practice; the session API has its own menu/multiplayer gates. |
-| Validate without the game | [xUnit and HTTP tests](tests/InactiveReset.Tests) and [WebView2 suites](tests/InactiveReset.BrowserTests) exercise domain logic, failure handling and real browser interaction using isolated fixtures. Live game checks remain separate. |
 
 See [Architecture](docs/ARCHITECTURE.md) for component responsibilities and data
 flow, [Testing](docs/TESTING.md) for coverage and execution limits, and
@@ -119,7 +110,7 @@ in PowerShell:
 ```
 
 The test wrapper runs portable C#/HTTP checks and actual WebView2 suites without
-attaching to LMU. The [Verify workflow](.github/workflows/verify.yml) runs the
+attaching to LMU. The repository's Verify workflow runs the
 package path, including Release tests and an extracted-package smoke check.
 See [Contributing](docs/CONTRIBUTING.md) for local packaging and optional
 read-only compatibility checks. Automated tests do not establish live reset
@@ -127,17 +118,13 @@ reliability across every game build, car or circuit.
 
 ### Release and development status
 
-The published download is [v0.4.0](https://github.com/Kyraws/inactive-reset/releases/tag/v0.4.0).
+The documented release baseline is [v0.4.0](https://github.com/Kyraws/inactive-reset/releases/tag/v0.4.0).
 Its [successful Verify run](https://github.com/Kyraws/inactive-reset/actions/runs/40208372185)
 applies to that release commit, not the newer local development work.
 
-Work toward **0.5 is unreleased**. The local [telemetry recorder and timestamp
-selection](docs/TELEMETRY_TIMELINE.md) integrate recorded pose/speed/gear with the
-existing guarded operation runner. That integration has offline checks; recorded
-resets have not been live-tested. Complete suspension, tyre-model and other native
-state restoration remain unsupported. See [Status](docs/STATUS.md) for the current
-implementation and research limits. No new release or live-validation result is
-claimed by this README update.
+The development checkout contains the [telemetry recorder and recorded-lap
+teleport](docs/TELEMETRY_TIMELINE.md). See [Status](docs/STATUS.md) for what has
+been tested and which scenarios remain open.
 
 ### Project summary for CVs and applications
 

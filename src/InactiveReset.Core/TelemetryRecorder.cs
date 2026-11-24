@@ -12,7 +12,7 @@ public sealed record TimelineEntry(string Kind, long Sequence, long HostTicks,
     TelemetrySnapshot? Sample = null, long Dropped = 0, long Duplicates = 0,
     double? SimulationGapSeconds = null, int SchemaVersion = 1,
     long HostFrequency = 0, DateTimeOffset? Utc = null, string? SegmentId = null,
-    double? ReadDurationMilliseconds = null);
+    double? ReadDurationMilliseconds = null, string? RecordedSessionId = null, DateTimeOffset? RecordedSessionUtc = null);
 
 public sealed record RecorderStatus(string State, long Samples, long Duplicates, long Dropped,
     string? Error = null, string? Reason = null);
@@ -26,6 +26,9 @@ internal sealed class TimelineCapture
     private RecordingIdentity? _observedIdentity;
     private double? _observedTime;
     private string? _segment;
+    private string? _recordedSession;
+    private DateTimeOffset? _recordedSessionUtc;
+    private double? _observedScoringTime;
     private string? _suspensionReason;
     internal long Samples { get; private set; }
     internal long Duplicates { get; private set; }
@@ -46,6 +49,8 @@ internal sealed class TimelineCapture
 
     internal void Suspend(string reason, long ticks)
     {
+        if (reason is not ("stale-or-paused" or "not-in-realtime" or "session-inactive-or-paused"))
+            _recordedSession = null;
         if (_identity is not null || _suspensionReason != reason)
             Emit(new("end", ++_sequence, ticks, reason, Identity: _identity, SegmentId: _segment));
         _suspensionReason = reason;
@@ -70,20 +75,30 @@ internal sealed class TimelineCapture
             DirectPosePlan.RequireRotation([p.Row0.X, p.Row0.Y, p.Row0.Z, p.Row1.X, p.Row1.Y, p.Row1.Z, p.Row2.X, p.Row2.Y, p.Row2.Z]);
         }
         catch (GateException) { Suspend("invalid-orientation", ticks); return; }
-        if (_observedIdentity == identity && _observedTime == sample.ElapsedTime)
+        var scoringTime = sample.Details.ScoringTime;
+        if (_observedIdentity == identity && _observedTime == sample.ElapsedTime &&
+            !(scoringTime < _observedScoringTime))
         {
             Duplicates++; _duplicates++;
             if (Stopwatch.GetElapsedTime(_lastFresh, ticks).TotalSeconds >= 1) Suspend("stale-or-paused", ticks);
             return;
         }
+        var restart = _observedIdentity != identity || sample.ElapsedTime < _observedTime ||
+            scoringTime < _observedScoringTime;
         _observedIdentity = identity;
         _observedTime = sample.ElapsedTime;
+        _observedScoringTime = scoringTime;
         var delta = sample.ElapsedTime - _time;
-        if (_identity != identity || delta is < 0 or > 2)
+        if (restart || _identity != identity || delta is < 0 or > 2)
         {
             if (_identity is not null)
                 Suspend(_identity != identity ? "identity-change" : "simulation-discontinuity", ticks);
             delta = null;
+        }
+        if (restart || _recordedSession is null)
+        {
+            _recordedSession = Guid.NewGuid().ToString("N");
+            _recordedSessionUtc = DateTimeOffset.UtcNow;
         }
         if (_identity is null)
         {
@@ -94,7 +109,8 @@ internal sealed class TimelineCapture
         }
         Emit(new("sample", ++_sequence, ticks, Identity: identity, Sample: sample,
             SimulationGapSeconds: delta is > .1 ? delta : null,
-            SegmentId: _segment, ReadDurationMilliseconds: readDuration));
+            SegmentId: _segment, ReadDurationMilliseconds: readDuration,
+            RecordedSessionId: _recordedSession, RecordedSessionUtc: _recordedSessionUtc));
         Samples++;
         _time = sample.ElapsedTime;
         _lastFresh = ticks;
@@ -229,7 +245,8 @@ public sealed class TelemetryRecorder(string offsetDirectory, string dataDirecto
                     segment = entry.SegmentId;
                     await writer.WriteLineAsync(JsonSerializer.Serialize(new TimelineEntry("header", entry.Sequence,
                         entry.HostTicks, Identity: identity, HostFrequency: Stopwatch.Frequency, Utc: DateTimeOffset.UtcNow,
-                        SegmentId: segment))).ConfigureAwait(false);
+                        SegmentId: segment, RecordedSessionId: entry.RecordedSessionId,
+                        RecordedSessionUtc: entry.RecordedSessionUtc))).ConfigureAwait(false);
                 }
                 if (writer is null) continue;
                 var json = JsonSerializer.Serialize(entry);
@@ -253,7 +270,9 @@ public sealed class TelemetryRecorder(string offsetDirectory, string dataDirecto
         {
             if (total <= storageBudget - fileBudget - 131072) break;
             var length = file.Length;
-            file.Delete(); total -= length;
+            file.Delete();
+            TelemetryTimeline.DeleteLapIndex(file.FullName + TelemetryTimeline.LapIndexSuffix);
+            total -= length;
         }
     }
 

@@ -27,7 +27,7 @@ function Start-Cli([string[]] $Arguments) {
 try {
     Expand-Archive -LiteralPath $zipPath -DestinationPath $smokeRoot
     foreach ($relative in 'inactive-reset.exe','inactive-reset-ui.exe','offsets/shared-memory.json','data/profiles-default',
-        'README.md','docs/CONTRIBUTING.md','docs/CONTEXT.md','docs/research/README.md') {
+        'README.md','GLOSSARY.md','docs/CONTRIBUTING.md','docs/research/README.md') {
         if (!(Test-Path -LiteralPath (Join-Path $smokeRoot $relative))) { throw "Package is missing $relative" }
     }
     $layout = Get-Content -Raw -LiteralPath (Join-Path $smokeRoot 'offsets/shared-memory.json') | ConvertFrom-Json

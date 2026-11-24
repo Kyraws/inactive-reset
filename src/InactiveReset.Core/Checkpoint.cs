@@ -29,6 +29,7 @@ public sealed class Checkpoint
         ? MotionCapture.SpeedKmh(v) : null;
     public RecordedRestoration? Restoration { get; init; }
     public string? SourcePath { get; init; }
+    public bool IsQuickCapture { get; init; }
 
     /// <summary>Build this was captured against, for provenance only.</summary>
     public string? ExecutableSha256 { get; init; }
@@ -53,9 +54,13 @@ public sealed class Checkpoint
             throw new CheckpointException($"{path}: orientation must have three rows");
         }
 
+        var name = Path.GetFileNameWithoutExtension(path);
         var checkpoint = new Checkpoint
         {
-            Name = Path.GetFileNameWithoutExtension(path),
+            Name = name,
+            IsQuickCapture = name.Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase) ||
+                CaptureService.IsQuickFileName(name) && root.TryGetProperty("quick_capture", out var quick) &&
+                quick.ValueKind == JsonValueKind.True,
             TrackName = root.GetProperty("track").GetProperty("name").GetString()!,
             VehicleName = root.GetProperty("vehicle").GetProperty("name").GetString()!,
             Pose = new RecordedPose(
@@ -119,12 +124,6 @@ public sealed class Checkpoint
     /// <summary>Stable selection ID relative to the checkpoint directory.</summary>
     public string SelectionId(string directory) => Path.GetRelativePath(directory,
         SourcePath ?? throw new CheckpointException("checkpoint has no source path")).Replace('\\', '/');
-
-    // Preserve existing same-car learning files; cross-car captures get their
-    // own key so two source cars' identically named targets cannot share a fit.
-    public string LearningKey(string placedVehicle) =>
-        string.Equals(VehicleName, placedVehicle, StringComparison.OrdinalIgnoreCase)
-            ? Name : $"{VehicleName}__{Name}";
 
     public static Checkpoint Require(string directory, string name, SessionIdentity? session = null)
     {

@@ -29,16 +29,16 @@ From an x64 MSVC Developer command prompt at the repository root, replace
 
 ```text
 cl /std:c++17 /EHsc /O2 /I"<LMU install>\Support\SharedMemoryInterface" tools\dump-sdk-offsets.cpp /Fe:tools\dump-sdk-offsets.exe
-tools\dump-sdk-offsets.exe > artifacts\shared-memory.generated.json
+tools\dump-sdk-offsets.exe > experiments\shared-memory.generated.json
 ```
 
-Create `artifacts/` first if it does not exist. The generator emits the layout
+Create `experiments/` first if it does not exist. The generator emits the layout
 but does not add `sdkHeaderSha256`. After reviewing the generated layout, add
 that field from the header used to compile it before replacing the committed
 file. For example, in PowerShell:
 
 ```powershell
-$layout = Get-Content artifacts/shared-memory.generated.json -Raw | ConvertFrom-Json
+$layout = Get-Content experiments/shared-memory.generated.json -Raw | ConvertFrom-Json
 $headerHash = (Get-FileHash '<LMU install>\Support\SharedMemoryInterface\SharedMemoryInterface.hpp' -Algorithm SHA256).Hash
 $layout | Add-Member -NotePropertyName sdkHeaderSha256 -NotePropertyValue $headerHash
 $layout | ConvertTo-Json -Depth 10 | Set-Content offsets/shared-memory.json -Encoding utf8

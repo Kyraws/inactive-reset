@@ -156,6 +156,6 @@ public sealed class LocalDumpFactAttribute : FactAttribute
     public static string PathFor(string build) => build == "0F6DCAC1" &&
         Environment.GetEnvironmentVariable("INACTIVE_RESET_BASELINE_DUMP") is { } baseline
             ? baseline
-            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../..", "artifacts",
+            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../..", "local-evidence", "runtime",
                 $"LMU_runtime_{build}.bin"));
 }

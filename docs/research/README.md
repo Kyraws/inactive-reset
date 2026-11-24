@@ -9,6 +9,7 @@ general compatibility guarantees. See [Architecture](../ARCHITECTURE.md),
 | --- | --- |
 | [Placement and lap timing](PLACEMENT_EVIDENCE.md) | Calibration, lateral sign, learning guards and sector diagnosis |
 | [Discovery and indexed destinations](DISCOVERY_EVIDENCE.md) | Reanchor pitfalls, observer limits and causal indexed-entry tests |
+| [Native-state observations](NATIVE_STATE_EVIDENCE.md) | Build-specific suspension, joint and tyre-state capture results and limits |
 
 Superseded architecture, targets, observer instructions and running logs were
 consolidated here; obsolete workflows and intermediate hypotheses were removed.

@@ -15,6 +15,15 @@ namespace InactiveReset.Core;
 public sealed class CaptureService(SharedMemoryReader reader)
 {
     public const string QuickCaptureName = "Quick capture";
+    private const string QuickFilePrefix = "Quick capture @ ";
+
+    internal static bool IsQuickFileName(string name) =>
+        name.StartsWith(QuickFilePrefix, StringComparison.OrdinalIgnoreCase) &&
+        name.Length >= QuickFilePrefix.Length + 33 &&
+        name[^33] == '-' && Guid.TryParseExact(name[^32..], "N", out _);
+
+    public static bool IsQuickName(string name) =>
+        name.Equals(QuickCaptureName, StringComparison.OrdinalIgnoreCase) || IsQuickFileName(name);
     private readonly SharedMemoryReader _reader = reader;
 
     /// <summary>
@@ -100,17 +109,20 @@ public sealed class CaptureService(SharedMemoryReader reader)
     /// Write a checkpoint to disk, under a folder per track/vehicle pair so that
     /// combinations cannot get mixed up.
     /// </summary>
-    public static string Save(Checkpoint checkpoint, string checkpointDirectory, bool quick = false)
+    public static string Save(Checkpoint checkpoint, string checkpointDirectory, bool quick = false, bool appendQuick = false)
     {
         ValidateName(checkpoint.Name);
-        var reserved = string.Equals(checkpoint.Name, QuickCaptureName, StringComparison.OrdinalIgnoreCase);
+        var reserved = IsQuickName(checkpoint.Name);
         if (quick != reserved)
             throw new CheckpointException("'Quick capture' is reserved for the quick-capture action; use another name for a library checkpoint.");
         if (quick && RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, checkpoint.Gear) is { } issue)
             throw new CheckpointException($"Quick capture requires eligible speed and gear. {issue} Use named Capture to save a standing destination.");
         var folder = Path.Combine(checkpointDirectory, SanitiseFolder(checkpoint));
         Directory.CreateDirectory(folder);
-        var path = Path.GetFullPath(Path.Combine(folder, checkpoint.Name + ".json"));
+        var fileName = quick && appendQuick
+            ? $"{QuickFilePrefix}{checkpoint.CapturedUtc:yyyyMMdd-HHmmssfff}-{Guid.NewGuid():N}"
+            : checkpoint.Name;
+        var path = Path.GetFullPath(Path.Combine(folder, fileName + ".json"));
         if (!path.StartsWith(Path.GetFullPath(folder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new CheckpointException("The checkpoint must stay inside its track and car folder.");
 
@@ -143,6 +155,8 @@ public sealed class CaptureService(SharedMemoryReader reader)
         if (checkpoint.CapturedSimulationTime is { } time)
             json["captured_simulation_time_s"] = time;
 
+        if (quick && appendQuick) json["quick_capture"] = true;
+
         if (checkpoint.LocalVelocityMetresPerSecond is { } velocity)
             json["motion"] = new JsonObject
             {
@@ -160,7 +174,7 @@ public sealed class CaptureService(SharedMemoryReader reader)
         try
         {
             File.WriteAllText(temporary, payload);
-            File.Move(temporary, path, overwrite: quick);
+            File.Move(temporary, path, overwrite: quick && !appendQuick);
         }
         catch (IOException) when (!quick && File.Exists(path))
         {

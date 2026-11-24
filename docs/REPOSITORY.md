@@ -1,46 +1,46 @@
-# Repository inventory
+# Repository layout and cleanup
 
-Cleanup review: 2026-10-25. Classifications cover all tracked files by role;
-the per-file working inventory is `.scratch/repo-cleanup/inventory.csv`.
-
-| Classification | Files / former location | Decision |
+| Path | What lives there | Cleanup decision |
 | --- | --- | --- |
-| Needed | `src/InactiveReset.App`, `.Cli`, `.Core`, `.Ui` | Keep application code, embedded web assets and discovery resources; preserve runtime checks and public/file formats |
-| Needed | `tests/InactiveReset.Tests`, `.BrowserTests`, `Support`, browser HTML/JS, package smoke and live checklist | Keep independent regression, HTTP, rendering, package and live coverage |
-| Needed | Four historical JSONs formerly in `offsets/` | Move unchanged to `tests/Fixtures/offsets`; still copied into the test output's `offsets/` directory |
-| Needed | `offsets/shared-memory.json`, `data/profiles-default/` | Keep runtime SDK layout and shipped calibration; update calibration's evidence pointer |
-| Needed | `tools/observer`, `tools/ghidra`, SDK dumper, active discovery generator | Keep maintained analysis tools, resolver tests and curated evidence |
-| Needed | Former `src/InactiveReset.Reanchor` | Move to `tools/InactiveReset.Reanchor`; update solution, test reference and Core reference; never publish it |
-| Needed | Root `build.ps1` | Move implementation to `scripts/build.ps1`; keep `build.cmd` as the stable root/CI entry point |
-| Needed | Root `CONTEXT.md`, `CONTRIBUTING.md` | Move to `docs/`; update links, agent guidance and package staging |
-| Needed | Current `docs/*.md`, `docs/agents/`, tools guides | Keep distinct user/developer contracts; condense index/architecture and correct obsolete claims |
-| Needed | Root README | Replace stale walkthrough/appearance claims with implemented feature list and short setup/access notes |
-| Needed | `.gitattributes`, `.gitignore`, `.github/workflows/verify.yml`, `AGENTS.md` | Keep repository/tooling discovery conventions; shorten agent entry point |
-| Needed | Solution, `Directory.Build.props`, `LICENSE`, `NOTICE` | Keep at root for build discovery, licensing and package consumers |
-| Deprecated | `docs/archive/` architecture, targets, heading/lap investigations, reader log, observer notes, update check and index | Consolidate useful measurements, caveats and investigation techniques into `docs/research/`; remove superseded records |
-| Not needed | `tools/reanchor-research/archive/{stranchor,callgraph,anchors3}.py` and index | No project callers, hardcoded private captures; retain ideas in discovery evidence, remove |
-| Needed | `docs/media/interface.gif` | Replace the outdated walkthrough with all eight current pages and five builder tabs; clearly label sample data |
-| Deprecated, local | Ignored root `HANDOFF.md` | Preserve local paths/UTF-8 gotcha in `.scratch/repo-cleanup/local-context.md`; current build status is superseded; remove |
+| `src/` | Desktop host, CLI, shared Core and web UI | Keep. Start with the [architecture guide](ARCHITECTURE.md). |
+| `build.cmd`, `build.ps1` | Build, test and package entry points | Keep at the root. CI and contributors use `build.cmd`. |
+| `docs/` | User guides, engineering references and historical evidence | Start with the [documentation index](README.md). |
+| `tests/` | C# regressions, browser checks, fixtures, package smoke and live checklist | Keep test source. Generated reports live under `artifacts/TestResults/`. |
+| `tools/` | SDK layout generator and maintainer diagnostics | Keep the tracked tools and fixtures. They support compatibility work and do not ship as executables. See [developer tools](../tools/README.md). |
+| `offsets/shared-memory.json` | Tracked SDK telemetry layout used by the app and release package | Keep. |
+| `offsets/*.auto.json` | Local caches for discovered build and tyre layouts | Rebuildable when a supported game build is available. Historical regression fixtures live in `tests/Fixtures/offsets/`. |
+| `data/` | User checkpoints, recordings, presets, bindings, calibrations and caches | Use the [storage map](ARCHITECTURE.md#workspace-storage-and-build) before clearing individual files. |
+| `artifacts/` | Build and test output | `build.cmd clean` removes the build directories listed below. |
+| `experiments/` | Throwaway prototypes, previews and scratch code | Disposable. Move anything worth keeping to a tracked branch or retained storage first. |
+| `local-evidence/` | Runtime captures, analysis projects, diagnostic recordings and older workspace material | Retain or review individually. |
+| `dist/` | Staged executables, release ZIPs and checksums | Keep releases you want to retain. The `ship` task replaces this directory. |
+| `.scratch/` | Local issues, specs, saved work and validation evidence | Review per project folder. Some directories contain unique local files alongside disposable builds. |
 
-The exact deletion set was explicitly approved by the owner on 2026-10-25.
-Tracked originals remain recoverable in Git history.
+## What can be cleared
 
-## Directory layout
+- **`artifacts/bin`, `artifacts/obj`, `artifacts/package`** hold binaries,
+  intermediates and package staging. `build.cmd clean` clears them.
+- **`artifacts/TestResults`** holds reports and screenshots. Keep old reports
+  when you need a record of what passed on an earlier version.
+- **`experiments/`** is for work you are happy to throw away. Put each prototype
+  in its own subfolder, such as `experiments/ui-redesign/`. For a full checkout,
+  use `git worktree add --detach experiments/ui-redesign HEAD` and remove it with
+  `git worktree remove experiments/ui-redesign` when finished.
 
-```text
-src/                 shipped application projects and embedded resources
-tests/               automated checks, historical fixtures and live checklist
-tools/               maintainer-only Reanchor, observers, Ghidra and generators
-scripts/             build/test/package implementation
-docs/                user/developer guides, glossary and condensed research
-offsets/             runtime SDK layout and ignored per-build discovery caches
-data/                shipped default calibration and ignored user work
-artifacts/, dist/    ignored generated outputs
-.scratch/            ignored issues, specs and local working records
-```
+## Where older artifacts went
 
-Ignored checkpoints, user calibrations, caches, private dumps, tool builds and
-release outputs are local state, not obsolete source. Preserve them; use the
-documented build clean task only when intentionally discarding generated outputs.
-Keep source compact through shared implementation and focused comments, rather
-than minification or dropping error handling, evidence or independent tests.
+- Runtime captures moved to `local-evidence/runtime/`, where the
+  [local compatibility checks](TESTING.md#local-game-captures) look for them.
+- Probe recordings moved to `local-evidence/velocity-probe/`. New recordings
+  also go there.
+- Ghidra projects, prototypes of uncertain status, historical logs and loose
+  research files moved to `local-evidence/from-artifacts/`, with their names
+  intact. Use this path when an older note points to one of those files under
+  `artifacts/`.
+
+In `.scratch/`, `pr-2-validation/` contains a paused integration, local changes
+and live validation. `regressions/` mixes disposable browser output with saved
+live measurements. Preserve the handoffs, source changes, captures and reports
+before clearing generated descendants. See the [local issue tracker](agents/issue-tracker.md)
+for the current scratch layout. The October 2026 cleanup inventory is retained
+locally at `.scratch/repo-cleanup/inventory.csv`.

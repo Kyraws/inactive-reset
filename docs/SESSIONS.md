@@ -1,10 +1,11 @@
 # Local session setup
 
-The windowed app opens Overview. Its session builder covers car and track,
-weekend sessions, conditions, competition and rules. Practice tools provides
-checkpoints and tyre preparation. Driving assists stay configured in LMU.
+The windowed app opens **Session & Conditions** for car and livery, circuit
+layout, weekend timing, AI grid, weather and session rules.
+**Practice Teleport** provides checkpoints, recorded laps and tyre preparation.
+Driving assists stay configured in LMU.
 
-The workspace uses one navigation rail and fixed summary panel. Practice
+The shared header opens the review panel from **Session summary**. Practice
 instructions and cancellation stay visible while the tool area scrolls. Tyre
 choices and the selected checkpoint survive navigation.
 
@@ -17,19 +18,19 @@ choices and the selected checkpoint survive navigation.
 5. Adjust weather at Start, 25%, 50%, 75% and Finish for each supported session,
    or choose a forecast preset. Configure AI opponents and class selection, then
    rules. Additional session controls are under Rules.
-6. Select **Start session** once LMU is ready at its main menu. Progress
-   appears in the app. Once loaded, switch to LMU and press **Drive**.
+6. **Apply session** is highlighted while there are unapplied edits. Select it to
+   commit the draft and read back LMU's values. Once the settings are in sync,
+   **Start session** is highlighted and becomes available when LMU is ready at its
+   single-player main menu. Once loaded, switch to LMU and press **Drive**.
 
-Numeric and clock edits stay responsive while saving. Rapid +/− clicks combine
-into one final value after a short pause; type a duration or start time directly
-and press Enter or leave the field to save. Other edits save immediately. Every
-write reads back the game's accepted value, and LMU controls the available ranges.
-Start session waits for pending edits to be confirmed. Failed saves keep the
-requested values visible with **Retry save** and **Discard pending edits**;
-discard reads the game's current values rather than undoing confirmed writes.
-The summary stays visible while you edit. Refresh
-from LMU after changing settings in the game. Changing tracks keeps the setup;
-**Use circuit defaults** explicitly replaces session settings, grid and weather.
+The overview and detail popups share one draft. Enter a duration or clock time
+directly, or choose a track-default or random start time in the timing popup.
+New drafts initially select Solo. To replace your draft with the current LMU
+configuration, select **Reload from LMU**, then **Are you sure?** Reload uses
+LMU's exact values, including the AI count, and writes nothing to the game.
+If the read fails, the draft stays available. **Load preset** opens the saved
+preset library. If Apply stops after a confirmed change, the draft remains
+available for adjustment and retry.
 
 Starting checks the displayed setup against LMU again, applies a grid limited
 to the requested AI count (zero loads only the player), and verifies session
@@ -51,11 +52,11 @@ enablement and forecast temperature edits read back and restored exactly.
 The corrected return-to-menu sequence reached `GSTATE_SETUP`. These checks
 cover the recorded settings and content, rather than every session combination.
 
-Setup is locked during loading, an active session or a practice-tool operation.
-**Return to menu** asks before ending the loaded session. REST session setup
-works at the single-player main menu with EAC either on or off. Loading,
-multiplayer and active sessions keep editing locked. Checkpoint capture uses
-shared telemetry in either launch mode when LMU exposes a valid position.
+You can edit and load a preset into the next-session draft while a session is
+loaded. **Return to menu** asks before ending the loaded session. Applying
+settings and starting require the single-player main menu with EAC either on
+or off. Checkpoint capture uses shared telemetry in either launch mode when
+LMU exposes a valid position.
 Teleporting, tyre preparation and practice rule toggles require EAC off and an
 active single-player Practice session.
 
@@ -74,7 +75,7 @@ changes remain blocked; no online race was joined for this validation.
 
 ## Official event practice
 
-For official-event practice, use **Overview → Qualifying practice / Race practice**
+For official-event practice, use **Official Events → Qualifying practice / Race practice**
 or the official entries in **Session presets**. Both reproduce that session's
 conditions in solo Practice, after review. The event library is cached separately
 from personal presets. See [Official scheduled sessions](LAB.md#official-scheduled-sessions)

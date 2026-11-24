@@ -55,6 +55,21 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
         {
             if (_stopping || _running is { IsCompleted: false }) throw new GateException("Wait for the current operation before changing checkpoints.");
             var action = body["action"]?.GetValue<string>();
+            if (action == "clearQuick")
+            {
+                var nav = _sessionMenu.NavigationAsync().GetAwaiter().GetResult();
+                var live = Session_();
+                var track = live?["track"]?.GetValue<string>();
+                var vehicle = live?["vehicle"]?.GetValue<string>();
+                if (nav["state"]?["gameState"]?.GetValue<string>() != "GSTATE_DYN" ||
+                    nav["loadingStatus"]?["loading"]?.GetValue<bool>() == true ||
+                    string.IsNullOrWhiteSpace(track) || string.IsNullOrWhiteSpace(vehicle) ||
+                    track != body["track"]?.GetValue<string>() || vehicle != body["vehicle"]?.GetValue<string>())
+                    throw new GateException("The capture scope changed. Confirm again in the loaded session.");
+                var ids = body["ids"] as JsonArray ?? throw new CheckpointException("Confirm the Quick Captures to clear.");
+                return new() { ["ok"] = true, ["count"] = _library.ClearQuick(track, vehicle,
+                    ids.Select(id => id?.GetValue<string>() ?? "").ToHashSet(StringComparer.Ordinal)) };
+            }
             if (action == "undo") return new() { ["ok"] = true, ["id"] = _library.Undo(body["token"]?.GetValue<string>() ?? "") };
             var id = body["id"]?.GetValue<string>() ?? "";
             if (action == "delete") return new() { ["ok"] = true, ["token"] = _library.Delete(id) };
@@ -363,6 +378,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             {
                 ["track"] = snapshot.TrackName,
                 ["vehicle"] = snapshot.VehicleName,
+                ["vehicleModel"] = VehicleCatalog.Model(snapshot.VehicleName) ?? VehicleCatalog.UnknownModel,
+                ["vehicleCompatibilityKey"] = VehicleCatalog.CompatibilityKey(snapshot.VehicleName),
                 ["lapDistance"] = snapshot.LapDistance,
                 ["gear"] = snapshot.Gear,
                 ["speedKmh"] = snapshot.SpeedKmh,
@@ -389,16 +406,19 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             var rollingIssue = RollingMotion.CaptureIssue(checkpoint.LocalVelocityMetresPerSecond, checkpoint.Gear);
             array.Add(new JsonObject
             {
-                ["name"] = checkpoint.Name,
+                ["name"] = checkpoint.IsQuickCapture && checkpoint.CapturedUtc is { } when
+                    ? $"Quick capture · {when.ToLocalTime():MMM d HH:mm:ss.fff}" : checkpoint.Name,
                 ["id"] = checkpoint.SelectionId(Checkpoints),
                 ["track"] = checkpoint.TrackName,
                 ["vehicle"] = checkpoint.VehicleName,
+                ["vehicleModel"] = VehicleCatalog.Model(checkpoint.VehicleName) ?? VehicleCatalog.UnknownModel,
+                ["vehicleCompatibilityKey"] = VehicleCatalog.CompatibilityKey(checkpoint.VehicleName),
                 ["lapDistance"] = checkpoint.LapDistance,
                 ["speedKmh"] = checkpoint.SpeedKmh,
                 ["rollingEligible"] = rollingIssue is null,
                 ["rollingUnavailableReason"] = rollingIssue,
                 ["gear"] = checkpoint.Gear,
-                ["quick"] = checkpoint.Name.Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase),
+                ["quick"] = checkpoint.IsQuickCapture,
                 ["x"] = checkpoint.Pose.Position.X,
                 ["z"] = checkpoint.Pose.Position.Z,
             });
@@ -580,7 +600,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             };
         }
 
-        var path = CaptureService.Save(result.Checkpoint, Checkpoints, quick);
+        var path = CaptureService.Save(result.Checkpoint, Checkpoints, quick, appendQuick: quick);
         var rollingIssue = RollingMotion.CaptureIssue(result.Checkpoint.LocalVelocityMetresPerSecond, result.Checkpoint.Gear);
         Log($"captured '{name}' at {result.Checkpoint.LapDistance:F0} m");
         return new JsonObject { ["ok"] = true, ["path"] = path, ["rollingIssue"] = rollingIssue,
@@ -624,7 +644,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             _lastCalibration = null;
             _lastBuildSha256 = null;
             _phase = PlacementPhase.Gating;
-            _phaseMessage = "starting";
+            _phaseMessage = "Checking the live Practice session";
             _placementCancellation?.Dispose();
             _placementCancellation = new CancellationTokenSource();
             var token = _placementCancellation!.Token;
@@ -665,7 +685,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     {
         try
         {
-            _sessionMenu.RequirePracticeAsync(cancellation).GetAwaiter().GetResult();
+            _sessionMenu.RequirePracticeAsync(cancellation, retryOnTimeout: true).GetAwaiter().GetResult();
             using var session = GameSession.Attach(offsetDirectory, forWriting: true);
             using var tyres = new TyreResetPreparation(session, offsetDirectory, options);
             var reader = new LiveStateReader(session);
@@ -714,27 +734,15 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
     {
         try
         {
-            _sessionMenu.RequirePracticeAsync(cancellation).GetAwaiter().GetResult();
+            _sessionMenu.RequirePracticeAsync(cancellation, retryOnTimeout: true).GetAwaiter().GetResult();
             using var session = GameSession.Attach(offsetDirectory, forWriting: true);
             var placementReader = new LiveStateReader(session);
             directReset = placementReader.ReadControlOwner(placementReader.ResolveSlotIndex()) == 0;
             if (cleanup is not null && !directReset) throw new GateException("Wait for the previous garage placement to finish cleanup.");
             if (directReset && tyreOptions is not null)
                 throw new GateException("Return to the garage to apply tyre overrides, or turn off the override to teleport with your current tyres.");
-            SessionIdentity? live = null;
-            try
-            {
-                var offsets = SharedMemoryOffsets.Load(Path.Combine(offsetDirectory, "shared-memory.json"));
-                using var reader = new SharedMemoryReader(offsets);
-                live = SessionIdentity.From(reader);
-            }
-            catch (SharedMemoryException)
-            {
-            }
-
-            var checkpoint = selection?.Checkpoint ?? Checkpoint.Require(Checkpoints, name, live);
-            var identity = SessionIdentity.RequireKnown(live);
-            identity.RequireMatches(checkpoint);
+            var (checkpoint, identity) = PlacementService.ResolveDestination(
+                offsetDirectory, Checkpoints, name, selection?.Checkpoint);
             selection?.RequireContext(session.ExecutableSha256, identity);
             if (selection is not null)
                 Log($"Recorded segment {selection.SegmentId}, sample {selection.Sequence}, simulation {selection.Timestamp:R} s; restoring pose{(restoreSpeed ? ", speed and gear" : " standing")}. {(tyreOptions is null ? "Keeping current tyres." : "Applying requested tyre settings before restoring motion.")}");
@@ -757,13 +765,8 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 OnProgress(new(PlacementPhase.Done, "Checkpoint restored on track."));
                 return;
             }
-            var calibration = CalibrationProfile.Find(dataDirectory, identity.TrackName, identity.VehicleName)
-                ?? CalibrationProfile.Placeholder(identity.TrackName, identity.VehicleName);
-            var learned = new LearnedRestStore(dataDirectory).Load(session.ExecutableSha256,
-                identity.TrackName, identity.VehicleName, checkpoint.LearningKey(identity.VehicleName));
-
             var service = new PlacementService(session);
-            var plan = service.Plan(checkpoint, calibration, learned, live);
+            var plan = service.Plan(checkpoint, dataDirectory, identity);
 
             Log($"plan residual {plan.ResidualMetres:F6} m");
             if (!plan.CanProceed)
@@ -774,40 +777,12 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
                 }
             }
 
-            using var tyres = tyreOptions is null ? null : new TyreResetPreparation(session, offsetDirectory, tyreOptions);
-            var liveReader = new LiveStateReader(session);
-            var slot = plan.Live.Container.SlotIndex;
-            bool SameContext() => !session.Process.HasExited && liveReader.ResolveSlotIndex() == slot &&
-                session.Memory.ReadUInt64(session.Resolve(session.Offsets.SpotTable.IndexedDestination ??
-                    session.Offsets.SpotTable.PitPosTable, "placement table")) == plan.Live.Globals.PitPosTable;
-            if (restoreSpeed && plan.CanProceed && liveReader.ReadControlOwner(slot) != 1)
-                throw new GateException("Return to the garage before preparing a rolling start.");
-            var brakeHold = restoreSpeed && plan.CanProceed
-                ? RollingBrakeHold.Prepare(_sessionMenu, SameContext,
-                    message => OnProgress(new(PlacementPhase.Gating, message)), cancellation) : null;
-            PlacementOutcome outcome;
-            using (brakeHold)
-            {
-                RollingMotionResult RestoreMotion()
-                {
-                    try
-                    {
-                        // The car may creep on a slope after Drive; use the same verified moving reset as on track.
-                        RollingMotion.WaitForGarageHandoff(session, checkpoint, offsetDirectory, _sessionMenu, SameContext,
-                            message => OnProgress(new(PlacementPhase.Restoring, message)), cancellation);
-                        return DirectReset.Restore(session, checkpoint, offsetDirectory, _sessionMenu, true,
-                            message => OnProgress(new(PlacementPhase.Restoring, message)), cancellation).Motion
-                            ?? throw new GateException("Reset completed without verified speed and gear restoration.");
-                    }
-                    finally { brakeHold?.Restore(); }
-                }
-                outcome = service.Place(plan, OnProgress, cancellation: cancellation, tyres: tyres,
-                    restoreMotion: restoreSpeed ? RestoreMotion : null);
-            }
+            var outcome = service.Place(plan, offsetDirectory, _sessionMenu, OnProgress, cancellation,
+                tyreOptions: tyreOptions, restoreSpeed: restoreSpeed);
             lock (_gate)
             {
                 _lastOutcome = outcome;
-                _lastCalibration = calibration;
+                _lastCalibration = plan.Calibration;
                 _lastBuildSha256 = session.ExecutableSha256;
             }
             Log(outcome.Completed

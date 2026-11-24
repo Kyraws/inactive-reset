@@ -14,7 +14,7 @@ fetch('../src/InactiveReset.Ui/Lab.inputs.js').then(r=>r.text()).then(script=>{
   const publish=value=>window.dispatchEvent(new CustomEvent('input-bindings',{detail:value}));
   check(posted[0].command==='get','page requests native bindings');
   publish(state);
-  check(panel.querySelectorAll('[data-input="learnWheel"]').length===5,'all five actions support wheel assignment');
+  check(panel.querySelectorAll('[data-input="learnWheel"]').length===7&&panel.querySelector('[data-action=nextQuick]')&&panel.querySelector('[data-action=clearQuick]'),'Quick and Saved controls expose distinct bindings');
   check(panel.textContent.includes('Ctrl+Alt+Up') && panel.textContent.includes('None detected'),'defaults and missing devices are clear');
   panel.querySelector('[data-input="learnKeyboard"][data-action="capture"]').click();
   check(posted.at(-1).command==='learnKeyboard' && posted.at(-1).action==='capture','keyboard assignment starts native learning');

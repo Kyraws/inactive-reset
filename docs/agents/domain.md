@@ -1,6 +1,6 @@
 # Domain documentation
 
-This repository has one glossary, [CONTEXT.md](../CONTEXT.md), and one current
+This repository has one glossary, [GLOSSARY.md](../../GLOSSARY.md), and one current
 [documentation index](../README.md).
 
 Before exploring an area, read the glossary and the relevant current guide.

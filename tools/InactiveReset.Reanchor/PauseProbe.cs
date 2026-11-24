@@ -50,7 +50,7 @@ public static class PauseProbe
             Console.WriteLine("Dry run passed. --arm writes the one-byte physics pause flag, checks frozen time for 500 ms, then restores it and checks time resumes. No velocity writes.");
             return 0;
         }
-        var output = Path.Combine("artifacts", "velocity-probe", "pause-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + ".json");
+        var output = Path.Combine("local-evidence", "velocity-probe", "pause-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + ".json");
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         var samples = new List<object>();
         string? error = null;

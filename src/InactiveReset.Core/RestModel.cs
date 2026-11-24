@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace InactiveReset.Core;
 
 /// <summary>
@@ -15,9 +13,6 @@ public enum RestSource
 
     /// <summary>A calibration file the user measured by hand, per track and vehicle.</summary>
     Profile,
-
-    /// <summary>Learned from this exact checkpoint's own placements. Sub-millimetre.</summary>
-    Learned,
 }
 
 /// <summary>The forward and lateral rest constants, and where they came from.</summary>
@@ -47,8 +42,7 @@ public readonly record struct RestConstants(float Forward, float Lateral, RestSo
 /// <para><b>Limits.</b> One track, one session, one setup. The settle is
 /// physical, so ride height, surface or slope may move these. They are per
 /// build: the placement distance is read live and follows a patch by itself,
-/// but the settle coefficients are fitted and do not. A learned constant beats
-/// a derived one wherever the user has placed before.</para>
+/// but the settle coefficients are fitted and do not.</para>
 /// </summary>
 public static class RestModel
 {
@@ -84,101 +78,5 @@ public static class RestModel
             container.EnginePlacementDistance + SettleForwardFactor * container.VehicleLength,
             SettleLateralFactor * container.VehicleLength,
             RestSource.Derived);
-    }
-}
-
-/// <summary>
-/// One placement, as measured. The corpus that a general settle model would be
-/// fitted from.
-///
-/// Every placement appends one of these, accepted or not, with the reason. A
-/// rejected sample is as informative as an accepted one -- the run that first
-/// exposed the clearance-search assumption was a rejected sample -- so nothing
-/// is thrown away.
-///
-/// Written as JSON Lines: append-only, one record per line, survives a crash
-/// mid-write, and reads into any analysis tool without a parser.
-/// </summary>
-public sealed record PlacementObservation
-{
-    public required string TimestampUtc { get; init; }
-    public required string BuildSha256 { get; init; }
-    public required string TrackName { get; init; }
-    public required string VehicleName { get; init; }
-    public required string CheckpointName { get; init; }
-
-    /// <summary>Live vehicle geometry, so a later fit need not re-measure it.</summary>
-    public required float VehicleLength { get; init; }
-    public required float VehicleWidth { get; init; }
-
-    /// <summary>The engine's own placement distance, before settling.</summary>
-    public required float EnginePlacementDistance { get; init; }
-
-    /// <summary>
-    /// The engine's lateral sign (-1 or +1) for this spot. The model applies L
-    /// UNSIGNED, so if the settle actually follows this sign, a track whose sign
-    /// differs from the one L was fitted on misses by roughly 2L. Recorded so
-    /// that question is answerable from the corpus rather than from a rerun.
-    /// </summary>
-    public required float LateralSign { get; init; }
-
-    /// <summary>The constants this placement was made with, and their origin.</summary>
-    public required float UsedForward { get; init; }
-    public required float UsedLateral { get; init; }
-    public required string UsedSource { get; init; }
-
-    /// <summary>Miss in the vehicle frame. Forward and lateral ARE the corrections.</summary>
-    public required float ErrorForward { get; init; }
-    public required float ErrorLateral { get; init; }
-    public required float ErrorVertical { get; init; }
-
-    /// <summary>What the constants should have been: used + error.</summary>
-    public float ImpliedForward => UsedForward + ErrorForward;
-    public float ImpliedLateral => UsedLateral + ErrorLateral;
-
-    /// <summary>Target pose, for a fit that wants to model terrain or slope.</summary>
-    public required float TargetYaw { get; init; }
-    public required double TargetX { get; init; }
-    public required double TargetY { get; init; }
-    public required double TargetZ { get; init; }
-
-    /// <summary>Which clearance-search candidate the miss implies. 0 is the assumed one.</summary>
-    public required double ImpliedSearchCandidate { get; init; }
-
-    public required bool Accepted { get; init; }
-    public required string Verdict { get; init; }
-
-    public JsonObject_ ToJson() => new(this);
-
-    /// <summary>Minimal writer, so the record's shape is defined in exactly one place.</summary>
-    public sealed class JsonObject_(PlacementObservation o)
-    {
-        public string Write() => JsonSerializer.Serialize(new Dictionary<string, object?>
-        {
-            ["timestamp_utc"] = o.TimestampUtc,
-            ["build_sha256"] = o.BuildSha256,
-            ["track_name"] = o.TrackName,
-            ["vehicle_name"] = o.VehicleName,
-            ["checkpoint"] = o.CheckpointName,
-            ["vehicle_length"] = o.VehicleLength,
-            ["vehicle_width"] = o.VehicleWidth,
-            ["engine_placement_distance"] = o.EnginePlacementDistance,
-            ["lateral_sign"] = o.LateralSign,
-            ["used_forward_D"] = o.UsedForward,
-            ["used_lateral_L"] = o.UsedLateral,
-            ["used_source"] = o.UsedSource,
-            ["error_forward"] = o.ErrorForward,
-            ["error_lateral"] = o.ErrorLateral,
-            ["error_vertical"] = o.ErrorVertical,
-            ["implied_forward_D"] = o.ImpliedForward,
-            ["implied_lateral_L"] = o.ImpliedLateral,
-            ["target_yaw"] = o.TargetYaw,
-            ["target_x"] = o.TargetX,
-            ["target_y"] = o.TargetY,
-            ["target_z"] = o.TargetZ,
-            ["implied_search_candidate"] = o.ImpliedSearchCandidate,
-            ["accepted"] = o.Accepted,
-            ["verdict"] = o.Verdict,
-        });
     }
 }

@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root      = Split-Path $PSScriptRoot -Parent
+$root      = $PSScriptRoot
 $solution  = Join-Path $root 'InactiveReset.sln'
 $artifacts = Join-Path $root 'artifacts'
 $dist      = Join-Path $root 'dist'
@@ -162,7 +162,7 @@ switch ($Task) {
         }
 
         Invoke-Step 'stage documents' {
-            foreach ($file in 'README.md', 'LICENSE', 'NOTICE') {
+            foreach ($file in 'README.md', 'GLOSSARY.md', 'LICENSE', 'NOTICE') {
                 Copy-Item (Join-Path $root $file) $stage -Force
             }
             # Keep README's relative documentation links usable in the ZIP.
@@ -204,19 +204,22 @@ switch ($Task) {
     }
 
     'clean' {
-        # dotnet clean leaves the intermediate output behind; deleting the
-        # directories is the only complete clean.
-        foreach ($path in $artifacts, $dist) {
-            if (Test-Path $path) {
-                Write-Host "==> removing $path" -ForegroundColor Cyan
-                Remove-Item $path -Recurse -Force
-            }
+        # Keep test reports, private captures and retained releases.
+        if ((Test-Path -LiteralPath $artifacts) -and
+            ((Get-Item -LiteralPath $artifacts -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw "Cannot clean redirected output directory: $artifacts"
         }
-
-        # Strays from before the artifacts\ layout, if any survive.
-        Get-ChildItem $root -Include bin, obj -Recurse -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "==> removing $($_.FullName)"; Remove-Item $_.FullName -Recurse -Force }
-
+        foreach ($name in 'bin', 'obj', 'package') {
+            $path = Join-Path $artifacts $name
+            if (!(Test-Path -LiteralPath $path)) { continue }
+            $item = Get-Item -LiteralPath $path -Force
+            if (!$item.PSIsContainer -or $item.FullName -ne [IO.Path]::GetFullPath($path) -or
+                ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "Cannot clean unexpected output path: $path"
+            }
+            Write-Host "==> removing $($item.FullName)" -ForegroundColor Cyan
+            Remove-Item -LiteralPath $item.FullName -Recurse -Force
+        }
         Write-Host 'Clean.' -ForegroundColor Green
     }
 }

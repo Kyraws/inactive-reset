@@ -146,7 +146,7 @@ public static class VelocityProbe
             return 0;
         }
 
-        var outputDirectory = Path.Combine("artifacts", "velocity-probe");
+        var outputDirectory = Path.Combine("local-evidence", "velocity-probe");
         Directory.CreateDirectory(outputDirectory);
         var path = Path.Combine(outputDirectory, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + ".json");
         var samples = new List<object>();

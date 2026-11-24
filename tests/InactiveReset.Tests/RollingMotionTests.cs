@@ -58,8 +58,8 @@ public sealed class RollingMotionTests
         RollingMotion.RequireEligible(checkpoint, true, new("Track", "Car"));
         Assert.Throws<GateException>(() => RollingMotion.RequireEligible(checkpoint, false, new("Track", "Car")));
         var mismatch = Assert.Throws<GateException>(() => RollingMotion.RequireEligible(checkpoint, true, new("Track", "Other car")));
-        Assert.Contains("captured in Car", mismatch.Message);
-        Assert.Contains("currently driving Other car", mismatch.Message);
+        Assert.Contains("captured in Unknown car", mismatch.Message);
+        Assert.Contains("compatible capture car", mismatch.Message);
         Assert.Throws<CheckpointException>(() => RollingMotion.RequireEligible(checkpoint, true, new("Other track", "Car")));
     }
 

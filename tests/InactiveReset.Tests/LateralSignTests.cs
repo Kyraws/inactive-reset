@@ -59,7 +59,7 @@ public sealed class LateralSignTests
             + (AchievedRest.Z - predicted.Z) * (AchievedRest.Z - predicted.Z));
 
         // ~1 cm, against 1.075 m unsigned. The remainder is a per-car settle
-        // difference and is exactly what automatic learning absorbs.
+        // difference observed when the lateral model uses the wrong sign.
         Assert.True(miss < 0.02f, $"signed model missed by {miss:F4} m");
     }
 

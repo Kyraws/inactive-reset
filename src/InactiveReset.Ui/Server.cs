@@ -109,7 +109,25 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 SendText(context, logo ?? "", "image/svg+xml");
                 return;
             }
-            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/practice.js" or "/api/recordings/list" or "/api/recordings/laps" or "/api/recordings/lap" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
+            if (path == "/api/artwork" && context.Request.HttpMethod == "GET")
+            {
+                byte[]? artwork;
+                try { artwork = _brandAssets.ReadImage(context.Request.QueryString["kind"] ?? "", context.Request.QueryString["key"] ?? ""); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or GateException or GameInstallException) { artwork = null; }
+                if (artwork is null)
+                {
+                    context.Response.StatusCode = 404;
+                    context.Response.Close();
+                    return;
+                }
+                context.Response.ContentType = "image/webp";
+                context.Response.ContentLength64 = artwork.Length;
+                context.Response.Headers["Cache-Control"] = "private, max-age=3600";
+                await context.Response.OutputStream.WriteAsync(artwork);
+                context.Response.Close();
+                return;
+            }
+            var readOnly = path is "/" or "/app.css" or "/session.js" or "/lab" or "/lab.css" or "/lab.workspace.css" or "/Fonts/AnonymousPro.woff2" or "/Fonts/Audiowide.woff2" or "/Fonts/Roboto.woff2" or "/Fonts/Inter.woff2" or "/Fonts/Syne.woff2" or "/Fonts/SpaceGrotesk.woff2" or "/lab.workspace.js" or "/lab.js" or "/lab.official.js" or "/lab.inputs.js" or "/lab.race.svg" or "/inactive-reset.svg" or "/practice.js" or "/api/recordings/list" or "/api/recordings/laps" or "/api/recordings/lap" or "/api/state" or "/api/session/setup" or "/api/session/catalog" or "/api/vehicle-models" or "/api/session/state" or "/api/official-sessions" || path == "/api/lab/preferences" && context.Request.HttpMethod == "GET";
             if (context.Request.HttpMethod != (readOnly ? "GET" : "POST") ||
                 (!readOnly && context.Request.ContentType?.Split(';')[0].Trim() != "application/json"))
             {
@@ -129,6 +147,20 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                 case "/lab.workspace.css":
                     SendText(context, UiAssets.Read("Lab.workspace.css"), "text/css");
                     break;
+                case "/Fonts/AnonymousPro.woff2":
+                case "/Fonts/Audiowide.woff2":
+                case "/Fonts/Roboto.woff2":
+                case "/Fonts/Inter.woff2":
+                case "/Fonts/Syne.woff2":
+                case "/Fonts/SpaceGrotesk.woff2":
+                    using (var font = UiAssets.Open(Path.GetFileName(path)))
+                    {
+                        context.Response.ContentType = "font/woff2";
+                        context.Response.ContentLength64 = font.Length;
+                        await font.CopyToAsync(context.Response.OutputStream);
+                        context.Response.Close();
+                    }
+                    break;
                 case "/lab.workspace.js":
                     SendText(context, UiAssets.Read("Lab.workspace.js"), "text/javascript");
                     break;
@@ -146,6 +178,9 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/api/official-sessions/refresh":
                     SendJson(context, await _officialSessions.RefreshAsync());
+                    break;
+                case "/inactive-reset.svg":
+                    SendText(context, UiAssets.Read("InactiveReset.svg"), "image/svg+xml");
                     break;
                 case "/lab.race.svg":
                     SendText(context, UiAssets.Read("Lab.race.svg"), "image/svg+xml");
@@ -172,6 +207,9 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     break;
                 case "/api/session/catalog":
                     SendJson(context, await _runner.SessionCatalogAsync());
+                    break;
+                case "/api/vehicle-models":
+                    SendText(context, JsonSerializer.Serialize(VehicleCatalog.Models), "application/json");
                     break;
                 case "/api/session/state":
                     SendJson(context, await _runner.SessionNavigationAsync());

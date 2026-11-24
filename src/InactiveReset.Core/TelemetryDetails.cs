@@ -44,6 +44,7 @@ public sealed record TelemetryDetails(int? Session, double? ScoringTime, byte? G
             return System.Text.Encoding.ASCII.GetString(end < 0 ? text : text[..end]).Trim();
         }
         var values = new Dictionary<string, double?>();
+        values["mLapNumber"] = Integer(Address(fields, "mLapNumber", telem));
         foreach (var name in new[] { "mDeltaTime", "mFuel", "mFuelCapacity", "mBatteryChargeFraction",
             "mUnfilteredThrottle", "mUnfilteredBrake", "mUnfilteredSteering", "mUnfilteredClutch",
             "mFilteredThrottle", "mFilteredBrake", "mFilteredSteering", "mFilteredClutch",

@@ -6,22 +6,20 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>InactiveReset.App</RootNamespace>
     <AssemblyName>inactive-reset-ui</AssemblyName>
-    <AssemblyName Condition="'$(ExperimentalUi)' == 'true'">inactive-reset-lab</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>InactiveReset.ico</ApplicationIcon>
 
     <!--
       The file name is kebab-case to match the CLI; the display name is not.
       These drive the Properties dialog and Task Manager, where users read it.
     -->
     <Product>Inactive Reset</Product>
-    <Product Condition="'$(ExperimentalUi)' == 'true'">Inactive Reset Lab 02</Product>
     <AssemblyTitle>Inactive Reset</AssemblyTitle>
 
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <DefineConstants Condition="'$(ExperimentalUi)' == 'true'">$(DefineConstants);EXPERIMENTAL_UI</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="InactiveReset.ico" LogicalName="InactiveReset.ico" />
     <ProjectReference Include="..\InactiveReset.Core\InactiveReset.Core.csproj" />
     <ProjectReference Include="..\InactiveReset.Ui\InactiveReset.Ui.csproj" />
   </ItemGroup>

@@ -1,4 +1,5 @@
 using InactiveReset.Core;
+using InactiveReset.Ui;
 using Xunit;
 
 namespace InactiveReset.Tests;
@@ -16,6 +17,16 @@ public sealed class CheckpointSelectionTests : IDisposable
                 new Vec3(0, 1, 0), new Vec3(0, 0, 1))
         };
         return Checkpoint.Load(CaptureService.Save(checkpoint, _directory));
+    }
+
+    [Fact]
+    public void SharedPlacementResolutionRequiresLiveIdentityForSavedAndRecordedDestinations()
+    {
+        var checkpoint = Save("Barcelona", "Ferrari", "End of Lap");
+        Assert.Throws<GateException>(() => PlacementService.ResolveDestination(
+            _directory, _directory, checkpoint.SelectionId(_directory)));
+        Assert.Throws<GateException>(() => PlacementService.ResolveDestination(
+            _directory, _directory, checkpoint.Name, checkpoint));
     }
 
     [Fact]
@@ -39,7 +50,6 @@ public sealed class CheckpointSelectionTests : IDisposable
         var selected = Checkpoint.Require(_directory, ferrari.SelectionId(_directory), identity);
         Assert.Equal(ferrari.SourcePath, selected.SourcePath);
         identity.RequireMatches(selected);
-        Assert.NotEqual(selected.LearningKey("BMW"), bmw.LearningKey("BMW"));
     }
 
     [Fact]
@@ -58,6 +68,36 @@ public sealed class CheckpointSelectionTests : IDisposable
         var barcelona = Save("Barcelona", "Ferrari", "End of Lap");
         var selected = Checkpoint.Require(_directory, barcelona.SelectionId(_directory));
         Assert.Throws<CheckpointException>(() => new SessionIdentity("Daytona", "Ferrari").RequireMatches(selected));
+    }
+
+    [Fact]
+    public void PersistentQuickCapturesAndConfirmedClearPreserveOtherScopesAndNamedCopies()
+    {
+        var named = Save("Daytona", "Ferrari", "End of Lap");
+        var quick = new Checkpoint
+        {
+            Name = CaptureService.QuickCaptureName, TrackName = named.TrackName,
+            VehicleName = named.VehicleName, Pose = named.Pose, CapturedUtc = DateTimeOffset.UtcNow,
+            Gear = 2, LocalVelocityMetresPerSecond = new(0, 0, -15),
+        };
+        string Append(Checkpoint capture) => Checkpoint.Load(CaptureService.Save(capture,
+            _directory, quick: true, appendQuick: true)).SelectionId(_directory);
+        var first = Append(quick);
+        var second = Append(quick);
+        var otherCar = Append(new Checkpoint
+        {
+            Name = quick.Name, TrackName = quick.TrackName, VehicleName = "BMW",
+            Pose = quick.Pose, Gear = quick.Gear, LocalVelocityMetresPerSecond = quick.LocalVelocityMetresPerSecond,
+        });
+        Assert.NotEqual(first, second);
+        var library = new CheckpointLibrary(_directory);
+        var copy = library.RenameOrCopy(first, "Copy", copy: true);
+        Assert.Equal(quick.Pose, Checkpoint.Require(_directory, copy).Pose);
+        Assert.Equal(quick.CapturedUtc, Checkpoint.Require(_directory, copy).CapturedUtc);
+        Assert.Throws<CheckpointException>(() => library.ClearQuick("Daytona", "Ferrari", new HashSet<string> { first }));
+        Assert.Equal(2, library.ClearQuick("Daytona", "Ferrari", new HashSet<string> { first, second }));
+        Assert.Equal(new[] { copy, named.SelectionId(_directory), otherCar }.Order(),
+            Checkpoint.LoadAll(_directory).Select(c => c.SelectionId(_directory)).Order());
     }
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);

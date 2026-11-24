@@ -100,8 +100,10 @@ public static class RollingMotion
 
     private static void RequireCaptureVehicle(Checkpoint checkpoint, string loadedVehicle)
     {
-        if (!string.Equals(loadedVehicle, checkpoint.VehicleName, StringComparison.OrdinalIgnoreCase))
-            throw new GateException($"Checkpoint captured in {checkpoint.VehicleName}; currently driving {loadedVehicle}. Speed & gear require the capture car. Load that car or use Standing teleport.");
+        if (!VehicleCatalog.Compatible(loadedVehicle, checkpoint.VehicleName))
+            throw new GateException($"Checkpoint captured in {VehicleCatalog.Model(checkpoint.VehicleName) ?? VehicleCatalog.UnknownModel}. "
+                + $"Currently driving {VehicleCatalog.Model(loadedVehicle) ?? VehicleCatalog.UnknownModel}. "
+                + "Speed & gear require a compatible capture car. Use Standing teleport for this car.");
     }
 
     internal static void ApplyWhilePaused(PhysicsPause pause, Action prepare, Action apply, Action verify)

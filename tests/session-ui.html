@@ -86,7 +86,7 @@ async function run() {
   check(durationInput().value==='65','A setup refresh started before editing cannot overwrite the confirmed edit');
   ui.queueSessionValue(durationKey,60);await ui.flushSessionValues();
   ui.switchSection('sessions');
-  check(d.querySelector('[aria-label="Decrease Race laps"]').closest('fieldset').disabled,'Time mode disables lap count');
+  check(!d.querySelector('[aria-label="Decrease Race laps"],[aria-label="Increase Race length mode"]')&&d.querySelector('#value-SESSSET_race_time').parentElement.querySelector('.unit').textContent==='min','Race duration only exposes minutes');
   const numeric=JSON.parse(d.querySelector('[aria-label="Decrease Practice duration"]').dataset.change);
   check(numeric.steps===-1,'Numeric decrement uses signed step');
   initial.settings.SESSSET_Finish_Criteria=setting(3,'% Track Time');await ui.loadSetup();
@@ -117,15 +117,19 @@ async function run() {
   check(!!d.querySelector('[data-dialog="menuDialog"]'),'Loaded session offers explicit return to menu');
   ui.setState({...state,protected:true});
   check(!d.getElementById('startButton').disabled && !d.getElementById('value-SESSSET_Practice_Length').disabled,'EAC permits REST setup and starting at the single-player main menu');
-  check(!d.getElementById('accessNotice').hidden && d.getElementById('accessTitle').textContent.includes('EAC is on') && d.getElementById('accessText').textContent.includes('Launch local play'),'EAC restrictions are visible with a clear recovery step');
+  check(d.getElementById('launchModeBadge').textContent==='EAC ON' && d.getElementById('accessTitle').textContent.includes('EAC is on') && d.getElementById('accessText').textContent.includes('Launch local play'),'EAC restrictions are visible with a clear recovery step');
   const beforeEacStart=posts.length;await ui.startSession();check(posts.slice(beforeEacStart).some(p=>p.action==='start'),'EAC single-player Start dispatches through the existing REST path');
   ui.setState({...state,protected:true,state:{...state.state,settingMode:'SETTING_MULTIPLAYER'}});
   check(d.getElementById('startButton').disabled && d.getElementById('stateBanner').textContent.includes('multiplayer') && d.getElementById('accessText').textContent.includes('single-player main menu'),'Online mode explains where session setup is available without requiring EAC off');
   ui.setOffline();
   check(!d.getElementById('launchChoices').hidden && d.getElementById('launchChoices').textContent.includes('Online racing is unavailable'),'First launch explains both modes before choosing');
-  await ui.launchGame('eac');check(posts.at(-1).mode==='eac' && d.getElementById('launchModeBadge').textContent==='EAC ON','Launch with EAC sends the protected launch mode and updates its label');
+  const launchMenu=d.querySelector('.launch-menu');
+  launchMenu.open=true;d.getElementById('launchEacButton').click();
+  check(!launchMenu.open&&posts.at(-1).mode==='eac','Choosing protected launch closes the menu immediately');
+  await until(()=>d.getElementById('launchModeBadge').textContent==='EAC ON','Protected mode label updates');
   const launchCount=posts.length;await ui.launchGame('direct');check(posts.length===launchCount,'Choosing another mode never restarts a running game');
-  ui.setOffline();await ui.launchLocal();check(posts.at(-1).mode==='direct','Launch local play remains the direct launch for all practice tools');
+  ui.setOffline();launchMenu.open=true;d.getElementById('launchButton').click();
+  check(!launchMenu.open&&posts.at(-1).mode==='direct','Choosing direct launch closes the menu immediately');
   document.getElementById('report').textContent='PASS: '+count+' session editor checks';
 }
 run().catch(e=>{document.getElementById('report').textContent='FAIL: '+e.stack;});

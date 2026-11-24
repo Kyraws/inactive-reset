@@ -53,8 +53,10 @@ public sealed class TelemetryRecorderTests
         Assert.Equal(count, entries.Count); // Do not repeatedly record the same stale frame.
         capture.Accept(Identity, Sample(10.52), ticks + Stopwatch.Frequency * 3 + 1);
         Assert.NotEqual(entries[0].SegmentId, entries[^1].SegmentId);
+        Assert.Equal(entries[0].RecordedSessionId, entries[^1].RecordedSessionId);
         capture.Accept(Identity, Sample(0), ticks + Stopwatch.Frequency * 3 + 2);
         Assert.Equal("simulation-discontinuity", entries[^2].Reason);
+        Assert.NotEqual(entries[0].RecordedSessionId, entries[^1].RecordedSessionId);
         capture.Accept(Identity with { Vehicle = "another car" }, Sample(.02), ticks + Stopwatch.Frequency * 3 + 3);
         Assert.Equal("identity-change", entries[^2].Reason);
         capture.Accept(Identity, Sample(double.NaN), ticks + Stopwatch.Frequency * 3 + 4);

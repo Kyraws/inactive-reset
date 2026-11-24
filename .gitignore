@@ -3,6 +3,10 @@ artifacts/
 bin/
 obj/
 
+# Disposable prototypes and retained private research are separate from builds.
+/experiments/
+/local-evidence/
+
 # Release output. Ship as a tagged release, not in history.
 dist/
 

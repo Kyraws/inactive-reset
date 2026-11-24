@@ -6,16 +6,22 @@ public sealed record RecordedRestoration(int SchemaVersion, string SegmentId, lo
     double SimulationTime, TelemetryDetails? Details);
 public sealed record RecordingSummary(string SegmentId, RecordingIdentity Identity, double Start, double End, int Samples);
 public sealed record RecordedLap(string Id, string SegmentId, RecordingIdentity Identity, int Number,
-    DateTimeOffset? RecordedUtc, double Duration, bool IsOpeningRun = false);
-public sealed record RecordedLapPoint(long Sequence, float X, float Z, bool SpeedEligible);
+    DateTimeOffset? RecordedUtc, double Duration, bool IsOpeningRun = false, int? LmuLapNumber = null,
+    string? RecordedSessionId = null)
+{
+    public string VehicleModel => VehicleCatalog.Model(Identity.Vehicle) ?? VehicleCatalog.UnknownModel;
+}
+public sealed record RecordedLapPoint(long Sequence, float X, float Z, bool SpeedEligible, double Elapsed = 0);
 public sealed record TimelineSelection(Checkpoint Checkpoint, string SegmentId, long Sequence,
     double Timestamp, double? SpeedKmh, string? RollingUnavailableReason)
 {
+    public string VehicleCompatibilityKey => VehicleCatalog.CompatibilityKey(Checkpoint.VehicleName);
+
     public void RequireContext(string build, SessionIdentity identity)
     {
         identity.RequireMatches(Checkpoint);
-        if (!string.Equals(identity.VehicleName, Checkpoint.VehicleName, StringComparison.OrdinalIgnoreCase))
-            throw new GateException("Recorded reset requires the recorded car.");
+        if (!VehicleCatalog.Compatible(identity.VehicleName, Checkpoint.VehicleName))
+            throw new GateException("Recorded reset requires a car compatible with the recorded chassis.");
         if (!string.Equals(build, Checkpoint.ExecutableSha256, StringComparison.OrdinalIgnoreCase))
             throw new GateException("Recorded reset requires the recorded executable build.");
     }
@@ -24,10 +30,14 @@ public sealed record TimelineSelection(Checkpoint Checkpoint, string SegmentId, 
 /// <summary>Reads retained complete records; selections never interpolate physical state.</summary>
 public sealed class TelemetryTimeline(string dataDirectory)
 {
+    internal const string LapIndexSuffix = ".laps-v1";
     private sealed record LapFrame(long Sequence, double Time, float Distance, float X, float Z, float? Forward,
-        bool SpeedEligible);
+        bool SpeedEligible, int? LmuLapNumber);
+    private readonly record struct FileStamp(long Length, DateTime Updated);
+    private sealed record LapIndex(FileStamp Source, long Offset, TimelineEntry? Header, List<LapFrame> Frames);
     private sealed class LapPart
     {
+        public FileStamp? Source;
         public long Offset;
         public TimelineEntry? Header;
         public List<LapFrame> Frames { get; } = [];
@@ -35,22 +45,46 @@ public sealed class TelemetryTimeline(string dataDirectory)
     private readonly Dictionary<string, LapPart> _lapParts = new(StringComparer.Ordinal);
     private readonly object _lapLock = new();
     private Dictionary<string, (RecordedLap Lap, RecordedLapPoint[] Points)> _laps = [];
+    private RecordedLap[] _lapList = [];
     private string DirectoryPath => Path.Combine(dataDirectory, "recordings");
 
     public RecordedLap[] ListLaps()
     {
         lock (_lapLock)
         {
-            var paths = Directory.Exists(DirectoryPath)
-                ? Directory.GetFiles(DirectoryPath, "*.jsonl").Order(StringComparer.Ordinal).ToArray() : [];
+            var directory = new DirectoryInfo(DirectoryPath);
+            var files = directory.Exists
+                ? directory.GetFiles("*.jsonl").OrderBy(file => file.Name, StringComparer.Ordinal).ToArray() : [];
+            var paths = files.Select(file => file.FullName).ToHashSet(StringComparer.Ordinal);
+            if (_lapParts.Count == 0 && directory.Exists)
+                foreach (var index in directory.EnumerateFiles("*.jsonl" + LapIndexSuffix))
+                    if (!paths.Contains(index.FullName[..^LapIndexSuffix.Length])) DeleteLapIndex(index.FullName);
+            var changed = false;
             foreach (var removed in _lapParts.Keys.Except(paths, StringComparer.Ordinal).ToArray())
-                _lapParts.Remove(removed);
-
-            foreach (var path in paths)
             {
-                if (!_lapParts.TryGetValue(path, out var part)) _lapParts[path] = part = new();
+                _lapParts.Remove(removed);
+                DeleteLapIndex(removed + LapIndexSuffix);
+                changed = true;
+            }
+
+            foreach (var file in files)
+            {
+                var path = file.FullName;
                 try
                 {
+                    var stamp = Stamp(file);
+                    if (!_lapParts.TryGetValue(path, out var part))
+                    {
+                        _lapParts[path] = part = ReadLapIndex(path, stamp) ?? new();
+                        changed = true;
+                    }
+                    if (part.Source == stamp) continue;
+                    if (part.Source is { } previousStamp && stamp.Length <= previousStamp.Length)
+                    {
+                        _lapParts[path] = part = new();
+                        _laps.Clear();
+                    }
+                    changed = true;
                     foreach (var (entry, next) in TelemetryRecorder.ReadComplete(path, part.Offset))
                     {
                         if (part.Offset == 0) part.Header = entry;
@@ -61,21 +95,33 @@ public sealed class TelemetryTimeline(string dataDirectory)
                             part.Frames.Add(new(entry.Sequence, sample.ElapsedTime, sample.LapDistance,
                                 sample.Pose.Position.X, sample.Pose.Position.Z, sample.LocalVelocityMetresPerSecond?.Z,
                                 RollingMotion.CaptureIssue(sample.LocalVelocityMetresPerSecond, sample.Gear) is null &&
-                                Geometry.BuildTargetFromRecordedPose(sample.Pose).Valid));
+                                Geometry.BuildTargetFromRecordedPose(sample.Pose).Valid,
+                                sample.Details?.Values.GetValueOrDefault("mLapNumber") is >= 1 and <= int.MaxValue and var number
+                                    ? (int)number : null));
                         part.Offset = next;
+                    }
+                    file.Refresh();
+                    if (Stamp(file) == stamp)
+                    {
+                        part.Source = stamp;
+                        SaveLapIndex(path, stamp, part);
                     }
                 }
                 catch (IOException) { } // Retention can remove a part while the list is being refreshed.
             }
+            if (!changed) return _lapList.ToArray();
 
             var completed = new Dictionary<string, (RecordedLap Lap, RecordedLapPoint[] Points)>();
-            foreach (var segment in paths.Select(path => _lapParts[path])
+            var numbers = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var segment in files.Select(file => _lapParts.GetValueOrDefault(file.FullName))
+                         .OfType<LapPart>()
                          .Where(part => part.Frames.Count > 0).GroupBy(part => part.Header!.SegmentId!))
             {
                 var header = segment.First().Header!;
                 LapFrame? previous = null;
                 List<LapFrame>? lap = null;
-                var number = 0;
+                var sessionId = header.RecordedSessionId ?? segment.Key;
+                var number = numbers.GetValueOrDefault(sessionId);
                 var openingRun = false;
                 foreach (var frame in segment.SelectMany(part => part.Frames))
                 {
@@ -101,11 +147,13 @@ public sealed class TelemetryTimeline(string dataDirectory)
                                 var id = $"{segment.Key}:{lap[0].Sequence}";
                                 if (!openingRun) number++;
                                 if (_laps.TryGetValue(id, out var cached))
-                                    completed[id] = cached;
+                                    completed[id] = (cached.Lap with { Number = number }, cached.Points);
                                 else
-                                    completed[id] = (new(id, segment.Key, header.Identity!, number, header.Utc,
-                                        frame.Time - lap[0].Time, openingRun),
-                                        lap.Select(point => new RecordedLapPoint(point.Sequence, point.X, point.Z, point.SpeedEligible)).ToArray());
+                                    completed[id] = (new(id, segment.Key, header.Identity!, number,
+                                        header.RecordedSessionUtc ?? header.Utc, frame.Time - lap[0].Time,
+                                        openingRun, lap[0].LmuLapNumber, sessionId),
+                                        lap.Select(point => new RecordedLapPoint(point.Sequence, point.X, point.Z,
+                                            point.SpeedEligible, point.Time - lap[0].Time)).ToArray());
                             }
                             lap = [];
                             openingRun = false;
@@ -114,10 +162,50 @@ public sealed class TelemetryTimeline(string dataDirectory)
                     lap?.Add(frame);
                     previous = frame;
                 }
+                numbers[sessionId] = number;
             }
             _laps = completed;
-            return completed.Values.Reverse().Select(value => value.Lap).ToArray();
+            _lapList = completed.Values.Reverse().Select(value => value.Lap).ToArray();
+            return _lapList.ToArray();
         }
+    }
+
+    private static FileStamp Stamp(FileInfo file) => new(file.Length, file.LastWriteTimeUtc);
+
+    private static LapPart? ReadLapIndex(string path, FileStamp stamp)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path + LapIndexSuffix);
+            var index = JsonSerializer.Deserialize<LapIndex>(stream);
+            if (index is null || index.Source != stamp || index.Offset < 0 || index.Offset > stamp.Length ||
+                index.Frames is null || index.Frames.Count != 0 && index.Header is not { Kind: "header", SegmentId: not null, Identity: not null })
+                return null;
+            var part = new LapPart { Source = stamp, Offset = index.Offset, Header = index.Header };
+            part.Frames.AddRange(index.Frames);
+            return part;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { return null; }
+    }
+
+    private static void SaveLapIndex(string path, FileStamp stamp, LapPart part)
+    {
+        var indexPath = path + LapIndexSuffix;
+        var temporaryPath = indexPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var stream = File.Create(temporaryPath))
+                JsonSerializer.Serialize(stream, new LapIndex(stamp, part.Offset, part.Header, part.Frames));
+            File.Move(temporaryPath, indexPath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        finally { DeleteLapIndex(temporaryPath); }
+    }
+
+    internal static void DeleteLapIndex(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     public RecordedLapPoint[] LapPoints(string id)

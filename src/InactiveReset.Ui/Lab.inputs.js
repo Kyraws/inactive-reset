@@ -2,7 +2,7 @@
 (() => {
   const panel = document.getElementById('inputBindingsPanel');
   const bridge = window.chrome?.webview;
-  const names = {capture:'Quick capture',teleport:'Teleport with speed & gear',standing:'Standing teleport',previous:'Previous checkpoint',next:'Next checkpoint'};
+  const names = {capture:'Quick capture',teleport:'Teleport with speed & gear',standing:'Standing teleport',previous:'Previous Saved Checkpoint',next:'Cycle Saved Checkpoints',nextQuick:'Cycle Quick Captures',clearQuick:'Clear Quick Captures'};
   let current;
   function send(command, action, extra = {}) { bridge?.postMessage({type:'inputBindings',command,action,...extra}); }
   function keyName(code) {
@@ -15,14 +15,14 @@
     current = detail;
     globalThis.practiceInputLabels = {};
     const rows = Object.entries(names).map(([action,name]) => {
-      const b = detail.bindings[action];
+      const b = detail.bindings[action] || {};
       const device = detail.devices.find(d => d.path.toLowerCase() === b.wheel?.devicePath.toLowerCase());
       const wheel = b.wheel ? (device?.name || 'Disconnected device') + ' · Button ' + b.wheel.button : 'Unassigned';
       globalThis.practiceInputLabels[action] = b.keyboard ? keyboardLabel(b.keyboard) : b.wheel ? 'Button ' + b.wheel.button : 'Unassigned';
-      return '<div class="input-binding-row"><strong>' + esc(name) + '</strong><div><span>' + esc(keyboardLabel(b.keyboard)) + '</span><button class="button quiet" data-input="learnKeyboard" data-action="' + action + '">Assign key</button><button class="text-button" data-input="clearKeyboard" data-action="' + action + '">Clear key</button></div><div><span>' + esc(wheel) + '</span><button class="button quiet" data-input="learnWheel" data-action="' + action + '">Assign button</button><button class="text-button" data-input="clearWheel" data-action="' + action + '">Clear button</button></div></div>';
+      return '<div class="input-binding-row"><strong>' + esc(name) + '</strong><div role="group" aria-label="Keyboard shortcut"><span>' + esc(keyboardLabel(b.keyboard)) + '</span><button class="button quiet" data-input="learnKeyboard" data-action="' + action + '">Assign key</button><button class="text-button" data-input="clearKeyboard" data-action="' + action + '">Clear key</button></div><div role="group" aria-label="Wheel button"><span>' + esc(wheel) + '</span><button class="button quiet" data-input="learnWheel" data-action="' + action + '">Assign button</button><button class="text-button" data-input="clearWheel" data-action="' + action + '">Clear button</button></div></div>';
     }).join('');
     const learning = detail.learningAction ? 'Assigning ' + names[detail.learningAction] + ': ' + (detail.learningKind === 'keyboard' ? 'press a shortcut (Escape cancels).' : 'release, then press the wheel button. If the first press is not detected, release and press again.') : '';
-    panel.innerHTML = '<h2>Keyboard & wheel buttons</h2><p class="section-caption">Actions run with LMU focused. Previous/Next cycles speed-ready checkpoints for the current track and car in lap order, including Quick capture. Selection wraps; it does not teleport.</p>' + rows +
+    panel.innerHTML = '<h2>Keyboard & wheel buttons</h2><p class="section-caption">Shortcuts run while LMU is focused.</p><div class="binding-columns" aria-hidden="true"><span>Action</span><span>Keyboard</span><span>Wheel</span></div>' + rows +
       '<p class="input-assignment-status" role="status">' + esc(detail.error || learning || detail.message || 'Bindings saved automatically. Use a modifier with a key, or F1–F24. Keyboard shortcuts are reserved while this app is open; avoid shortcuts you need in other apps.') + '</p>' +
       '<div class="dialog-actions"><button class="button" data-input="cancel"' + (detail.learningAction ? '' : ' hidden') + '>Cancel assignment</button><button class="button" data-input="defaults">Restore default bindings</button></div><p class="small-note">Connected button devices: ' + esc(detail.devices.map(d => d.name).join(', ') || 'None detected') + '. Axes and hat switches are not assignable. Wheel inputs remain available to LMU.</p>';
     document.getElementById('standingBtn').title = globalThis.practiceInputLabels.standing;

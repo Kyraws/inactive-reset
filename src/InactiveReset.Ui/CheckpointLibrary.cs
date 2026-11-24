@@ -12,12 +12,12 @@ public sealed class CheckpointLibrary(string directory)
     public string RenameOrCopy(string id, string name, bool copy)
     {
         CaptureService.ValidateName(name);
-        if (name.Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase))
+        if (CaptureService.IsQuickName(name))
             throw new CheckpointException("Quick capture is reserved; choose a permanent checkpoint name.");
         lock (_gate)
         {
             var source = Resolve(id);
-            if (!copy && Path.GetFileNameWithoutExtension(source).Equals(CaptureService.QuickCaptureName, StringComparison.OrdinalIgnoreCase))
+            if (!copy && Checkpoint.Load(source).IsQuickCapture)
                 throw new CheckpointException("Save a permanent copy of Quick capture instead of renaming its slot.");
             var target = Path.Combine(Path.GetDirectoryName(source)!, name + ".json");
             ResolveParent(target);
@@ -25,6 +25,41 @@ public sealed class CheckpointLibrary(string directory)
             if (copy) File.Copy(source, target, overwrite: false);
             else File.Move(source, target, overwrite: false);
             return Id(target);
+        }
+    }
+
+    public int ClearQuick(string track, string vehicle, IReadOnlySet<string> confirmed)
+    {
+        lock (_gate)
+        {
+            var sources = Checkpoint.LoadAll(directory)
+                .Where(c => c.IsQuickCapture &&
+                    string.Equals(c.TrackName, track, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(c.VehicleName, vehicle, StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.SelectionId(directory)).ToArray();
+            if (!confirmed.SetEquals(sources))
+                throw new CheckpointException("The available Quick Captures changed. Confirm the updated list.");
+            if (sources.Length == 0) return 0;
+            var trash = Path.Combine(directory, ".deleted", Guid.NewGuid().ToString("N"));
+            ResolveParent(trash);
+            Directory.CreateDirectory(trash);
+            var moved = new List<(string Source, string Target)>();
+            try
+            {
+                foreach (var id in sources)
+                {
+                    var source = Resolve(id);
+                    var target = Path.Combine(trash, Guid.NewGuid().ToString("N") + ".capture");
+                    File.Move(source, target);
+                    moved.Add((source, target));
+                }
+                return moved.Count;
+            }
+            catch
+            {
+                foreach (var (source, target) in moved) File.Move(target, source);
+                throw;
+            }
         }
     }
 

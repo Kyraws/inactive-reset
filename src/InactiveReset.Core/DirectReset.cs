@@ -64,7 +64,7 @@ public static class DirectReset
         LmuSessionClient menu,bool restoreSpeed,Action<string> progress,CancellationToken cancellation)
     {
         var layout=game.RequireMotion();
-        menu.RequirePracticeAsync(cancellation).GetAwaiter().GetResult();
+        menu.RequirePracticeAsync(cancellation, retryOnTimeout: true).GetAwaiter().GetResult();
         RequireDriver(menu.GameStateAsync(cancellation).GetAwaiter().GetResult());
         using var sdk=new SharedMemoryReader(SharedMemoryOffsets.Load(Path.Combine(offsets,"shared-memory.json")));
         var live=new LiveStateReader(game);var slot=live.ResolveSlotIndex();

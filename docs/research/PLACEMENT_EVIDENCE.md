@@ -1,8 +1,8 @@
 # Placement and lap-timing evidence
 
 Historical measurements from the former heading/lap investigations and
-architecture/targets. Current algorithms are in `PlacementMath`, `RestModel`,
-`RestLearning` and `LapValidity`; see [Placement](../PLACEMENT.md) for workflow.
+architecture/targets. Current algorithms are in `PlacementMath`, `RestModel`
+and `LapValidity`. See [Placement](../PLACEMENT.md) for workflow.
 
 ## Ordinary-path model, August 2026
 
@@ -51,7 +51,7 @@ Unsigned L caused 1.069–1.084 m lateral misses in sign -1 Genesis Magma Racing
 to choose constants. Same-track pose reuse and capture-car motion eligibility
 are separate current policies.
 
-Corrections use `D += forwardError`, `L += sign*lateralError`. A measured
+The retired learning feature used `D += forwardError`, `L += sign*lateralError`. A measured
 3.2 mm miss fell to 0.27 mm on the next learned placement. Corrected Genesis
 tests on 2026-08-22: flat Daytona `day3` missed 0.0035 m horizontally / 0 m
 vertically; banked `day4`, 2.6 m higher, missed 0.0606 / 0.011 m, including
@@ -60,8 +60,8 @@ vertically; banked `day4`, 2.6 m higher, missed 0.0606 / 0.011 m, including
 A wall caused a 1.794 m miss, 1.7937 m along the clearance-search axis: nine
 whole steps. The original quarter-step learning cap wrongly rejected banking.
 The revised guard rejects errors within 0.15 step of whole candidates >=1,
-then errors larger than 0.6 step. Preserve observations and rejection reasons.
-Current CLI placement saves learning; UI placement only loads it.
+then errors larger than 0.6 step. At the time, the CLI saved learning and the UI
+read it. Current placement uses calibration or engine-derived values.
 
 ## Lap acceptance, 2026-08-12
 
