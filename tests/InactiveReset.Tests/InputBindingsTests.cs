@@ -14,10 +14,12 @@ public sealed class InputBindingsTests
         {
             var defaults = InputBindings.Load(path);
             Assert.Equal(new KeyboardBinding(0x43, 3), defaults.Bindings["capture"].Keyboard);
-            var custom = defaults.With("capture", new(new(117, 0), new("wheel-device", 65)));
+            var custom = defaults.With("capture", new(new(117, 0), new("wheel-device", 65)))
+                .With("previousQuick", new(new(118, 0), new("wheel-device", 66)));
             custom.Save(path);
             var loaded = InputBindings.Load(path);
             Assert.Equal(custom.Bindings["capture"], loaded.Bindings["capture"]);
+            Assert.Equal(custom.Bindings["previousQuick"], loaded.Bindings["previousQuick"]);
             Assert.Equal(defaults.Bindings["teleport"], loaded.Bindings["teleport"]);
             Assert.False(File.Exists(path + ".tmp"));
         }
@@ -36,19 +38,28 @@ public sealed class InputBindingsTests
         Assert.Throws<ArgumentException>(() => bindings.With("unknown", new()));
     }
 
-    [Fact]
-    public void OlderBindingsKeepTheirAssignmentsAndAddUnassignedQuickActions()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OlderBindingsKeepTheirAssignmentsAndAddUnassignedQuickActions(bool hadQuickBindings)
     {
         var path = Path.GetTempFileName();
         try
         {
             var original = InputBindings.Defaults().With("next", new(Wheel: new("wheel", 21)));
-            original.Bindings.Remove("nextQuick");
-            original.Bindings.Remove("clearQuick");
+            original.Bindings.Remove("previousQuick");
+            if (hadQuickBindings)
+                original.Bindings["nextQuick"] = new(Wheel: new("wheel", 22));
+            else
+            {
+                original.Bindings.Remove("nextQuick");
+                original.Bindings.Remove("clearQuick");
+            }
             File.WriteAllText(path, JsonSerializer.Serialize(original));
             var loaded = InputBindings.Load(path);
             Assert.Equal(original.Bindings["next"], loaded.Bindings["next"]);
-            Assert.Equal(new ActionBinding(), loaded.Bindings["nextQuick"]);
+            Assert.Equal(original.Bindings.GetValueOrDefault("nextQuick") ?? new ActionBinding(), loaded.Bindings["nextQuick"]);
+            Assert.Equal(new ActionBinding(), loaded.Bindings["previousQuick"]);
             Assert.Equal(new ActionBinding(), loaded.Bindings["clearQuick"]);
         }
         finally { File.Delete(path); }

@@ -30,7 +30,7 @@
   <div id="practiceProgress" class="practice-progress" hidden><div class="phasebar"><span class="phase" id="phase">IDLE</span><span class="phasemsg" id="phaseMsg" role="status">Load a Practice session.</span></div><button class="button" id="cancelBtn" onclick="cancelPlacement()" disabled hidden>Cancel operation</button></div>
   <div class="practice-combined">
     <section id="timelinePanel" aria-label="Circuit map and recorded laps">
-      <div class="lap-picker"><select id="timelineSession" aria-label="Recorded session" disabled><option>Loading recorded laps…</option></select><div id="lapRail" class="horizontal-rail" aria-label="Complete laps"></div></div>
+      <div class="lap-picker"><select id="timelineSession" aria-label="Recorded session" disabled><option>Loading recorded laps…</option></select><div id="lapRail" class="horizontal-rail" role="group" aria-label="Complete laps" tabindex="-1"></div></div>
       <div id="practiceMapStage"><div id="practiceMap" class="circuit-map"></div><div id="nearbyTargets" role="group" aria-label="Nearby destinations" hidden></div></div>
       <p id="timelineRange" class="small-note" role="status"></p>
       <div id="timelineLocation"><div class="lap-scrub"><button class="button" data-nudge="-0.1" aria-label="Back 0.1 seconds" disabled>−</button><input id="lapElapsed" aria-label="Elapsed lap time" placeholder="m:ss" disabled><button class="button" data-nudge="0.1" aria-label="Forward 0.1 seconds" disabled>+</button><input id="timelineScrub" type="range" min="0" max="1" step="any" value="0" aria-label="Elapsed lap time slider" aria-valuetext="No point selected" disabled></div>

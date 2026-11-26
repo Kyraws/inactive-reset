@@ -137,7 +137,7 @@ renderContent=function(){
   try {
   const focus=document.activeElement;
   const focusedId=focus?.id, caret=focus?.selectionStart, modal=$('builderDetail'), activeStage=focus?.dataset.amount;
-  const focusData=[...(focus?.attributes || [])].filter(attribute=>attribute.name.startsWith('data-'));
+  const focusData=[...(focus?.attributes || [])].filter(attribute=>attribute.name.startsWith('data-')&&attribute.name!=='data-lmu-disabled');
   const focusScope=modal.contains(focus)?modal:$('sectionContent');
   const scroll=focusScope.querySelector('.workflow-dialog-body')?.scrollTop;
   const enabled=stagesEnabled().filter(stage=>setup.weather[stage]);
@@ -155,7 +155,13 @@ renderContent=function(){
     else{
       const detail=({car:()=>renderSelection('car'),sessions:renderTimingDetail,grid:renderGrid,weather:()=>renderWeatherDetail(enabled),rules:renderRules})[builderDetail]();
       if(detail!==detailMarkup){
-        $('builderDetailBody').innerHTML=detail;
+        const body=$('builderDetailBody');
+        const railOffsets=[...body.querySelectorAll('.horizontal-rail')].map(rail=>[rail.id,rail.scrollLeft]);
+        body.innerHTML=detail;
+        for(const [id,offset] of railOffsets){
+          const rail=$(id);
+          if(rail)rail.scrollLeft=offset;
+        }
         detailMarkup=detail;
       }
     }
@@ -297,21 +303,30 @@ function renderPracticeManagement() {
   if (labPage === 'practice') renderPracticeMap();
 }
 
-let practiceMapKey = '', practiceMapTargets = [];
+let practiceMapKey = '', practiceMapTargets = [], practiceMapProject;
+function moveRecordedMarker(marker) {
+  const point = timelineSelection && selectedLapPoint;
+  marker.setAttribute('visibility', point ? 'visible' : 'hidden');
+  if (!point) return;
+  const [x,y] = practiceMapProject({x:point.X,z:point.Z});
+  marker.setAttribute('cx', x);
+  marker.setAttribute('cy', y);
+}
 function renderPracticeMap() {
   const lapTrack = previewLap?.Identity.Track, liveTrack = destinationState.session?.track;
   const track = lapTrack || liveTrack;
   const id = mappedLayout(track), map = circuitMaps.get(id);
-  const road = (map?.points || []).filter(p=>p.type===0 || p.type===1);
   const visible = normalizeTrack(track) === normalizeTrack(liveTrack) ? visibleCheckpoints : [];
   const pins = visible.filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.z));
-  const key = JSON.stringify([id,!!map, previewLap?.Id,lapPoints.length,selectedLapPoint?.Sequence,$('cp').value,pins]);
+  const key = JSON.stringify([id,!!map, previewLap?.Id,lapPoints.length,$('cp').value,pins]);
   const element = $('practiceMap');
-  if (key === practiceMapKey && element.querySelector('svg')) return;
+  const marker = element.querySelector('.recorded-marker');
+  if (key === practiceMapKey && marker) { moveRecordedMarker(marker); return; }
   practiceMapKey = key;
   closeNearbyTargets();
   practiceMapTargets = [];
   if (id && !map) renderCircuitMap(element,id,[],null);
+  const road = (map?.points || []).filter(p=>p.type===0 || p.type===1);
   const frames = lapPoints.map((p,index)=>({x:p.X,z:p.Z,point:p,index}));
   const bounds = road.length ? road : frames.length ? frames : pins;
   if (!bounds.length) {
@@ -319,15 +334,16 @@ function renderPracticeMap() {
     return;
   }
   const project = mapProjection(bounds);
+  practiceMapProject = project;
   const path = points => points.map(p=>project(p).join(',')).join(' ');
   practiceMapTargets = pins.map(p=>({x:p.x,z:p.z,id:p.id,label:p.name,kind:p.quick?'quick':'saved'}));
   practiceMapTargets.push(...frames);
-  const marker = selectedLapPoint && timelineSelection ? project({x:selectedLapPoint.X,z:selectedLapPoint.Z}) : null;
   element.innerHTML = `<svg viewBox="0 0 600 340" role="img" aria-label="Circuit map with checkpoint positions and recorded lap">
     <polygon class="map-road-shadow" points="${path(road.filter(p=>p.type===0))}"/><polygon class="map-road" fill="none" points="${path(road.filter(p=>p.type===0))}"/>
     <polyline class="map-pit" points="${path(road.filter(p=>p.type===1))}"/><polyline class="recorded-line" points="${path(frames)}"/>
     ${pins.map((p,i)=>`<g class="combined-pin ${p.quick?'quick-pin':'saved-pin'} ${$('cp').value===p.id?'selected':''}" transform="translate(${project(p).join(' ')})"><title>${escapeHtml(p.name)}</title><circle r="10"/><text y="4" text-anchor="middle">${i+1}</text></g>`).join('')}
-    ${marker?`<circle class="recorded-marker" cx="${marker[0]}" cy="${marker[1]}" r="9"/>`:''}</svg>`;
+    <circle class="recorded-marker" r="9" visibility="hidden"/></svg>`;
+  moveRecordedMarker(element.querySelector('.recorded-marker'));
   practiceMapTargets = practiceMapTargets.map(p=>({...p, xy:project(p)}));
 }
 

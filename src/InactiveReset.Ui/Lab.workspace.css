@@ -526,8 +526,8 @@
 .forecast-points{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
 .forecast-points .button{display:grid;justify-items:start;align-content:start;gap:3px;padding:6px;white-space:normal;line-height:1.2;min-width:0;text-align:left}
 .forecast-points small{color:var(--muted)}
-.horizontal-rail{display:flex;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;gap:5px;padding:3px;white-space:nowrap}
-.horizontal-rail::-webkit-scrollbar{display:none}
+.horizontal-rail{display:flex;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;gap:5px;padding:3px;white-space:nowrap}
+.horizontal-rail:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .horizontal-rail>*{flex:none}
 body.lab dialog[open]{box-sizing:border-box;max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
 .lab dialog::backdrop{background:#110e0dc9}

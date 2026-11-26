@@ -155,33 +155,77 @@ internal static class Program
                         Point(41, 10, 500, 0, 3), Point(42, 10.2, 0, 0, 0),
                         Point(43, 10.4, 100, 8, 7), Point(44, 10.6, 500, 5, 12),
                     }.Select(e => JsonSerializer.Serialize(e)));
+                    await core.ExecuteScriptAsync("""
+                        globalThis.fixturePractice = {track:'track', api, selectionRequests:0};
+                        api = async (path, body) => path === '/api/recordings/select'
+                          ? (++fixturePractice.selectionRequests, await new Promise(() => {}))
+                          : path === '/api/state'
+                          ? {...await fixturePractice.api(path, body), connected:true, build:'aaaaaaaa', rollingStartSupported:true,
+                              inGarage:true, session:{track:fixturePractice.track,vehicle:'TF Sport 2026 #33:WEC',
+                                vehicleCompatibilityKey:'chassis:Corvette_Z06GT3R_2023'}}
+                          : fixturePractice.api(path, body);
+                        refresh();
+                        """);
                     await core.ExecuteScriptAsync("setPage('practice')");
                     await Check("!document.getElementById('practiceSaved').hidden && document.getElementById('timelineScrub').disabled && document.getElementById('lapElapsed').value===''", "Practice shows both destination sources and an inactive scrubber");
-                    await WaitFor("document.getElementById('timelineSession').options[0].textContent==='No completed laps'", "An incomplete lap appeared");
+                    await WaitFor("document.getElementById('timelineSession').options[0].textContent==='No eligible sessions'", "An incomplete lap appeared");
                     var emptyWidth = await core.ExecuteScriptAsync("document.getElementById('timelineSession').getBoundingClientRect().width");
                     File.AppendAllLines(path, new[] { Point(45, 10.8, 0, 0, 0) }.Select(e => JsonSerializer.Serialize(e)));
                     await WaitFor("document.querySelectorAll('#lapRail button').length===1", "Completed lap did not appear automatically");
-                    const string longCircuit = "An unusually long circuit layout name for the recorded session width check";
-                    var otherIdentity = identity with { Track = longCircuit, ProcessId = 124 };
-                    var otherStart = new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: otherIdentity, Utc: DateTimeOffset.UtcNow, SegmentId: "other");
-                    var otherFrames = new[] { Point(41, 10, 500, 0, 3), Point(42, 10.2, 0, 0, 0), Point(43, 10.4, 100, 8, 7), Point(44, 10.6, 500, 5, 12), Point(45, 10.8, 0, 0, 0) }
-                        .Select(p => p with { Identity = otherIdentity, SegmentId = "other", Sample = p.Sample! with { TrackName = longCircuit } });
-                    File.WriteAllLines(Path.Combine(directory, "other.jsonl"), otherFrames.Prepend(otherStart).Select(e => JsonSerializer.Serialize(e)));
-                    await WaitFor("document.getElementById('timelineSession').options.length===2", "Second recording did not appear");
-                    await Check($"(()=>{{const picker=document.getElementById('timelineSession');return picker.getBoundingClientRect().width==={emptyWidth} && picker.options[picker.selectedIndex].text.includes('track · 1 completed lap') && Array.from(picker.options).some(o=>/\\d.*\\d:\\d.*unusually long circuit.*1 completed lap/.test(o.text)) && picker.getBoundingClientRect().right<=document.getElementById('editor').getBoundingClientRect().right;}})()", "Chooser width, selection, date/time or completed-lap label changed with long recordings");
+                    void WriteRecording(string segment, InactiveReset.Core.RecordingIdentity context, bool standing = false)
+                    {
+                        var header = new InactiveReset.Core.TimelineEntry("header", 0, 0, Identity: context, Utc: DateTimeOffset.UtcNow, SegmentId: segment);
+                        var frames = new[] { Point(41, 10, 500, 0, 3), Point(42, 10.2, 0, 0, 0), Point(43, 10.4, 100, 8, 7), Point(44, 10.6, 500, 5, 12), Point(45, 10.8, 0, 0, 0) }
+                            .Select(p => p with { Identity = context, SegmentId = segment, Sample = p.Sample! with
+                                { TrackName = context.Track, VehicleName = context.Vehicle,
+                                    LocalVelocityMetresPerSecond = standing ? new(0, 0, -0.01f) : p.Sample!.LocalVelocityMetresPerSecond } });
+                        File.WriteAllLines(Path.Combine(directory, segment + ".jsonl"), frames.Prepend(header).Select(e => JsonSerializer.Serialize(e)));
+                    }
+                    WriteRecording("compatible", identity with { Track = "TRACK", Vehicle = "TF Sport 2026 #33:LM" });
+                    WriteRecording("other-layout", identity with { Track = "track alternate" });
+                    WriteRecording("other-car", identity with { Vehicle = "Different car" });
+                    WriteRecording("other-build", identity with { ExecutableSha256 = new string('B', 64) });
+                    WriteRecording("standing", identity, standing: true);
+                    await core.ExecuteScriptAsync("loadRecordedLaps()");
+                    await WaitFor("[...document.getElementById('timelineSession').options].some(o=>o.value==='compatible')", "Compatible livery's recording did not appear");
+                    await Check($$"""
+                        (()=>{const picker=document.getElementById('timelineSession');return picker.getBoundingClientRect().width==={{emptyWidth}}
+                          && [...picker.options].map(o=>o.value).sort().join(',')==='compatible,segment' && picker.value==='segment'
+                          && /\d.*\d:\d.*track · 1 completed lap/.test(picker.selectedOptions[0].text)
+                          && picker.getBoundingClientRect().right<=document.getElementById('editor').getBoundingClientRect().right;})()
+                        """, "Chooser included an ineligible session or lost its selection, label or width");
                     await core.ExecuteScriptAsync("document.querySelector('#lapRail button').click()");
                     await WaitFor("!!document.querySelector('#practiceMap .recorded-line')", "Recorded lap map did not render");
                     await Check("document.getElementById('timelineMapMeta').textContent.includes('Recorded lap 1 · 0:00.600 · track · Corvette GT3') && document.getElementById('lapElapsed').value===''", "Lap metadata or empty elapsed state is incorrect");
-                    await core.ExecuteScriptAsync("selectElapsed(parseLapElapsed('0:00.210'))");
-                    await WaitFor("timelineSelection?.Sequence===43", "Elapsed time did not select the nearest retained frame");
+                    await Check("""
+                        (()=>{const route=document.querySelector('#practiceMap .recorded-line');
+                          const slider=document.getElementById('timelineScrub');
+                          slider.value='0.4'; slider.dispatchEvent(new Event('input',{bubbles:true}));
+                          if (timelineSelection?.Sequence!==44 || timelineSelection.SpeedEligible
+                            || fixturePractice.selectionRequests!==0) return false;
+                          const frame=practiceMapTargets.find(target=>target.point?.Sequence===43);
+                          const svg=route.ownerSVGElement;
+                          const click=new DOMPoint(...frame.xy).matrixTransform(svg.getScreenCTM());
+                          svg.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:click.x,clientY:click.y}));
+                          return timelineSelection?.Sequence===43 && timelineSelection.SpeedEligible
+                            && document.getElementById('destinationSpeed').textContent==='36.0 km/h · gear 2'
+                            && fixturePractice.selectionRequests===0
+                            && route===document.querySelector('#practiceMap .recorded-line');
+                        })()
+                        """, "Scrubbing and map clicks must select synchronously from the loaded lap without a request or route redraw");
                     await Check("document.getElementById('destinationName').textContent.includes('Recorded lap 1 · 0:00.200') && document.getElementById('placeBtn').disabled && document.getElementById('standingBtn').disabled", "Selected frame or disconnected reset gate failed");
                     using (var screenshot = File.Create(Path.Combine(output, "recording-selection.png")))
                         await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, screenshot);
                     await core.ExecuteScriptAsync("document.getElementById('practiceTyresView').click()");
                     await Check("document.getElementById('practiceTyres').open && timelineSelection?.Sequence===43", "Tyre editor lost the active target");
                     await core.ExecuteScriptAsync("document.getElementById('practiceTyres').close()");
+                    await core.ExecuteScriptAsync("fixturePractice.track='track alternate'; refresh()");
+                    await WaitFor("document.getElementById('timelineSession').value==='other-layout' && !previewLap && !timelineSelection", "Layout change kept a stale recorded target");
+                    await core.ExecuteScriptAsync("fixturePractice.track='unrecorded'; refresh()");
+                    await WaitFor("document.getElementById('timelineSession').disabled && document.getElementById('timelineSession').options[0].text==='No eligible sessions'", "Unrecorded layout should show an empty picker");
+                    await core.ExecuteScriptAsync("api=fixturePractice.api; refresh()");
                     form.ClientSize = new Size(1320, 900);
-                    return "Stable chooser with long labels at 1040×680, model details, elapsed-frame selection and disconnected reset gates";
+                    return "Layout, chassis, build and recorded-motion filtering, live layout changes, elapsed-frame selection and reset gates";
                 });
 
                 await Run("first-use-access", async () =>

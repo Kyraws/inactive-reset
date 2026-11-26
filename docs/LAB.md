@@ -143,8 +143,10 @@ shortcuts are refused. Use a modifier or F1–F24.
 | Quick capture | Ctrl+Alt+C |
 | Teleport with speed and gear | Ctrl+Alt+R |
 | Standing teleport | Ctrl+Alt+Shift+R |
-| Previous / Cycle Saved Checkpoints | Ctrl+Alt+Up / Down |
-| Cycle Quick Captures | Unassigned |
+| Next Saved Checkpoint | Ctrl+Alt+Down |
+| Previous Saved Checkpoint | Ctrl+Alt+Up |
+| Next Quick Capture | Unassigned |
+| Previous Quick Capture | Unassigned |
 | Clear Quick Captures | Unassigned |
 
 Each cycling binding wraps within its own eligible list for the loaded layout

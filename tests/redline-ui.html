@@ -23,12 +23,12 @@ async function run(){
  const native=()=>({connected:!gameClosed,game:{running:!gameClosed},session:{track:'Barcelona',vehicle:'Team Car',capturable:true},checkpoints,inGarage:!driving,tyreRules:{inGarage:!driving},rollingStartSupported:true,phase:'Idle',busy:false,log:[]});
  const map={id:'layout',track,points:[{type:0,x:0,z:0},{type:0,x:100,z:0},{type:0,x:100,z:100},{type:0,x:0,z:100},{type:1,x:-5,z:0},{type:1,x:-5,z:100},{type:149,x:40,z:70}]};
  let writes=[],managed=[],deleted,holdAmountSave,failSetupRead=false,setupReads=0;
- const laps=Array.from({length:50},(_,i)=>({Id:'lap-'+(i+1),Number:i+1,SegmentId:'recorded',Identity:{Track:'Barcelona',Vehicle:'Team Car'},Duration:i===9?91:100}));
+ const laps=Array.from({length:50},(_,i)=>({Id:'lap-'+(i+1),Number:i+1,SegmentId:'recorded',Identity:{Track:'Barcelona',Vehicle:'Team Car'},HasSpeedEligiblePoints:i===0,Duration:i===9?91:100}));
  const frames=[
    {Sequence:1,Elapsed:0,X:0,Z:0},{Sequence:2,Elapsed:89.8,X:30,Z:10},{Sequence:3,Elapsed:90.2,X:50,Z:20},
    {Sequence:4,Elapsed:92,X:50,Z:0},{Sequence:5,Elapsed:94,X:50,Z:0},
    {Sequence:6,Elapsed:95,X:100,Z:100},{Sequence:7,Elapsed:96,X:50,Z:0}
- ];
+ ].map(point=>({...point,SpeedEligible:true,SpeedKmh:80,Gear:2}));
  const events=['beginner','beginner','beginner','intermediate','intermediate','intermediate','advanced','advanced','weekly','weekly','special','special'].map((category,i)=>({id:'event'+i,category,title:i%2?'Long-distance multiclass championship rehearsal':'Official GT Sprint',content:{track:{name:i%2?'Circuit de Barcelona-Catalunya — Grand Prix':'Bahrain International Circuit — Outer',subItems:[]}},times:[],sessions:['Qualifying','Race'].map(type=>({type,duration:type==='Race'?'45m':'15m',timeOfDay:'15h',realRoad:'green',weather:[]}))}));
  events[11].content.track={name:'LeMansWEC',subItems:[{name:'24 Heures du Mans',scn:'LeMansWEC_Alternate'}]};
  events[7].content.track={name:'Daytona',subItems:[{name:'Daytona Road Course',scn:'Daytona'}]};
@@ -50,7 +50,6 @@ async function run(){
    else if(path.startsWith('/api/track-map?'))value=map;
    else if(path==='/api/recordings/laps')value=laps;
    else if(path.startsWith('/api/recordings/lap?'))value=frames;
-   else if(path==='/api/recordings/select')value={SegmentId:body.recording,Sequence:body.sequence,Checkpoint:{TrackName:'Barcelona',VehicleName:'Team Car',Gear:2},SpeedKmh:80};
    else if(path.startsWith('/api/official-sessions'))value={events,warnings:[],fetchedAt:new Date().toISOString()};
    else if(path==='/api/session/action'){
      writes.push(body);

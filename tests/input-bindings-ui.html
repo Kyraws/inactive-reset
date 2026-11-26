@@ -14,7 +14,9 @@ fetch('../src/InactiveReset.Ui/Lab.inputs.js').then(r=>r.text()).then(script=>{
   const publish=value=>window.dispatchEvent(new CustomEvent('input-bindings',{detail:value}));
   check(posted[0].command==='get','page requests native bindings');
   publish(state);
-  check(panel.querySelectorAll('[data-input="learnWheel"]').length===7&&panel.querySelector('[data-action=nextQuick]')&&panel.querySelector('[data-action=clearQuick]'),'Quick and Saved controls expose distinct bindings');
+  check(panel.querySelectorAll('[data-input=learnWheel]').length===8&&panel.querySelector('[data-action=clearQuick]'),'Each action has one wheel control');
+  for (const [action,label] of Object.entries({next:'Next Saved Checkpoint',previous:'Previous Saved Checkpoint',nextQuick:'Next Quick Capture',previousQuick:'Previous Quick Capture'}))
+    check(panel.querySelector('[data-action='+action+']').closest('.input-binding-row').querySelector('strong').textContent===label,label+' can be assigned');
   check(panel.textContent.includes('Ctrl+Alt+Up') && panel.textContent.includes('None detected'),'defaults and missing devices are clear');
   panel.querySelector('[data-input="learnKeyboard"][data-action="capture"]').click();
   check(posted.at(-1).command==='learnKeyboard' && posted.at(-1).action==='capture','keyboard assignment starts native learning');

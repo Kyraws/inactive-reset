@@ -236,6 +236,7 @@ function runCheckpointTests(script, html) {
           {...quick,quick:false,id:'late',name:'Late',lapDistance:400,gear:3},
           {...quick,quick:false,id:'early',name:'Early',lapDistance:100,gear:2},
           {...quick,id:'quick',name:'Quick capture',lapDistance:250,gear:2},
+          {...quick,id:'quick-late',name:'Later quick capture',lapDistance:350,gear:2},
           {...quick,id:'wrong-car',vehicle:'Genesis',lapDistance:150,gear:2},
           {...quick,id:'standing',speedKmh:0,rollingEligible:false,gear:0},
           {...quick,id:'wrong-track',track:'Barcelona',gear:2},
@@ -248,7 +249,11 @@ function runCheckpointTests(script, html) {
         await ui.runPracticeInput('previous');
         check(element('cp').value==='late','previous wraps around the eligible list');
         await ui.runPracticeInput('nextQuick');
-        check(element('cp').value==='quick','quick capture participates in cycling');
+        check(element('cp').value==='quick','next quick selects the first eligible quick capture');
+        await ui.runPracticeInput('previousQuick');
+        check(element('cp').value==='quick-late' && posted===null,'previous quick wraps within quick captures without teleporting');
+        await ui.runPracticeInput('nextQuick');
+        check(element('cp').value==='quick','next quick wraps back to the first quick capture');
         await ui.runPracticeInput('teleport');
         check(posted.checkpoint==='quick' && posted.restoreSpeed===true,'teleport uses the cycled selection');
         const eac={...candidates,connected:false,rollingStartSupported:false,game:{running:true,protected:true}};

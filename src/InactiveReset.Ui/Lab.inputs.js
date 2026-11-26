@@ -2,7 +2,7 @@
 (() => {
   const panel = document.getElementById('inputBindingsPanel');
   const bridge = window.chrome?.webview;
-  const names = {capture:'Quick capture',teleport:'Teleport with speed & gear',standing:'Standing teleport',previous:'Previous Saved Checkpoint',next:'Cycle Saved Checkpoints',nextQuick:'Cycle Quick Captures',clearQuick:'Clear Quick Captures'};
+  const names = {capture:'Quick capture',teleport:'Teleport with speed & gear',standing:'Standing teleport',next:'Next Saved Checkpoint',previous:'Previous Saved Checkpoint',nextQuick:'Next Quick Capture',previousQuick:'Previous Quick Capture',clearQuick:'Clear Quick Captures'};
   let current;
   function send(command, action, extra = {}) { bridge?.postMessage({type:'inputBindings',command,action,...extra}); }
   function keyName(code) {

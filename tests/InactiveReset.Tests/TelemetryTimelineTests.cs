@@ -65,6 +65,9 @@ public sealed class TelemetryTimelineTests : IDisposable
         Assert.All(points, point => Assert.InRange(point.Elapsed, 0, lap.Duration));
         Assert.Equal(new long[] { 2, 3, 4 }, points.Select(point => point.Sequence));
         Assert.Equal(new[] { true, true, false }, points.Select(point => point.SpeedEligible));
+        Assert.Equal(36d, points[1].SpeedKmh!.Value, 5);
+        Assert.Equal(2, points[1].Gear);
+        Assert.NotNull(points[2].RollingUnavailableReason);
         Assert.Equal(250, timeline.Select(lap.SegmentId, sequence: 3).Checkpoint.LapDistance);
         Assert.Equal(lap, Assert.Single(timeline.ListLaps()));
         Assert.Same(points, timeline.LapPoints(lap.Id));
@@ -76,7 +79,17 @@ public sealed class TelemetryTimelineTests : IDisposable
             Assert.Equal(lap, Assert.Single(reopened.ListLaps()));
             Assert.Equal(points, reopened.LapPoints(lap.Id));
         }
-        File.WriteAllText(firstPart + TelemetryTimeline.LapIndexSuffix, "{interrupted");
+        var indexPath = firstPart + TelemetryTimeline.LapIndexSuffix;
+        var legacyIndex = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(indexPath))!.AsObject();
+        legacyIndex.Remove("Version");
+        foreach (var frame in legacyIndex["Frames"]!.AsArray())
+            frame!.AsObject().Remove("SpeedKmh");
+        File.WriteAllText(indexPath, legacyIndex.ToJsonString());
+        var upgraded = new TelemetryTimeline(_directory);
+        Assert.Equal(lap, Assert.Single(upgraded.ListLaps()));
+        Assert.Equal(points, upgraded.LapPoints(lap.Id));
+
+        File.WriteAllText(indexPath, "{interrupted");
         Assert.Equal(lap, Assert.Single(new TelemetryTimeline(_directory).ListLaps()));
 
         Part("c", Point(7, 12, 500), Point(8, 12.2, 0));

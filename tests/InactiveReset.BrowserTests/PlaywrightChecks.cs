@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using InactiveReset.TestSupport;
 using Microsoft.Playwright;
 using static Microsoft.Playwright.Assertions;
@@ -60,6 +62,106 @@ internal static class PlaywrightChecks
             await Expect(page.Locator("#checkpointCards .checkpoint-item")).ToHaveCountAsync(1);
             await Expect(page.Locator("#libraryPreview")).ToContainTextAsync("Valid checkpoint");
             return "Keyboard dropdown and focus, themed picker, search recovery and checkpoint preview";
+        });
+
+        await Check("horizontal-rails", async _ =>
+        {
+            const string catalogUrl = "**/api/session/catalog";
+            const string lapsUrl = "**/api/recordings/laps";
+            const string stateUrl = "**/api/state";
+            await page.RouteAsync(catalogUrl, async route =>
+            {
+                var response = await route.FetchAsync();
+                var catalog = JsonNode.Parse(await response.TextAsync())!;
+                var cars = catalog["cars"]!.AsArray();
+                for (var i = 1; i <= 10; i++)
+                {
+                    cars.Add(JsonSerializer.SerializeToNode(new
+                    {
+                        id = $"model-{i}", desc = $"Model {i:00}", isOwned = true, fullPathTree = $"2026, GT3, Model {i:00}"
+                    }));
+                    cars.Add(JsonSerializer.SerializeToNode(new
+                    {
+                        id = $"livery-{i}", desc = $"Test car livery {i:00}", isOwned = true, fullPathTree = "2026, GT3, Test car"
+                    }));
+                }
+                await route.FulfillAsync(new() { Response = response, Json = catalog });
+            });
+            var lapCount = 16;
+            await page.RouteAsync(stateUrl, route => route.FulfillAsync(new()
+            {
+                Json = new { connected = true, rollingStartSupported = true, session = new { track = "Test track", vehicle = "Test car" } }
+            }));
+            await page.RouteAsync(lapsUrl, route => route.FulfillAsync(new()
+            {
+                Json = Enumerable.Range(1, lapCount).Select(i => new
+                {
+                    Id = $"lap-{i}", Number = i, Duration = 90 + i, Identity = new { Track = "Test track", Vehicle = "Test car" },
+                    SegmentId = "session", HasSpeedEligiblePoints = true
+                }).ToArray()
+            }));
+            await page.SetViewportSizeAsync(1040, 680);
+            try
+            {
+                await page.ReloadAsync();
+                await page.GetByRole(AriaRole.Button, new() { Name = "Car & livery" }).ClickAsync();
+                foreach (var name in new[] { "Car models", "Liveries" })
+                {
+                    var rail = page.GetByRole(AriaRole.Group, new() { Name = name });
+                    await rail.HoverAsync();
+                    await page.Mouse.WheelAsync(0, 230);
+                    await page.WaitForFunctionAsync("name => document.querySelector('[aria-label=\"' + name + '\"]').scrollLeft > 0", name);
+                }
+                var models = page.GetByRole(AriaRole.Group, new() { Name = "Car models" });
+                var liveries = page.GetByRole(AriaRole.Group, new() { Name = "Liveries" });
+                var livery = liveries.Locator("[data-livery=livery-8]");
+                await livery.ScrollIntoViewIfNeededAsync();
+                var liveryOffset = await liveries.EvaluateAsync<int>("el => el.scrollLeft");
+                await livery.ClickAsync();
+                await Expect(livery).ToHaveAttributeAsync("aria-pressed", "true");
+                await Expect(livery).ToBeFocusedAsync();
+                if (await liveries.EvaluateAsync<int>("el => el.scrollLeft") != liveryOffset || liveryOffset == 0)
+                    throw new Exception("Livery rail lost its horizontal position when a livery was selected.");
+
+                var model = models.Locator("[data-car=model-4]");
+                await model.FocusAsync();
+                var offset = await models.EvaluateAsync<int>("el => el.scrollLeft");
+                await page.Keyboard.PressAsync("Enter");
+                await Expect(model).ToHaveAttributeAsync("aria-pressed", "true");
+                await Expect(model).ToBeFocusedAsync();
+                if (await models.EvaluateAsync<int>("el => el.scrollLeft") != offset || offset == 0)
+                    throw new Exception("Car model rail lost its horizontal position when the selected model was rerendered.");
+
+                await page.Keyboard.PressAsync("Escape");
+                await page.Locator(".workspace-nav [data-page=practice]").ClickAsync();
+                await Expect(page.GetByRole(AriaRole.Checkbox, new() { Name = "Apply tyres" })).ToBeDisabledAsync();
+                var laps = page.GetByRole(AriaRole.Group, new() { Name = "Complete laps" });
+                await Expect(laps.GetByRole(AriaRole.Button)).ToHaveCountAsync(lapCount);
+                await laps.HoverAsync();
+                await page.Mouse.WheelAsync(120, 2);
+                await page.WaitForFunctionAsync("document.getElementById('lapRail').scrollLeft > 0");
+                await laps.EvaluateAsync("el => el.scrollLeft = 0");
+                await laps.FocusAsync();
+                await page.Keyboard.PressAsync("ArrowRight");
+                await page.WaitForFunctionAsync("document.getElementById('lapRail').scrollLeft > 0");
+                var lap = laps.GetByRole(AriaRole.Button, new() { Name = "Lap 10", Exact = true });
+                await lap.FocusAsync();
+                offset = await laps.EvaluateAsync<int>("el => el.scrollLeft");
+                lapCount++;
+                await page.EvaluateAsync("() => loadRecordedLaps()");
+                await Expect(laps.GetByRole(AriaRole.Button)).ToHaveCountAsync(lapCount);
+                await Expect(lap).ToBeFocusedAsync();
+                if (await laps.EvaluateAsync<int>("el => el.scrollLeft") != offset || offset == 0)
+                    throw new Exception("Lap rail lost its horizontal position on refresh.");
+                return "Car and livery wheel scrolling, native horizontal and keyboard scrolling on the lap rail, and focus and offset on rerender";
+            }
+            finally
+            {
+                await page.UnrouteAsync(catalogUrl);
+                await page.UnrouteAsync(lapsUrl);
+                await page.UnrouteAsync(stateUrl);
+                await page.SetViewportSizeAsync(1320, 900);
+            }
         });
 
         await Check("refresh-error", async host =>

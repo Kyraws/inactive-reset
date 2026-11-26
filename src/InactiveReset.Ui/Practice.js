@@ -116,9 +116,12 @@ function practiceAccessIssue() {
 }
 function speedRestorationIssue() {
   if (timelineSelection) {
-    if (!compatibleVehicle(destinationState.session, timelineSelection.Checkpoint.VehicleName, timelineSelection.VehicleCompatibilityKey))
+    const lap = timelineSelection.lap;
+    if (!compatibleVehicle(destinationState.session, lap.Identity.Vehicle, lap.VehicleCompatibilityKey))
       return 'Speed & gear require a car compatible with the recorded chassis.';
-    return timelineSelection.RollingUnavailableReason || (!destinationState.rollingStartSupported ? 'Speed & gear are unavailable for this build.' : '');
+    if (!timelineSelection.SpeedEligible)
+      return timelineSelection.RollingUnavailableReason || 'Speed & gear are unavailable for this recorded frame.';
+    return destinationState.rollingStartSupported ? '' : 'Speed & gear are unavailable for this build.';
   }
   if (destinationState.game?.protected) return 'Teleporting is disabled with EAC on. Close LMU and choose Launch local play, then load single-player Practice.';
   const checkpoint = visibleCheckpoints.find(c => c.id === document.getElementById('cp').value);
@@ -134,13 +137,13 @@ function placementIssue() {
   const s = destinationState;
   const garage = s.inGarage ?? s.tyreRules?.inGarage;
   const directReset = garage === false && s.rollingStartSupported;
+  const lap = timelineSelection?.lap;
   return practiceAccessIssue() ||
-    (timelinePendingRequest && timelinePendingRequest === timelineRequest ? 'Waiting for the selected recorded frame.' :
-      s.busy && !(directReset && s.phase === 'WaitingToClear') ? 'Wait for the current operation to finish.' :
+    (s.busy && !(directReset && s.phase === 'WaitingToClear') ? 'Wait for the current operation to finish.' :
       !s.connected || !s.session ? 'Load single-player Practice to capture a position and teleport back to it.' :
       garage !== true && !directReset ? 'On-track reset is unavailable. Return to the garage to place a checkpoint.' :
-      timelineSelection && (timelineSelection.Checkpoint.TrackName.toLowerCase() !== s.session.track.toLowerCase() || !compatibleVehicle(s.session, timelineSelection.Checkpoint.VehicleName, timelineSelection.VehicleCompatibilityKey)) ? 'Load the recorded layout and a compatible car to teleport.' :
-      timelineSelection?.Checkpoint.ExecutableSha256 && s.build && !timelineSelection.Checkpoint.ExecutableSha256.toLowerCase().startsWith(s.build.toLowerCase()) ? 'Recorded teleport requires the LMU build used for this lap.' :
+      lap && (lap.Identity.Track.toLowerCase() !== s.session.track.toLowerCase() || !compatibleVehicle(s.session, lap.Identity.Vehicle, lap.VehicleCompatibilityKey)) ? 'Load the recorded layout and a compatible car to teleport.' :
+      lap?.Identity.ExecutableSha256 && s.build && !lap.Identity.ExecutableSha256.toLowerCase().startsWith(s.build.toLowerCase()) ? 'Recorded teleport requires the LMU build used for this lap.' :
       !timelineSelection && !document.getElementById('cp').value ? 'Choose a teleport target.' : tyrePlacementIssue(s));
 }
 function renderDestinationSpeed() {
@@ -156,7 +159,6 @@ function renderDestinationSpeed() {
     : 'Captured speed unavailable';
 }
 function updateDestination() {
-  timelineRequest++;
   timelineSelection = null;
   selectedLapPoint = null;
   updateLapControls();
@@ -198,14 +200,18 @@ async function runPracticeInput(action) {
   else if (action === 'teleport') await resetFromHotkey();
   else if (action === 'standing') await resetFromHotkey(true);
   else if (action === 'nextQuick') cycleCheckpoint(1, true);
+  else if (action === 'previousQuick') cycleCheckpoint(-1, true);
   else if (action === 'clearQuick') await clearQuick();
   else if (action === 'previous' || action === 'next') cycleCheckpoint(action === 'previous' ? -1 : 1);
 }
 
 function renderCheckpoints(s) {
   const before = destinationState.session;
+  const recordingContextChanged = before?.track !== s.session?.track || before?.vehicle !== s.session?.vehicle ||
+    before?.vehicleCompatibilityKey !== s.session?.vehicleCompatibilityKey || destinationState.build !== s.build ||
+    destinationState.rollingStartSupported !== s.rollingStartSupported;
   if (before && (before.track !== s.session?.track || before.vehicle !== s.session?.vehicle)) {
-    clearQuickScope = ''; timelineRequest++;
+    clearQuickScope = '';
     document.getElementById('clearQuickStatus').textContent = '';
   }
   destinationState = s;
@@ -228,6 +234,7 @@ function renderCheckpoints(s) {
   select.scrollTop = sameTrack ? scroll : 0;
   select.dataset.track = (session?.track || '').toLowerCase();
   select.disabled = !!s.busy || !list.length;
+  if (recordingContextChanged && recordedLapRows) updateRecordedLaps();
   updatePlacementControls();
 }
 
@@ -358,7 +365,6 @@ async function quickCapture() {
     if (!res.ok || !res.id) { showNotice('Quick capture was not saved.'); return; }
     // Clear the old selection so the next refresh selects the newly saved ID.
     timelineSelection = null;
-    timelineRequest++;
     practicePreferences.checkpoint = res.id;
     document.getElementById('cp').value = '';
     await refresh();
@@ -378,7 +384,7 @@ async function place(standing = false) {
   const checkpoint = document.getElementById('cp').value;
   if (placementSubmitting) return;
   const directReset = (destinationState.inGarage ?? destinationState.tyreRules?.inGarage) === false;
-  const body = timelineSelection ? {recording:timelineSelection.SegmentId, sequence:timelineSelection.Sequence} : {checkpoint};
+  const body = timelineSelection ? {recording:timelineSelection.lap.SegmentId, sequence:timelineSelection.Sequence} : {checkpoint};
   Object.assign(body, {directReset, restoreSpeed:!standing});
   if (document.getElementById('freshOnPlace').checked) body.tyres = tyreOptions();
   placementSubmitting = true;
@@ -466,8 +472,8 @@ updateTyreSettings();
 refresh();
 schedule(700);
 
-let timelineSelection = null, timelineRequest = 0, timelinePendingRequest = 0, lapRequest = 0;
-let recordedLaps = [], lapPoints = [], previewLap = null, selectedLapPoint = null;
+let timelineSelection = null, lapRequest = 0;
+let recordedLapRows = null, recordedLaps = [], lapPoints = [], previewLap = null, selectedLapPoint = null;
 let lapRefresh = null, lapRefreshPending = false;
 const lapElement = id => document.getElementById(id);
 
@@ -477,7 +483,7 @@ function updatePlacementControls() {
     ? (selected.quick ? 'Quick Captures' : 'Saved Checkpoints') + ' · ' + selected.name : 'Choose a destination');
   renderDestinationSpeed();
   if (timelineSelection && Number.isFinite(timelineSelection.SpeedKmh))
-    lapElement('destinationSpeed').textContent = timelineSelection.SpeedKmh.toFixed(1) + ' km/h · gear ' + timelineSelection.Checkpoint.Gear;
+    lapElement('destinationSpeed').textContent = timelineSelection.SpeedKmh.toFixed(1) + ' km/h · gear ' + timelineSelection.Gear;
   const issue = placementIssue(), speed = speedRestorationIssue();
   lapElement('placeBtn').disabled = !!issue || !!speed;
   lapElement('standingBtn').disabled = !!issue;
@@ -560,12 +566,30 @@ async function loadRecordedLaps() {
   lapRefreshPending = false;
   const status = lapElement('timelineRange');
   if (!Array.isArray(rows)) { status.textContent = rows.error || 'Could not load recorded laps.'; return; }
-  const complete = rows.filter(lap => !lap.IsOpeningRun);
-  if (JSON.stringify(complete) !== JSON.stringify(recordedLaps) || lapElement('timelineSession').disabled && !complete.length) {
-    recordedLaps = complete;
+  const firstLoad = recordedLapRows === null;
+  recordedLapRows = rows.filter(lap => !lap.IsOpeningRun);
+  updateRecordedLaps(firstLoad);
+}
+
+function updateRecordedLaps(firstLoad = false) {
+  const {session, build, rollingStartSupported} = destinationState;
+  const matching = session && rollingStartSupported ? recordedLapRows.filter(lap =>
+    lap.Identity.Track.toLowerCase() === session.track.toLowerCase() &&
+    compatibleVehicle(session, lap.Identity.Vehicle, lap.VehicleCompatibilityKey) &&
+    (!build || lap.Identity.ExecutableSha256?.toLowerCase().startsWith(build.toLowerCase()))) : [];
+  const eligibleSessions = new Set(matching.filter(lap => lap.HasSpeedEligiblePoints).map(recordedSessionId));
+  const eligible = matching.filter(lap => eligibleSessions.has(recordedSessionId(lap)));
+  if (firstLoad || JSON.stringify(eligible) !== JSON.stringify(recordedLaps)) {
+    recordedLaps = eligible;
+    if (timelineSelection && !eligible.some(lap => lap.Id === timelineSelection.lap.Id)) {
+      timelineSelection = null;
+      updatePlacementControls();
+    }
     renderLapRail();
   }
-  status.textContent = complete.length ? '' : 'Completed laps appear after driving from one start/finish crossing to the next.';
+  lapElement('timelineRange').textContent = eligible.length ? '' : !session || !rollingStartSupported
+    ? 'Load a Practice session with speed & gear support to see eligible recordings.'
+    : 'No completed laps with speed & gear telemetry match the current layout and car.';
 }
 
 function renderLapRail(reset = false) {
@@ -581,7 +605,7 @@ function renderLapRail(reset = false) {
     const date = when && Number.isFinite(when.getTime()) ? recordedDateTime.format(when) : 'Date unknown';
     return new Option(date + ' · ' + practiceTrackLabel(lap.Identity.Track) + ' · ' + laps.length + ' completed ' + (laps.length === 1 ? 'lap' : 'laps'), id);
   });
-  picker.replaceChildren(...(options.length ? options : [new Option('No completed laps', '')]));
+  picker.replaceChildren(...(options.length ? options : [new Option('No eligible sessions', '')]));
   if (groups.has(previous)) picker.value = previous;
   picker.title = options.length ? picker.selectedOptions[0].text : '';
   const laps = (groups.get(picker.value) || []).sort((a,b) => a.Number - b.Number);
@@ -590,15 +614,14 @@ function renderLapRail(reset = false) {
   const scroll = reset ? 0 : rail.scrollLeft, focused = document.activeElement?.dataset.lap;
   rail.innerHTML = laps.map(lap => '<button class="button lap-chip' + (lap === best ? ' best-lap' : '') + '" data-lap="' + esc(lap.Id) + '" aria-pressed="' + (previewLap?.Id === lap.Id) + '" aria-label="Lap ' + lap.Number + (lap === best ? ', Best' : '') + '"' + (destinationState.busy ? ' disabled' : '') + '>' + lap.Number + (lap === best ? ' <small>Best</small>' : '') + '</button>').join('');
   picker.disabled = !groups.size || !!destinationState.busy;
+  rail.tabIndex = laps.length ? 0 : -1;
   rail.scrollLeft = scroll;
   [...rail.children].find(button => button.dataset.lap === focused)?.focus({preventScroll:true});
 }
 
 async function chooseRecordedLap(id) {
-  if (destinationState.busy || placementSubmitting) return;
+  if (id !== null && (destinationState.busy || placementSubmitting)) return;
   const request = ++lapRequest;
-  timelineRequest++;
-  updatePlacementControls();
   previewLap = recordedLaps.find(lap => lap.Id === id) || null;
   lapPoints = []; selectedLapPoint = null;
   for (const button of lapElement('lapRail').children) button.setAttribute('aria-pressed', String(button.dataset.lap === previewLap?.Id));
@@ -612,7 +635,7 @@ async function chooseRecordedLap(id) {
   if (!Array.isArray(points)) { status.textContent = points.error || 'Could not load lap.'; return; }
   lapPoints = points;
   status.textContent = '';
-  if (timelineSelection?.lapId === id) selectedLapPoint = points.find(p => p.Sequence === timelineSelection.Sequence) || null;
+  if (timelineSelection?.lap.Id === id) selectedLapPoint = points.find(p => p.Sequence === timelineSelection.Sequence) || null;
   updateLapControls();
 }
 
@@ -624,11 +647,11 @@ function updateLapGuards() {
   for (const button of lapElement('lapRail').children) button.disabled = busy;
 }
 
-function updateLapControls() {
+function updateLapControls(scrubbing = false) {
   updateLapGuards();
   const slider = lapElement('timelineScrub'), elapsed = lapElement('lapElapsed');
   slider.max = previewLap?.Duration || 1;
-  slider.value = selectedLapPoint?.Elapsed ?? 0;
+  if (!scrubbing) slider.value = selectedLapPoint?.Elapsed ?? 0;
   slider.setAttribute('aria-valuetext', selectedLapPoint ? lapTime(selectedLapPoint.Elapsed) : 'No point selected');
   elapsed.value = selectedLapPoint ? lapTime(selectedLapPoint.Elapsed) : '';
   lapElement('timelineMapMeta').textContent = previewLap ? 'Recorded lap ' + previewLap.Number + (previewLap.LmuLapNumber == null ? '' : ' · LMU lap ' + previewLap.LmuLapNumber) + ' · ' + lapTime(previewLap.Duration) + ' · ' + practiceTrackLabel(previewLap.Identity.Track) + ' · ' + (previewLap.VehicleModel || 'Unknown car') : '';
@@ -646,7 +669,7 @@ function parseLapElapsed(input) {
   return seconds < 60 ? Number(whole.slice(0,-2)) * 60 + seconds : NaN;
 }
 
-function selectElapsed(seconds) {
+function selectElapsed(seconds, scrubbing = false) {
   if (!previewLap || !lapPoints.length || destinationState.busy || placementSubmitting) return;
   const rounded = Math.round(previewLap.Duration * 1000) / 1000;
   if (!Number.isFinite(seconds) || seconds < 0 || (seconds > previewLap.Duration && seconds !== rounded)) {
@@ -655,33 +678,23 @@ function selectElapsed(seconds) {
     return;
   }
   const point = lapPoints.reduce((nearest, p) => Math.abs(p.Elapsed-seconds) < Math.abs(nearest.Elapsed-seconds) ? p : nearest);
-  return selectLapPoint(point);
+  selectLapPoint(point, scrubbing);
 }
 
-async function selectLapPoint(point) {
+function selectLapPoint(point, scrubbing = false) {
   if (!point || !previewLap || destinationState.busy || placementSubmitting) return;
-  const lap = previewLap, request = ++timelineRequest;
-  const status = lapElement('timelineSelection');
-  status.textContent = 'Loading selected point…';
-  timelinePendingRequest = request;
-  updatePlacementControls();
+  const lap = previewLap;
   lapElement('lapElapsed').removeAttribute('aria-invalid');
-  const result = await api('/api/recordings/select', {recording:lap.SegmentId, sequence:point.Sequence});
-  if (timelinePendingRequest === request) timelinePendingRequest = 0;
-  if (request !== timelineRequest || destinationState.busy || placementSubmitting) return;
-  if (result.error) {
-    status.textContent = result.error;
-    updateLapControls();
-    updatePlacementControls();
-    return;
-  }
-  timelineSelection = {...result, lapId:lap.Id, label:'Recorded lap ' + lap.Number + ' · ' + lapTime(point.Elapsed)};
+  lapElement('timelineSelection').textContent = '';
+  if (scrubbing && point === selectedLapPoint) return;
+  timelineSelection = {...point, lap, label:'Recorded lap ' + lap.Number + ' · ' + lapTime(point.Elapsed)};
   selectedLapPoint = point;
-  lapElement('cp').value = '';
-  practicePreferences.checkpoint = '';
-  savePracticePreferences();
-  status.textContent = '';
-  updateLapControls();
+  if (lapElement('cp').value || practicePreferences.checkpoint) {
+    lapElement('cp').value = '';
+    practicePreferences.checkpoint = '';
+    savePracticePreferences();
+  }
+  updateLapControls(scrubbing);
   updatePlacementControls();
 }
 
@@ -690,10 +703,7 @@ lapElement('lapRail').addEventListener('click', event => {
   const id = event.target.closest('[data-lap]')?.dataset.lap;
   if (id) chooseRecordedLap(id);
 });
-lapElement('timelineScrub').addEventListener('input', event => {
-  lapElement('lapElapsed').value = lapTime(Number(event.target.value));
-});
-lapElement('timelineScrub').addEventListener('change', event => selectElapsed(Number(event.target.value)));
+lapElement('timelineScrub').addEventListener('input', event => selectElapsed(Number(event.target.value), true));
 lapElement('lapElapsed').addEventListener('change', event => selectElapsed(parseLapElapsed(event.target.value)));
 lapElement('lapElapsed').addEventListener('keydown', event => { if (event.key === 'Enter') event.target.blur(); });
 for (const button of document.querySelectorAll('[data-nudge]')) button.addEventListener('click', () => {

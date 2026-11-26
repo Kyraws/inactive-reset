@@ -7,11 +7,13 @@ public sealed record RecordedRestoration(int SchemaVersion, string SegmentId, lo
 public sealed record RecordingSummary(string SegmentId, RecordingIdentity Identity, double Start, double End, int Samples);
 public sealed record RecordedLap(string Id, string SegmentId, RecordingIdentity Identity, int Number,
     DateTimeOffset? RecordedUtc, double Duration, bool IsOpeningRun = false, int? LmuLapNumber = null,
-    string? RecordedSessionId = null)
+    string? RecordedSessionId = null, bool HasSpeedEligiblePoints = false)
 {
     public string VehicleModel => VehicleCatalog.Model(Identity.Vehicle) ?? VehicleCatalog.UnknownModel;
+    public string VehicleCompatibilityKey => VehicleCatalog.CompatibilityKey(Identity.Vehicle);
 }
-public sealed record RecordedLapPoint(long Sequence, float X, float Z, bool SpeedEligible, double Elapsed = 0);
+public sealed record RecordedLapPoint(long Sequence, float X, float Z, bool SpeedEligible, double Elapsed = 0,
+    double? SpeedKmh = null, int Gear = 0, string? RollingUnavailableReason = null);
 public sealed record TimelineSelection(Checkpoint Checkpoint, string SegmentId, long Sequence,
     double Timestamp, double? SpeedKmh, string? RollingUnavailableReason)
 {
@@ -31,10 +33,11 @@ public sealed record TimelineSelection(Checkpoint Checkpoint, string SegmentId, 
 public sealed class TelemetryTimeline(string dataDirectory)
 {
     internal const string LapIndexSuffix = ".laps-v1";
+    private const int LapIndexVersion = 2;
     private sealed record LapFrame(long Sequence, double Time, float Distance, float X, float Z, float? Forward,
-        bool SpeedEligible, int? LmuLapNumber);
+        bool SpeedEligible, int? LmuLapNumber, double? SpeedKmh, int Gear, string? RollingUnavailableReason);
     private readonly record struct FileStamp(long Length, DateTime Updated);
-    private sealed record LapIndex(FileStamp Source, long Offset, TimelineEntry? Header, List<LapFrame> Frames);
+    private sealed record LapIndex(FileStamp Source, long Offset, TimelineEntry? Header, List<LapFrame> Frames, int Version);
     private sealed class LapPart
     {
         public FileStamp? Source;
@@ -92,12 +95,16 @@ public sealed class TelemetryTimeline(string dataDirectory)
                             entry.Kind == "sample" && entry.SegmentId == header.SegmentId && entry.Identity == header.Identity &&
                             entry.Sample is { } sample && double.IsFinite(sample.ElapsedTime) &&
                             float.IsFinite(sample.LapDistance) && sample.Pose.Position.IsFinite)
+                        {
+                            var rollingIssue = RollingMotion.CaptureIssue(sample.LocalVelocityMetresPerSecond, sample.Gear);
                             part.Frames.Add(new(entry.Sequence, sample.ElapsedTime, sample.LapDistance,
                                 sample.Pose.Position.X, sample.Pose.Position.Z, sample.LocalVelocityMetresPerSecond?.Z,
-                                RollingMotion.CaptureIssue(sample.LocalVelocityMetresPerSecond, sample.Gear) is null &&
-                                Geometry.BuildTargetFromRecordedPose(sample.Pose).Valid,
+                                rollingIssue is null && Geometry.BuildTargetFromRecordedPose(sample.Pose).Valid,
                                 sample.Details?.Values.GetValueOrDefault("mLapNumber") is >= 1 and <= int.MaxValue and var number
-                                    ? (int)number : null));
+                                    ? (int)number : null,
+                                sample.LocalVelocityMetresPerSecond is { IsFinite: true } ? sample.SpeedKmh : null,
+                                sample.Gear, rollingIssue));
+                        }
                         part.Offset = next;
                     }
                     file.Refresh();
@@ -151,9 +158,10 @@ public sealed class TelemetryTimeline(string dataDirectory)
                                 else
                                     completed[id] = (new(id, segment.Key, header.Identity!, number,
                                         header.RecordedSessionUtc ?? header.Utc, frame.Time - lap[0].Time,
-                                        openingRun, lap[0].LmuLapNumber, sessionId),
+                                        openingRun, lap[0].LmuLapNumber, sessionId, lap.Any(point => point.SpeedEligible)),
                                         lap.Select(point => new RecordedLapPoint(point.Sequence, point.X, point.Z,
-                                            point.SpeedEligible, point.Time - lap[0].Time)).ToArray());
+                                            point.SpeedEligible, point.Time - lap[0].Time,
+                                            point.SpeedKmh, point.Gear, point.RollingUnavailableReason)).ToArray());
                             }
                             lap = [];
                             openingRun = false;
@@ -178,7 +186,7 @@ public sealed class TelemetryTimeline(string dataDirectory)
         {
             using var stream = File.OpenRead(path + LapIndexSuffix);
             var index = JsonSerializer.Deserialize<LapIndex>(stream);
-            if (index is null || index.Source != stamp || index.Offset < 0 || index.Offset > stamp.Length ||
+            if (index is null || index.Version != LapIndexVersion || index.Source != stamp || index.Offset < 0 || index.Offset > stamp.Length ||
                 index.Frames is null || index.Frames.Count != 0 && index.Header is not { Kind: "header", SegmentId: not null, Identity: not null })
                 return null;
             var part = new LapPart { Source = stamp, Offset = index.Offset, Header = index.Header };
@@ -195,7 +203,7 @@ public sealed class TelemetryTimeline(string dataDirectory)
         try
         {
             using (var stream = File.Create(temporaryPath))
-                JsonSerializer.Serialize(stream, new LapIndex(stamp, part.Offset, part.Header, part.Frames));
+                JsonSerializer.Serialize(stream, new LapIndex(stamp, part.Offset, part.Header, part.Frames, LapIndexVersion));
             File.Move(temporaryPath, indexPath, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }

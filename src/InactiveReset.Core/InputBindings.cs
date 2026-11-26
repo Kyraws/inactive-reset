@@ -8,7 +8,7 @@ public sealed record ActionBinding(KeyboardBinding? Keyboard = null, WheelBindin
 
 public sealed class InputBindings
 {
-    public static readonly string[] Actions = ["capture", "teleport", "standing", "previous", "next", "nextQuick", "clearQuick"];
+    public static readonly string[] Actions = ["capture", "teleport", "standing", "next", "previous", "nextQuick", "previousQuick", "clearQuick"];
     public Dictionary<string, ActionBinding> Bindings { get; init; } = [];
     public static InputBindings Defaults() => new()
     {
@@ -17,7 +17,7 @@ public sealed class InputBindings
             ["capture"] = new(new(0x43, 3)), ["teleport"] = new(new(0x52, 3)),
             ["standing"] = new(new(0x52, 7)), ["previous"] = new(new(0x26, 3)),
             ["next"] = new(new(0x28, 3)),
-            ["nextQuick"] = new(), ["clearQuick"] = new(),
+            ["nextQuick"] = new(), ["previousQuick"] = new(), ["clearQuick"] = new(),
         }
     };
 
@@ -66,6 +66,8 @@ public sealed class InputBindings
             result.Bindings.TryAdd("nextQuick", new());
             result.Bindings.TryAdd("clearQuick", new());
         }
+        if (result.Bindings is { Count: 7 })
+            result.Bindings.TryAdd("previousQuick", new());
         result.Validate();
         return result;
     }

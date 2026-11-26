@@ -6,10 +6,13 @@ It reads the official SDK mapping without native memory attachment, including
 when EAC is enabled. Only the SDK's lock-coordination mapping is writable.
 Practice tools and `GET /api/recordings/status` expose status and errors.
 
-Open **Practice Teleport** and pick a recorded session by date, layout, car and
-complete lap count. The app numbers its retained complete laps and marks the
-quickest. LMU's lap number appears when the recorded frame includes it. Click the
-route, move the slider or type elapsed lap time to select a retained frame.
+Open **Practice Teleport** and pick a recorded session by date, layout and
+complete lap count. The picker shows sessions from the loaded layout, a
+compatible chassis and the current build, with at least one speed-and-gear
+point on a complete lap. The app numbers the retained complete laps and marks
+the quickest. LMU's lap number appears when the recorded frame includes it.
+Click the route, move the slider or type elapsed lap time to select a retained
+frame. Once the lap loads, frame selection uses cached preview data.
 
 Recording headers carry a session identity across continuous play and verified
 pause/resume. A clock reset, game identity change or loss of continuity starts

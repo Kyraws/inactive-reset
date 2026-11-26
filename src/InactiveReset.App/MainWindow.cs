@@ -223,7 +223,7 @@ internal sealed class MainWindow : Form
         {
             if (!GameFocused()) return;
             var update = "";
-            if (action is "capture" or "previous" or "next" or "nextQuick" or "clearQuick")
+            if (action is "capture" or "previous" or "next" or "nextQuick" or "previousQuick" or "clearQuick")
             {
                 // Practice polling stops on Home; refresh here because occluded WebViews may defer fetch continuations.
                 using var state = JsonDocument.Parse(await InputStateClient.GetStringAsync(_url + "api/state"));
