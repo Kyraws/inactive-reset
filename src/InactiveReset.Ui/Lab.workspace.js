@@ -14,7 +14,7 @@ const pointNames = {START:'Start',NODE_25:'25%',NODE_50:'50%',NODE_75:'75%',FINI
 const stagesEnabled = () => Object.keys(SESSION_NAMES).filter(stage=>setup?.amounts[stage]>0);
 
 function stageSwitches(){
-  return `<div class="stage-switches">${Object.entries(SESSION_NAMES).map(([stage,name])=>`<div class="stage-switch"><span>${name}</span>${sessionToggle(stage,name)}<small>${setup.amounts[stage]&&setup.settings[lengthKey[stage]] ? escapeHtml(stage==='RACE'?raceLengthSummary():setup.settings[lengthKey[stage]].currentValue+' min') : ''}</small></div>`).join('')}</div>`;
+  return `<div class="stage-switches">${Object.entries(SESSION_NAMES).map(([stage,name])=>`<label class="binary-control stage-switch">${sessionAmountInput(stage,name)}<span>${name}</span><small>${setup.amounts[stage]&&setup.settings[lengthKey[stage]] ? escapeHtml(stage==='RACE'?raceLengthSummary():setup.settings[lengthKey[stage]].currentValue+' min') : ''}</small></label>`).join('')}</div>`;
 }
 function forecasts(enabled){
   const pending = builderEdits.get('weatherPreset:'+weatherSession)?.preset;
@@ -256,6 +256,19 @@ async function refreshCircuitMap(){
   catch(e){notify(e.message,true);}finally{$('refreshCircuitMap').disabled=false;renderLibrary();}
 }
 
+function checkpointEntry(classes, attributes, choice, action) {
+  return `<article class="checkpoint-entry ${classes}" ${attributes}>${choice}${action}</article>`;
+}
+
+function renderCheckpointRows(container, rows) {
+  if (container.dataset.rows === rows) return;
+  const focused = container.contains(document.activeElement) ? Object.entries(document.activeElement.dataset) : [];
+  container.innerHTML = rows;
+  container.dataset.rows = rows;
+  if (focused.length) [...container.querySelectorAll('button')].find(button =>
+    focused.every(([key,value]) => button.dataset[key] === value))?.focus({preventScroll:true});
+}
+
 renderLibrary=function(){
   const all=(labState?.checkpoints||[]).filter(c=>!c.quick&&c.name!=='Quick capture'),tracks=[...new Set(all.map(c=>c.track))].sort();
   if(!tracks.includes(libraryTrack))libraryTrack=tracks.find(t=>normalizeTrack(t)===normalizeTrack(labState?.session?.track))||tracks[0]||'';
@@ -268,7 +281,13 @@ renderLibrary=function(){
   if(!list.some(c=>c.id===libraryPreviewId))libraryPreviewId=list[0]?.id||'';
   const preview=list.find(c=>c.id===libraryPreviewId),active=$('cp').value;
   $('libraryMeta').textContent=`${list.length} of ${circuit.length} checkpoints`;
-  $('checkpointCards').innerHTML=list.map((c,i)=>`<article class="checkpoint-item ${c.id===libraryPreviewId?'previewed':''}"><button class="checkpoint-preview" data-preview-checkpoint="${escapeHtml(c.id)}" aria-pressed="${c.id===libraryPreviewId}"><span class="point-number">${i+1}</span><span><strong>${escapeHtml(c.name)}</strong><small>${escapeHtml(practiceVehicleModel(c))} · ${Number.isFinite(c.speedKmh)?c.speedKmh.toFixed(1)+' km/h':'Speed unknown'} · G${c.gear??'—'}</small>${c.id===active?'<em>Active destination</em>':''}</span></button><button class="icon-button" data-fav-checkpoint="${escapeHtml(c.id)}" aria-label="Favourite ${escapeHtml(c.name)}">${labPreferences.checkpoints.includes(c.id)?'★':'☆'}</button></article>`).join('')||'<p class="empty-note">No matching named checkpoints. Save a Quick capture as named in Practice tools, or capture with a name.</p>';
+  const rows = list.map((c,i) => {
+    const key=escapeHtml(c.id), name=escapeHtml(c.name), selected=c.id===libraryPreviewId;
+    return checkpointEntry('checkpoint-item'+(selected?' previewed':''), '',
+      `<button class="checkpoint-choice checkpoint-preview" data-preview-checkpoint="${key}" aria-pressed="${selected}"><span class="point-number">${i+1}</span><span><strong>${name}</strong><small>${escapeHtml(practiceVehicleModel(c))} · ${Number.isFinite(c.speedKmh)?c.speedKmh.toFixed(1)+' km/h':'Speed unknown'} · G${c.gear??'—'}</small>${c.id===active?'<em>Active destination</em>':''}</span></button>`,
+      `<button class="icon-button" data-fav-checkpoint="${key}" aria-label="Favourite ${name}">${labPreferences.checkpoints.includes(c.id)?'★':'☆'}</button>`);
+  }).join('') || '<p class="empty-note">No matching named checkpoints. Save a Quick capture as named in Practice tools, or capture with a name.</p>';
+  renderCheckpointRows($('checkpointCards'), rows);
   const matching=preview&&normalizeTrack(preview.track)===normalizeTrack(labState?.session?.track);
   $('libraryPreview').innerHTML=preview?`<h2>${escapeHtml(preview.name)}</h2><p>${escapeHtml(practiceVehicleModel(preview))}</p><div class="checkpoint-stats"><span>${Number.isFinite(preview.speedKmh)?preview.speedKmh.toFixed(1)+' km/h':'Unknown speed'}</span><span>Gear ${preview.gear??'—'}</span><span>${Math.round(preview.lapDistance||0)} m</span></div>${matching?'':'<p class="small-note">Load this checkpoint’s track to select it as a teleport destination.</p>'}<div class="button-group"><button class="button primary" data-map-checkpoint="${escapeHtml(preview.id)}" ${!matching||labState?.busy?'disabled':''}>${active===preview.id?'Selected destination':'Select checkpoint'}</button><button class="button quiet" data-checkpoint-action="rename" data-id="${escapeHtml(preview.id)}">Rename</button><button class="button critical" data-checkpoint-action="delete" data-id="${escapeHtml(preview.id)}">Delete</button></div>`:'<p class="empty-note">Select a checkpoint to inspect it.</p>';
   const mapped=mappedLayout(libraryTrack),available=allMapTracks();
@@ -285,17 +304,12 @@ function renderPracticeManagement() {
   for (const [id,quick] of [['quickList',true],['destinationList',false]]) {
     const list = visibleCheckpoints.filter(point => !!point.quick === quick);
     const rows = list.map(point => {
-      const key = escapeHtml(point.id), name = escapeHtml(point.name);
-      return `<div class="checkpoint-row" data-selected="${point.id===active}"><button class="destination-option" data-map-checkpoint="${key}" aria-pressed="${point.id===active}" ${busy?'disabled':''}><strong>${name}</strong><small>${Math.round(point.lapDistance)} m</small></button><button class="button row-action" data-checkpoint-action="${quick?'copy':'delete'}" data-id="${key}" aria-label="${quick?'Save a copy of':'Delete'} ${name}" ${busy||checkpointMutation?'disabled':''}>${quick?'+':'−'}</button></div>`;
+      const key = escapeHtml(point.id), name = escapeHtml(point.name), selected = point.id === active;
+      return checkpointEntry('checkpoint-row', `data-selected="${selected}"`,
+        `<button class="checkpoint-choice destination-option" data-map-checkpoint="${key}" aria-pressed="${selected}" ${busy?'disabled':''}><strong>${name}</strong><small>${Math.round(point.lapDistance)} m</small></button>`,
+        `<button class="button row-action" data-checkpoint-action="${quick?'copy':'delete'}" data-id="${key}" aria-label="${quick?'Save a copy of':'Delete'} ${name}" ${busy||checkpointMutation?'disabled':''}>${quick?'+':'−'}</button>`);
     }).join('') || '<p class="small-note">No captures for this layout'+(quick?' and car':'')+'.</p>';
-    const container = $(id);
-    if (container.dataset.rows !== rows) {
-      const focused = container.contains(document.activeElement) ? {...document.activeElement.dataset} : null;
-      container.innerHTML = rows;
-      container.dataset.rows = rows;
-      if(focused) [...container.querySelectorAll('button')].find(b=>
-        focused.mapCheckpoint ? b.dataset.mapCheckpoint===focused.mapCheckpoint : b.dataset.id===focused.id)?.focus({preventScroll:true});
-    }
+    renderCheckpointRows($(id), rows);
   }
   $('practiceUndo').hidden = !checkpointUndoToken;
   $('clearQuickButton').disabled = busy || !visibleCheckpoints.some(point=>eligibleQuick(point));
@@ -662,7 +676,7 @@ for (const wheel of TYRE_WHEELS) {
 }
 
 document.addEventListener('wheel', event => {
-  const rail = event.target.closest('.horizontal-rail');
+  const rail = event.target.closest('.horizontal-rail, #libraryCircuits');
   if (!rail || Math.abs(event.deltaX) >= Math.abs(event.deltaY) || event.ctrlKey) return;
   const previous = rail.scrollLeft;
   rail.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rail.clientWidth : 1);

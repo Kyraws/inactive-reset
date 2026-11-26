@@ -16,8 +16,9 @@ namespace InactiveReset.Ui;
 /// Bound to loopback only. This exposes memory writes to the game; it has no
 /// business listening on anything routable.
 /// </summary>
-public sealed class Server(string offsetDirectory, string dataDirectory, int port)
+public sealed class Server(string offsetDirectory, string dataDirectory, int port, string? uiSourceDirectory = null)
 {
+    private readonly UiAssets _assets = new(uiSourceDirectory);
     private readonly TelemetryTimeline _timeline = new(dataDirectory);
     private readonly TelemetryRecorder _recorder = new(offsetDirectory, dataDirectory);
     private readonly CancellationTokenSource _recorderCancellation = new();
@@ -29,7 +30,7 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
     private readonly OfficialSessionsStore _officialSessions = new(dataDirectory, new LmuSessionClient(dataDirectory: dataDirectory).AuthenticationTicketAsync);
     private readonly LmuBrandAssets _brandAssets = new(() => Path.Combine(GameLauncher.Locate(dataDirectory).Root, "Bin", "UI.zip"));
 
-    internal Server(PlacementRunner runner, string dataDirectory, int port, OfficialSessionsStore? officialSessions = null) : this("unused", dataDirectory, port)
+    internal Server(PlacementRunner runner, string dataDirectory, int port, OfficialSessionsStore? officialSessions = null, string? uiSourceDirectory = null) : this("unused", dataDirectory, port, uiSourceDirectory)
     { _runner = runner; _maps = new(dataDirectory, runner.TrackMapAsync); _recordingEnabled = false; if (officialSessions is not null) _officialSessions = officialSessions; }
 
     public string Url => $"http://127.0.0.1:{port}/";
@@ -91,6 +92,14 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
         try
         {
             var path = context.Request.Url?.AbsolutePath ?? "/";
+            var isGet = context.Request.HttpMethod == "GET";
+            if (_assets.LiveReload && isGet) context.Response.Headers["Cache-Control"] = "no-store";
+            if (path == "/__dev/ui-version")
+            {
+                if (_assets.LiveReload && isGet) SendText(context, _assets.Revision(), "text/plain");
+                else { context.Response.StatusCode = 404; context.Response.Close(); }
+                return;
+            }
             if (path == "/api/recordings/status" && context.Request.HttpMethod == "GET")
             { SendText(context, JsonSerializer.Serialize(_recorder.Status), "application/json"); return; }
             if (path == "/api/track-maps" && context.Request.HttpMethod == "GET")
@@ -139,13 +148,13 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
             {
                 case "/":
                 case "/lab":
-                    SendHtml(context, UiAssets.Read("Lab.html"));
+                    SendHtml(context, _assets.ReadPage());
                     break;
                 case "/lab.css":
-                    SendText(context, UiAssets.Read("Lab.css"), "text/css");
+                    SendText(context, _assets.Read("Lab.css"), "text/css");
                     break;
                 case "/lab.workspace.css":
-                    SendText(context, UiAssets.Read("Lab.workspace.css"), "text/css");
+                    SendText(context, _assets.Read("Lab.workspace.css"), "text/css");
                     break;
                 case "/Fonts/AnonymousPro.woff2":
                 case "/Fonts/Audiowide.woff2":
@@ -162,16 +171,16 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     }
                     break;
                 case "/lab.workspace.js":
-                    SendText(context, UiAssets.Read("Lab.workspace.js"), "text/javascript");
+                    SendText(context, _assets.Read("Lab.workspace.js"), "text/javascript");
                     break;
                 case "/lab.js":
-                    SendText(context, UiAssets.Read("Lab.js"), "text/javascript");
+                    SendText(context, _assets.Read("Lab.js"), "text/javascript");
                     break;
                 case "/lab.inputs.js":
-                    SendText(context, UiAssets.Read("Lab.inputs.js"), "text/javascript");
+                    SendText(context, _assets.Read("Lab.inputs.js"), "text/javascript");
                     break;
                 case "/lab.official.js":
-                    SendText(context, UiAssets.Read("Lab.official.js"), "text/javascript");
+                    SendText(context, _assets.Read("Lab.official.js"), "text/javascript");
                     break;
                 case "/api/official-sessions":
                     SendJson(context, _officialSessions.Read());
@@ -180,13 +189,13 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     SendJson(context, await _officialSessions.RefreshAsync());
                     break;
                 case "/inactive-reset.svg":
-                    SendText(context, UiAssets.Read("InactiveReset.svg"), "image/svg+xml");
+                    SendText(context, _assets.Read("InactiveReset.svg"), "image/svg+xml");
                     break;
                 case "/lab.race.svg":
-                    SendText(context, UiAssets.Read("Lab.race.svg"), "image/svg+xml");
+                    SendText(context, _assets.Read("Lab.race.svg"), "image/svg+xml");
                     break;
                 case "/practice.js":
-                    SendText(context, UiAssets.Read("Practice.js"), "text/javascript");
+                    SendText(context, _assets.Read("Practice.js"), "text/javascript");
                     break;
                 case "/api/lab/preferences":
                     if (context.Request.HttpMethod == "GET") SendJson(context, _labPreferences.Read());
@@ -197,10 +206,10 @@ public sealed class Server(string offsetDirectory, string dataDirectory, int por
                     }
                     break;
                 case "/app.css":
-                    SendText(context, UiAssets.Read("App.css"), "text/css");
+                    SendText(context, _assets.Read("App.css"), "text/css");
                     break;
                 case "/session.js":
-                    SendText(context, UiAssets.Read("Session.js"), "text/javascript");
+                    SendText(context, _assets.Read("Session.js"), "text/javascript");
                     break;
                 case "/api/session/setup":
                     SendJson(context, await _runner.SessionSetupAsync());

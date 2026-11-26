@@ -1,9 +1,14 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace InactiveReset.Core;
 
 public class GateException(string message) : Exception(message);
+
+public sealed class GameAccessDeniedException() : GateException(
+    "Windows denied access to Le Mans Ultimate. If LMU runs as administrator, restart it normally " +
+    "or restart Inactive Reset as administrator under the same Windows account.");
 
 /// <summary>Result of one gate check, so the UI can show what passed and why.</summary>
 public sealed record GateCheck(string Name, bool Passed, string Detail);
@@ -85,20 +90,30 @@ public sealed class GameSession : IDisposable
         }
         checks.Add(new GateCheck("anticheat", true, "absent"));
 
-        var imagePath = process.MainModule?.FileName
-            ?? throw new GateException("cannot read the game's image path");
-        var hash = Sha256File(imagePath);
-
-        var moduleBase = ProcessMemory.MainModuleBase(process);
-        var memory = forWriting ? ProcessMemory.OpenWrite(process.Id)
-                                : ProcessMemory.OpenRead(process.Id);
+        ProcessModule module;
+        ProcessMemory memory;
+        string imagePath, hash;
+        try
+        {
+            module = process.MainModule ?? throw new GateException("cannot read the game's main module");
+            imagePath = module.FileName;
+            hash = Sha256File(imagePath);
+            memory = forWriting ? ProcessMemory.OpenWrite(process.Id) : ProcessMemory.OpenRead(process.Id);
+        }
+        catch (Exception ex) when (ex is Win32Exception { NativeErrorCode: 5 }
+            or MemoryAccessException { NativeErrorCode: 5 })
+        {
+            process.Dispose();
+            throw new GameAccessDeniedException();
+        }
+        var moduleBase = (ulong)module.BaseAddress.ToInt64();
         OffsetProfile offsets;
         try
         {
             var diskHeader = new byte[0x1000];
             using (var executable = File.OpenRead(imagePath)) executable.ReadExactly(diskHeader);
             if (!ProcessMemory.SamePeIdentity(diskHeader, memory.ReadBytes(moduleBase, 0x1000),
-                process.MainModule!.ModuleMemorySize))
+                module.ModuleMemorySize))
                 throw new GateException("the running image differs from the installed executable; restart Le Mans Ultimate");
             offsets = AutomaticOffsets.LoadOrDiscover(offsetDirectory, hash,
                 FileVersionInfo.GetVersionInfo(imagePath).FileVersion ?? "unknown",

@@ -57,7 +57,7 @@ internal sealed class LmuApiRoutes
         if (GameLauncher.Running().Protected) return Load(GameLauncher.Locate(dataDirectory).Root);
         using var process = Process.GetProcessesByName(GameSession.ProcessName).FirstOrDefault();
         var root = process is null ? GameLauncher.Locate(dataDirectory).Root
-            : Path.GetDirectoryName(process.MainModule?.FileName) ?? throw Refuse("cannot identify the running install");
+            : Path.GetDirectoryName(RecordingProcessPath.Read(process.Id)) ?? throw Refuse("cannot identify the running install");
         return Load(root);
     }
 

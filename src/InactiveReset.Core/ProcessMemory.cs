@@ -4,7 +4,10 @@ using System.Runtime.InteropServices;
 
 namespace InactiveReset.Core;
 
-public sealed class MemoryAccessException(string message) : Exception(message);
+public sealed class MemoryAccessException(string message) : Exception(message)
+{
+    internal int NativeErrorCode { get; init; }
+}
 
 /// <summary>
 /// Read, and optionally write, another process's memory.
@@ -81,7 +84,7 @@ public sealed partial class ProcessMemory : IDisposable
             var code = Marshal.GetLastWin32Error();
             throw new MemoryAccessException(
                 $"OpenProcess({(write ? "read+write" : "read")}) failed for pid {processId}: " +
-                $"{new System.ComponentModel.Win32Exception(code).Message}");
+                $"{new System.ComponentModel.Win32Exception(code).Message}") { NativeErrorCode = code };
         }
         return new ProcessMemory(handle, processId, write);
     }

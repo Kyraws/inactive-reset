@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -246,18 +247,24 @@ public static partial class GameLauncher
                 "will refuse the session you are about to start.");
         }
 
-        var process = Process.Start(new ProcessStartInfo(executable)
+        try
         {
-            // The game resolves its own content relative to the install folder.
-            WorkingDirectory = install.Root,
-            UseShellExecute = false,
-        }) ?? throw new GateException($"the operating system did not start {executable}.");
-
-        return new LaunchResult(
-            mode, executable, process.Id,
-            mode == LaunchMode.Direct
-                ? "launched directly - no anticheat, this tool can attach"
-                : "launched with EasyAntiCheat - this tool will NOT attach to this session");
+            using var process = Process.Start(new ProcessStartInfo(executable)
+            {
+                WorkingDirectory = install.Root,
+                UseShellExecute = false,
+            }) ?? throw new GateException($"the operating system did not start {executable}.");
+            return new LaunchResult(
+                mode, executable, process.Id,
+                mode == LaunchMode.Direct
+                    ? "launched directly - no anticheat, this tool can attach"
+                    : "launched with EasyAntiCheat - this tool will NOT attach to this session");
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 740)
+        {
+            throw new GateException("Windows requires administrator permissions to launch LMU. Clear the game's " +
+                "Run this program as an administrator compatibility setting or restart Inactive Reset as administrator.");
+        }
     }
 
     // ---- install discovery -------------------------------------------------

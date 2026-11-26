@@ -44,6 +44,32 @@ Attach the relevant Activity text or a short placement-log excerpt. Review logs
 for machine-specific paths before sharing them. Do not upload game executable
 images or proprietary SDK headers.
 
+## Practice workspace UI
+
+From the repository root, run `.\build.cmd dev` to open the desktop app with
+live reload. It builds once at launch and reloads the current workspace page
+when HTML, CSS, or JavaScript in `src/InactiveReset.Ui` is saved. A refresh can
+discard unsaved form edits. Restart the command after changing C#.
+
+- Start at 14 px with about 1.4 line height for instructions users need to act.
+  Place instructions near the relevant label or control and allow them to wrap.
+- Explain why an action is unavailable beside that action. Lead with the next step.
+- Keep save, refresh, and assignment feedback near the controls that caused it.
+  Use consistent wording and distinguish feedback from persistent instructions.
+- Start at 12 px for metadata such as sources, counts, and timestamps. Keep at
+  least 4.5:1 contrast for ordinary text, including secondary text.
+- Use consistent heading levels, casing, field styles, and keyboard focus.
+  Style the main action in each region as primary, supporting actions as
+  secondary, and deletion as destructive. Use the same label for the same action.
+- Make the entire label or tile clickable for on/off settings. Use an accent
+  fill for on and a neutral fill for off.
+
+Review layouts at the desktop minimum of 1040×680 and at a narrower browser
+viewport. See [Testing](TESTING.md).
+
+For visual reviews, save a before-and-after PNG for each workspace page in a
+`comparisons/` folder. Keep raw screenshots, JSON, and supporting files outside it.
+
 ## Verifying a behaviour change
 
 Use the smallest relevant automated checks. For process writes, additionally

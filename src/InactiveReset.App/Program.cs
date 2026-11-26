@@ -21,7 +21,7 @@ internal static class Program
             var data = FindUpwards("data", Value(args, "--data"));
             var port = FreePort();
 
-            var server = new Server(offsets, data, port);
+            var server = new Server(offsets, data, port, Value(args, "--live-reload"));
             using var cancellation = new CancellationTokenSource();
 
             // The server runs for the life of the window. Failures surface in

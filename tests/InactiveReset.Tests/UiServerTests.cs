@@ -67,6 +67,19 @@ public sealed class UiServerTests
         Assert.Equal(0, host.AttachmentReads);
     }
 
+    [Fact]
+    public async Task WindowsProcessAccessDenialOffersRecoveryAndKeepsSessionEditingAvailable()
+    {
+        await using var host = new UiTestHost { DenyProcessAccess = true };
+        var state = await State(host);
+        Assert.False(state["connected"]!.GetValue<bool>());
+        Assert.Contains("restart Inactive Reset as administrator", state["memoryUnavailableReason"]!.GetValue<string>());
+        using var response = await host.Client.PostAsJsonAsync("api/session/action",
+            new { action = "setting", key = "SESSSET_Practice_Length", steps = 30 });
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(1, host.Menu.Writes);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

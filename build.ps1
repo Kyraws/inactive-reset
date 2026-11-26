@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('build', 'test', 'browser', 'test-local', 'ship', 'package', 'clean')]
+    [ValidateSet('build', 'dev', 'test', 'browser', 'test-local', 'ship', 'package', 'clean')]
     [string] $Task = 'build',
 
     [ValidateSet('Debug', 'Release')]
@@ -56,6 +56,14 @@ switch ($Task) {
         # x64-only and the .sln supplies the Any CPU -> x64 mapping.
         Invoke-Step "build ($Configuration)" { dotnet build $solution -c $Configuration --nologo }
         Show-BuildOutput $Configuration
+    }
+
+    'dev' {
+        $app = Join-Path $root 'src/InactiveReset.App'
+        $ui = Join-Path $root 'src/InactiveReset.Ui'
+        Invoke-Step "desktop live reload ($Configuration)" {
+            dotnet run --project $app -c $Configuration --no-launch-profile -- --live-reload $ui
+        }
     }
 
     'test' {

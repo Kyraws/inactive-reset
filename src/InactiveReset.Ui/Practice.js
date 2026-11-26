@@ -108,6 +108,7 @@ let visibleCheckpoints = [];
 let destinationState = {};
 function practiceAccessIssue() {
   if (destinationState.game?.protected) return 'Teleporting and tyre preparation are disabled with EAC on. Close LMU and choose Launch local play, then load single-player Practice.';
+  if (destinationState.memoryUnavailableReason) return destinationState.memoryUnavailableReason;
   const nav = typeof navigation === 'undefined' ? null : navigation;
   if (nav && (nav.state?.settingMode !== 'SETTING_GRANDPRIX' || nav.state?.gameState !== 'GSTATE_DYN' ||
       !nav.state?.gameSession?.startsWith('PRACTICE') || nav.loadingStatus?.loading))

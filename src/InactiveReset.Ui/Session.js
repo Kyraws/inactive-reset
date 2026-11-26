@@ -221,15 +221,15 @@ const SESSION_KEYS = {
   WARMUP:['SESSSET_WarmUp_Length','SESSSET_warmup_starting_time'],
   RACE:[RACE_MINUTES,'SESSSET_race_starting_time','SESSSET_formation','SESSSET_Grid_Position','SESSSET_race_realroad_init','SESSSET_race_realroad_wet','SESSSET_race_realroad_temperatures','SESSSET_realroad_timescale_race']
 };
-function sessionToggle(type, name) {
+function sessionAmountInput(type, name) {
   const pending=sessionOptions.findLast(edit=>edit.body.action==='amount'&&edit.body.session===type);
   const enabled=(pending?.body.amount??setup.amounts[type])>0;
-  return `<label class="session-toggle"><input type="checkbox" data-amount="${type}" aria-label="Enable ${name}" ${enabled?'checked':''}>Enabled</label>`;
+  return `<input type="checkbox" data-amount="${type}" aria-label="Enable ${name}" ${enabled?'checked':''}>`;
 }
 function renderSessions() {
   return Object.entries(SESSION_NAMES).map(([type,name])=>{
     const amount = setup.amounts[type];
-    return `<section class="section-block"><div class="settings-card"><div class="card-title-row"><h3>${name}</h3>${sessionToggle(type,name)}</div>${amount ? settingsRows(SESSION_KEYS[type]) : '<p class="disabled-note">Enable this session to set its duration and conditions.</p>'}</div></section>`;
+    return `<section class="section-block"><div class="settings-card"><div class="card-title-row"><h3>${name}</h3><label class="session-toggle">${sessionAmountInput(type,name)}Enabled</label></div>${amount ? settingsRows(SESSION_KEYS[type]) : '<p class="disabled-note">Enable this session to set its duration and conditions.</p>'}</div></section>`;
   }).join('');
 }
 function renderWeather() {

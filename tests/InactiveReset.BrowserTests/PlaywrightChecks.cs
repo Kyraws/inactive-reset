@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using InactiveReset.Core;
 using InactiveReset.TestSupport;
 using Microsoft.Playwright;
 using static Microsoft.Playwright.Assertions;
@@ -62,6 +63,56 @@ internal static class PlaywrightChecks
             await Expect(page.Locator("#checkpointCards .checkpoint-item")).ToHaveCountAsync(1);
             await Expect(page.Locator("#libraryPreview")).ToContainTextAsync("Valid checkpoint");
             return "Keyboard dropdown and focus, themed picker, search recovery and checkpoint preview";
+        });
+
+        await Check("library-scroll", async host =>
+        {
+            var directory = Path.Combine(host.DataDirectory, "checkpoints");
+            for (var i = 1; i <= 32; i++)
+                CaptureService.Save(new Checkpoint
+                {
+                    Name = $"Checkpoint {i:00}", TrackName = i <= 20 ? "Test track" : $"Circuit {i:00}", VehicleName = "Test car",
+                    Pose = new(new(1, 2, 3), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
+                }, directory);
+
+            await page.SetViewportSizeAsync(1040, 680);
+            try
+            {
+                await page.Locator(".workspace-nav [data-page=library]").ClickAsync();
+                await Expect(page.Locator("#libraryCircuits .circuit-choice")).ToHaveCountAsync(13);
+                await page.Locator("#libraryCircuits button").First.HoverAsync();
+                await page.Mouse.WheelAsync(0, 200);
+                await page.WaitForFunctionAsync("document.getElementById('libraryCircuits').scrollLeft > 0", options: new() { Timeout = 3000 });
+                await page.Locator("#libraryCircuits button").Filter(new() { HasText = "Test track" }).ClickAsync();
+                var editor = page.Locator("#editor");
+                var cards = page.Locator("#checkpointCards");
+                var checkpoints = cards.Locator(".checkpoint-item");
+                await Expect(checkpoints).ToHaveCountAsync(21);
+                await editor.EvaluateAsync("el => el.scrollTop = 0");
+                await page.Locator("#libraryCircuits").EvaluateAsync("el => el.scrollLeft = el.scrollWidth");
+                await page.Locator("#libraryCircuits button").Last.HoverAsync();
+                await page.Mouse.WheelAsync(0, 2500);
+                await page.WaitForFunctionAsync("editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1");
+                var last = checkpoints.Last;
+                if (!await last.EvaluateAsync<bool>("el => el.getBoundingClientRect().bottom <= editor.getBoundingClientRect().bottom"))
+                    throw new Exception("Wheel over Circuits reached the editor bottom while the last checkpoint was still clipped. " +
+                        await cards.EvaluateAsync<string>("el => JSON.stringify({ editorTop: editor.scrollTop, cardsTop: el.scrollTop, cardsHeight: el.clientHeight, cardsContent: el.scrollHeight })"));
+                await Expect(last).ToBeInViewportAsync(new() { Ratio = 1 });
+                await editor.EvaluateAsync("el => el.scrollTop = 0");
+                await cards.HoverAsync(new() { Position = new() { X = 20, Y = 20 } });
+                await page.Mouse.WheelAsync(4, 245);
+                await page.WaitForFunctionAsync("editor.scrollTop > 0");
+                await editor.EvaluateAsync("el => el.scrollTop = 0");
+                await editor.FocusAsync();
+                await page.Keyboard.PressAsync("End");
+                await Expect(last).ToBeInViewportAsync(new() { Ratio = 1 });
+                var choice = last.Locator(".checkpoint-choice");
+                await choice.PressAsync("Enter");
+                await Expect(choice).ToHaveAttributeAsync("aria-pressed", "true");
+                await Expect(choice).ToBeFocusedAsync();
+                return "Mouse wheel scrolls the circuit picker and reaches all checkpoints at the end of the picker; two-axis and keyboard scrolling also work at 1040×680";
+            }
+            finally { await page.SetViewportSizeAsync(1320, 900); }
         });
 
         await Check("horizontal-rails", async _ =>
@@ -137,6 +188,16 @@ internal static class PlaywrightChecks
                 await Expect(page.GetByRole(AriaRole.Checkbox, new() { Name = "Apply tyres" })).ToBeDisabledAsync();
                 var laps = page.GetByRole(AriaRole.Group, new() { Name = "Complete laps" });
                 await Expect(laps.GetByRole(AriaRole.Button)).ToHaveCountAsync(lapCount);
+                if (!await page.EvaluateAsync<bool>("""
+                    () => {
+                        const map = document.getElementById('practiceMap').getBoundingClientRect();
+                        return [...document.querySelectorAll('.practice-list')].every(list => {
+                            const box = list.getBoundingClientRect();
+                            return box.top === map.top && box.bottom === map.bottom;
+                        });
+                    }
+                    """))
+                    throw new Exception("The map and checkpoint panels did not align with the overflowing lap rail.");
                 await laps.HoverAsync();
                 await page.Mouse.WheelAsync(120, 2);
                 await page.WaitForFunctionAsync("document.getElementById('lapRail').scrollLeft > 0");
@@ -229,6 +290,17 @@ internal static class PlaywrightChecks
             await Expect(page.Locator("#builderStatus")).ToContainTextAsync("Session applied");
             await Expect(start).ToBeEnabledAsync();
             if (host.Menu.PracticeLength != 61) throw new Exception("LMU did not receive the practice duration.");
+            var qualify = page.GetByRole(AriaRole.Checkbox, new() { Name = "Enable Qualifying" });
+            var qualifyTile = builder.Locator(".stage-switch").Filter(new() { Has = qualify });
+            await Expect(qualify).Not.ToBeCheckedAsync();
+            var offFill = await qualifyTile.EvaluateAsync<string>("el => getComputedStyle(el).backgroundColor");
+            await qualifyTile.GetByText("Qualifying", new() { Exact = true }).ClickAsync();
+            await Expect(qualify).ToBeCheckedAsync();
+            if (await qualifyTile.EvaluateAsync<string>("el => getComputedStyle(el).backgroundColor") == offFill)
+                throw new Exception("Enabling Qualifying did not change the tile's fill.");
+            await Expect(page.Locator("#builderDetail")).ToBeHiddenAsync();
+            await qualify.PressAsync("Space");
+            await Expect(qualify).Not.ToBeCheckedAsync();
             return "Draft timing stays local until Apply and Start remains a separate action";
         }, expectedWrites: 1);
     }

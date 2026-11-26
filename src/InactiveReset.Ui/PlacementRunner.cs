@@ -191,7 +191,7 @@ public sealed class PlacementRunner(string offsetDirectory, string dataDirectory
             state["connected"] = false;
             if (protectedGame) state["memoryUnavailableReason"] = EacToolsMessage;
             else state["error"] = ex.Message;
-
+            if (ex is GameAccessDeniedException) state["memoryUnavailableReason"] = ex.Message;
         }
 
         state["game"] = Game_();

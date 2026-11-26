@@ -38,6 +38,10 @@ running game's EAC mode. Session-builder rules remain editable at the single-pla
 main menu in either launch mode. The app never edits multiplayer sessions or registers for or
 joins online races. Official-event presets reproduce supported conditions in solo Practice.
 
+If Windows denies access to LMU, close it and launch it normally. If LMU must
+run as administrator, close Inactive Reset and reopen it with **Run as administrator**
+under the same Windows account. The same applies to the CLI.
+
 ## Features
 
 - **Checkpoint capture:** save position, orientation, speed and gear. Quick capture
@@ -118,13 +122,10 @@ reliability across every game build, car or circuit.
 
 ### Release and development status
 
-The documented release baseline is [v0.4.0](https://github.com/Kyraws/inactive-reset/releases/tag/v0.4.0).
-Its [successful Verify run](https://github.com/Kyraws/inactive-reset/actions/runs/40208372185)
-applies to that release commit, not the newer local development work.
-
-The development checkout contains the [telemetry recorder and recorded-lap
-teleport](docs/TELEMETRY_TIMELINE.md). See [Status](docs/STATUS.md) for what has
-been tested and which scenarios remain open.
+[v0.5.0](https://github.com/Kyraws/inactive-reset/releases/tag/v0.5.0) includes the
+[telemetry recorder and recorded-lap teleport](docs/TELEMETRY_TIMELINE.md).
+Live verification covers specific LMU builds, cars and circuits. See
+[Status](docs/STATUS.md) for tested scenarios and open issues.
 
 ### Project summary for CVs and applications
 

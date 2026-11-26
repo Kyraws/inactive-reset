@@ -39,6 +39,35 @@ then extracts the ZIP outside the checkout. Its smoke check runs CLI help/list
 and the local HTTP server, reads its page/assets and checks required files and
 exclusion of user checkpoints/build caches. It does not launch or write to LMU.
 
+## Visual review with saved LMU data
+
+With LMU at the local single-player menu and the app serving on loopback, run
+the capture command against the app's URL. The example uses the CLI server's
+default port. Render the same snapshot against both revisions for a visual
+comparison.
+
+```powershell
+dotnet run --project tests/InactiveReset.BrowserTests -- --capture-visual http://127.0.0.1:8710/ local-evidence/frontend-visual/lmu.json
+dotnet run --project tests/InactiveReset.BrowserTests -- --visual-review local-evidence/frontend-visual/lmu.json artifacts/frontend-components/review data/input-bindings.json
+```
+
+Capture reads a fixed set of app GET endpoints for menu setup, catalog, workspace
+state, preferences, saved maps, recorded laps and cached official events.
+When LMU is closed, append the paths to a previously saved setup JSON and
+catalog JSON to the capture command. The snapshot labels this mode and replays
+those responses in a single-player menu. Keep local snapshots in
+`local-evidence/` because they contain your recordings, checkpoint information,
+and preferences.
+
+Replay serves the current production frontend in an isolated WebView2 and
+blocks write requests. It saves the seven workspace screens and Car & livery
+at 1040×680 and 720×680. The installed game can supply local artwork during
+replay. Native keyboard and wheel assignment have their own bridge tests.
+Pass `data/input-bindings.json` after the screenshot directory to render the
+saved shortcut labels on Controls. The app defaults are used when that path is
+omitted. A fourth argument can point to another
+revision's `src/InactiveReset.Ui` source directory for a before-and-after pair.
+
 ## Assertions and diagnostics
 
 Keep exact assertions for safety contracts: original bytes/padding, restored

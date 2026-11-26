@@ -15,24 +15,29 @@ internal sealed class UiTestHost : IAsyncDisposable
     public Server Server { get; }
     public HttpClient Client { get; }
     public bool Protected { get; set; }
+    public bool DenyProcessAccess { get; set; }
     public bool GameRunning { get; set; } = true;
     public int AttachmentReads;
     private readonly HttpClient _menuHttp;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _serving;
 
-    public UiTestHost(Func<string, OfficialSessionsStore>? officialSessions = null)
+    public UiTestHost(Func<string, OfficialSessionsStore>? officialSessions = null, string? uiSourceDirectory = null)
     {
         _menuHttp = new HttpClient(Menu) { BaseAddress = new Uri("http://fixture.invalid/") };
         var runner = new PlacementRunner(Path.Combine(DataDirectory, "offsets"), DataDirectory,
-            new LmuSessionClient(_menuHttp), () => { Interlocked.Increment(ref AttachmentReads); throw new GateException("No game attached in this fixture."); },
+            new LmuSessionClient(_menuHttp), () =>
+            {
+                Interlocked.Increment(ref AttachmentReads);
+                throw DenyProcessAccess ? new GameAccessDeniedException() : new GateException("No game attached in this fixture.");
+            },
             () => new GameRunState(GameRunning, Protected, GameRunning ? 123 : null));
         using var port = new TcpListener(IPAddress.Loopback, 0);
         port.Start();
         var number = ((IPEndPoint)port.LocalEndpoint).Port;
         port.Stop();
         Server = new Server(runner, DataDirectory, number, officialSessions?.Invoke(DataDirectory) ?? new OfficialSessionsStore(DataDirectory,
-            _ => Task.FromException<string>(new GateException("No RaceControl login in this fixture."))));
+            _ => Task.FromException<string>(new GateException("No RaceControl login in this fixture."))), uiSourceDirectory);
         _serving = Server.RunAsync(_shutdown.Token);
         Client = new HttpClient(new HttpClientHandler { UseProxy = false })
             { BaseAddress = new Uri(Server.Url), Timeout = TimeSpan.FromSeconds(10) };

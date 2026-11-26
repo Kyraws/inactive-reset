@@ -11,8 +11,14 @@ internal static class Program
     private sealed record Result(string Name, bool Passed, string Detail);
 
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        if (args is ["--capture-visual", ..])
+        {
+            try { UiVisualReview.CaptureAsync(args[1..]).GetAwaiter().GetResult(); }
+            catch (Exception error) { Console.Error.WriteLine(error.Message); Environment.ExitCode = 1; }
+            return;
+        }
         ApplicationConfiguration.Initialize();
         var root = FindRoot();
         var output = Path.Combine(root, "artifacts", "TestResults", "browser");
@@ -35,6 +41,11 @@ internal static class Program
                 await view.EnsureCoreWebView2Async(environment).WaitAsync(TimeSpan.FromSeconds(45));
                 var core = view.CoreWebView2;
                 Console.WriteLine("WebView2 " + environment.BrowserVersionString);
+                if (args is ["--visual-review", ..])
+                {
+                    await UiVisualReview.ReplayAsync($"http://127.0.0.1:{debugPort}", args[1..]);
+                    return;
+                }
                 core.SetVirtualHostNameToFolderMapping("ui.test", root, CoreWebView2HostResourceAccessKind.Allow);
                 await core.AddScriptToExecuteOnDocumentCreatedAsync("window.testErrors=[];window.addEventListener('error',e=>{if(e.message)window.testErrors.push(e.message)});window.addEventListener('unhandledrejection',e=>window.testErrors.push(String(e.reason)));");
 
@@ -104,6 +115,9 @@ internal static class Program
                 {
                     await Navigate(host.Server.Url);
                     await WaitFor("getComputedStyle(document.body).visibility==='visible' && document.getElementById('connection').textContent.includes('main menu')", "Production page did not initialize");
+                    await Check("![...document.scripts].some(script=>script.textContent.includes('/__dev/ui-version'))", "Production page enabled live reload");
+                    using var devEndpoint = await host.Client.GetAsync("/__dev/ui-version");
+                    if (devEndpoint.StatusCode != HttpStatusCode.NotFound) throw new Exception("Production server exposed the development revision endpoint");
 
                     await Check("document.querySelector('.workspace-nav [aria-current=page]').dataset.page==='setup' && !document.getElementById('setupPanel').hidden && document.querySelector('.skip-link').hash==='#editor'", "Session & Conditions did not open as the default workspace");
                     await core.ExecuteScriptAsync("document.querySelector('[data-page=library]').click()");
@@ -115,6 +129,40 @@ internal static class Program
                     await core.ExecuteScriptAsync("document.querySelector('[data-page=practice]').click()");
                     await Check("document.getElementById('placeBtn').disabled && document.getElementById('capBtn').disabled", "Game-dependent actions enabled without telemetry");
                     return "Real HTTP page, assets, startup, library, diagnostic filters and disconnected action gates";
+                });
+
+                await Run("live-reload", async () =>
+                {
+                    var source = Directory.CreateTempSubdirectory("inactive-reset-ui-source-");
+                    try
+                    {
+                        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", "InactiveReset.Ui")))
+                            if (Path.GetExtension(file) is ".html" or ".css" or ".js")
+                                File.Copy(file, Path.Combine(source.FullName, Path.GetFileName(file)));
+                        await using var devHost = new UiTestHost(uiSourceDirectory: source.FullName);
+                        await Navigate(devHost.Server.Url);
+                        await WaitFor("document.body.dataset.page==='setup'", "Development page did not initialize");
+                        await core.ExecuteScriptAsync("document.querySelector('.workspace-nav [data-page=activity]').click()");
+
+                        await File.AppendAllTextAsync(Path.Combine(source.FullName, "Lab.workspace.css"), "\n:root { --live-reload-check: ready; }\n");
+                        await WaitFor("getComputedStyle(document.documentElement).getPropertyValue('--live-reload-check').trim()==='ready' && document.body.dataset.page==='activity'", "CSS did not reload on the same workspace page");
+
+                        await File.AppendAllTextAsync(Path.Combine(source.FullName, "Lab.workspace.js"), "\nwindow.liveReloadScript = 'ready';\n");
+                        await WaitFor("window.liveReloadScript==='ready' && document.body.dataset.page==='activity'", "JavaScript did not reload on the same workspace page");
+
+                        var html = Path.Combine(source.FullName, "Lab.html");
+                        await File.WriteAllTextAsync(html, (await File.ReadAllTextAsync(html)).Replace("<title>Inactive Reset</title>", "<title>Live reload test</title>", StringComparison.Ordinal));
+                        await WaitFor("document.title==='Live reload test' && document.body.dataset.page==='activity'", "HTML did not reload on the same workspace page");
+                        if (devHost.Menu.Writes != 0) throw new Exception("Live reload caused a menu write");
+                        await Navigate("about:blank");
+                        return "CSS, JavaScript, and HTML changes refreshed the same open WebView2 page";
+                    }
+                    finally
+                    {
+                        source.Delete(recursive: true);
+                        await Navigate(host.Server.Url);
+                        await WaitFor("document.getElementById('connection').textContent.includes('main menu')", "Production fixture did not reinitialize");
+                    }
                 });
 
                 await Run("supporting-pages", async () =>
