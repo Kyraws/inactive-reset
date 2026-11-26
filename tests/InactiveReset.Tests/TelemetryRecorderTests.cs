@@ -169,6 +169,28 @@ public sealed class TelemetryRecorderTests
     }
 
     [Fact]
+    public async Task IdleShutdownDoesNotPruneSavedRecordings()
+    {
+        var directory = Directory.CreateTempSubdirectory("ir-idle-retention-");
+        try
+        {
+            var saved = Path.Combine(directory.FullName, "000-saved.jsonl");
+            var recording = new byte[1024 * 1024];
+            await File.WriteAllBytesAsync(saved, recording);
+            var queue = Channel.CreateBounded<TimelineEntry>(2);
+            await queue.Writer.WriteAsync(new("end", 1, 1, "shutdown"));
+            await queue.Writer.WriteAsync(new("summary", 2, 2, "shutdown-totals"));
+            queue.Writer.Complete();
+
+            await TelemetryRecorder.WriteAsync(directory.FullName, queue.Reader,
+                fileBudget: 256 * 1024, storageBudget: 1024 * 1024);
+
+            Assert.Equal(recording, await File.ReadAllBytesAsync(saved));
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    [Fact]
     public async Task RetentionReservesSpaceForActiveFileAndLeavesOtherDataAlone()
     {
         var directory = Path.Combine(Path.GetTempPath(), "ir-retention-" + Guid.NewGuid().ToString("N"));

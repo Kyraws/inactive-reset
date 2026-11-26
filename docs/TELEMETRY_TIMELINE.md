@@ -159,8 +159,9 @@ identifies its first entry. Normal entries carry counts since the last successfu
 enqueue; `shutdown-totals` summaries carry cumulative counts. Each header retains
 full executable and SDK-header identity. Files rotate at about 16 MiB; retention
 deletes oldest recording files and their derived lap indexes before opening
-another, reserving room within a 512 MiB recording budget for the next file
-and bounded serialization overrun. A full or unwritable store stops recording
+another driving recording, reserving room within a 512 MiB recording budget for
+the next file and bounded serialization overrun. Standalone shutdown diagnostics
+do not trigger retention. A full or unwritable store stops recording
 and exposes the error.
 
 The lap browser saves a versioned index beside each recording part. The first

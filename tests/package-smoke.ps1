@@ -34,6 +34,15 @@ try {
     if ($layout.layoutSize -le 0) { throw 'Packaged SDK layout is invalid.' }
     if (Test-Path -LiteralPath (Join-Path $smokeRoot 'data/checkpoints')) { throw 'Package includes user checkpoints.' }
     if (Get-ChildItem -LiteralPath (Join-Path $smokeRoot 'offsets') -Filter '*.auto.json') { throw 'Package includes local build caches.' }
+    $manifest = Get-Content -Raw -LiteralPath (Join-Path $smokeRoot 'release-files.json') | ConvertFrom-Json
+    $files = @(Get-ChildItem -LiteralPath $smokeRoot -File -Recurse | Where-Object Name -ne 'release-files.json')
+    if (@($manifest.PSObject.Properties).Count -ne $files.Count) { throw 'Release manifest file count differs from the ZIP.' }
+    foreach ($file in $files) {
+        $relative = $file.FullName.Substring($smokeRoot.Length + 1).Replace('\', '/')
+        if ($manifest.$relative -ne (Get-FileHash -LiteralPath $file.FullName).Hash) {
+            throw "Release manifest does not match $relative."
+        }
+    }
     foreach ($document in Get-ChildItem -LiteralPath $smokeRoot -Recurse -File -Filter *.md) {
         $markdown = [IO.File]::ReadAllText($document.FullName)
         foreach ($link in [regex]::Matches($markdown, '\]\(([^\s)]+)\)')) {
@@ -80,7 +89,7 @@ try {
         $asset = $client.GetStringAsync($base.TrimEnd('/') + $match.Groups[1].Value).GetAwaiter().GetResult()
         if ([string]::IsNullOrWhiteSpace($asset)) { throw ('Empty packaged asset: ' + $match.Groups[1].Value) }
     }
-    @{passed=$true;checks=@('required files','SDK layout','no user data/caches','documentation links','CLI help/list','HTTP startup','embedded page/assets')} |
+    @{passed=$true;checks=@('required files','SDK layout','no user data/caches','release manifest','documentation links','CLI help/list','HTTP startup','embedded page/assets')} |
         ConvertTo-Json | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $output 'results.json')
     Write-Host 'Package smoke passed from an extracted ZIP outside the repository.'
 } catch {

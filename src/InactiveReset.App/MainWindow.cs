@@ -25,6 +25,7 @@ internal sealed class MainWindow : Form
     private readonly WebView2 _view = new();
     private readonly Label _status = new();
     private readonly string _bindingsPath;
+    private readonly string? _webViewDataPath;
     private InputBindings _bindings;
     private readonly Dictionary<int, string> _hotkeys = [];
     private readonly WheelInput _wheel = new();
@@ -33,10 +34,11 @@ internal sealed class MainWindow : Form
     private static readonly JsonSerializerOptions InputJson = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly HttpClient InputStateClient = new() { Timeout = TimeSpan.FromSeconds(5) };
 
-    public MainWindow(string url, string bindingsPath)
+    public MainWindow(string url, string bindingsPath, string? webViewDataPath = null)
     {
         _url = url;
         _bindingsPath = bindingsPath;
+        _webViewDataPath = webViewDataPath;
         try { _bindings = InputBindings.Load(bindingsPath); }
         catch (Exception ex) when (ex is ArgumentException or IOException or JsonException or UnauthorizedAccessException)
         { _bindings = InputBindings.Defaults(); _inputError = "Input settings could not be loaded; using defaults. " + ex.Message; }
@@ -83,7 +85,7 @@ internal sealed class MainWindow : Form
         {
             // Keep the WebView2 user-data folder out of Program Files and away
             // from the exe, which may sit on a read-only or synced path.
-            var dataFolder = Path.Combine(
+            var dataFolder = _webViewDataPath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "InactiveReset", "WebView2");
             Directory.CreateDirectory(dataFolder);

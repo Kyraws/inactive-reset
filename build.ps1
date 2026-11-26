@@ -196,6 +196,13 @@ switch ($Task) {
         $zip = Join-Path $dist "inactive-reset-$version-win-x64.zip"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Invoke-Step 'compress' {
+            $releaseFiles = [ordered]@{}
+            Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName | ForEach-Object {
+                $relative = $_.FullName.Substring($stage.Length + 1).Replace('\', '/')
+                $releaseFiles[$relative] = (Get-FileHash -LiteralPath $_.FullName).Hash
+            }
+            $manifest = $releaseFiles | ConvertTo-Json
+            [IO.File]::WriteAllText((Join-Path $stage 'release-files.json'), $manifest)
             Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
             $global:LASTEXITCODE = 0
         }

@@ -17,6 +17,26 @@ internal static class Program
 
         try
         {
+            if (args is ["--apply-update", ..])
+            {
+                ReleaseUpdate.Apply(args);
+                return;
+            }
+            if (args is ["--recover-update", ..])
+            {
+                ReleaseUpdate.Apply(args, recover: true);
+                return;
+            }
+            if (args is ["--finished-update", var staging, var helperPid, ..])
+            {
+                _ = Task.Run(() => ReleaseUpdate.Cleanup(staging, helperPid));
+                args = args[3..];
+            }
+            else if (ReleaseUpdate.RecoverOnStartup(args))
+            {
+                return;
+            }
+
             var offsets = FindUpwards("offsets", Value(args, "--offsets"));
             var data = FindUpwards("data", Value(args, "--data"));
             var port = FreePort();
@@ -29,7 +49,9 @@ internal static class Program
             // a silently dead server would just look like an empty UI.
             var serving = Task.Run(() => server.RunAsync(cancellation.Token), cancellation.Token);
 
-            using var window = new MainWindow(server.Url, Path.Combine(data, "input-bindings.json"));
+            using var window = new MainWindow(server.Url, Path.Combine(data, "input-bindings.json"),
+                Value(args, "--webview-data"));
+            window.Shown += async (_, _) => await ReleaseUpdate.OfferAsync(window, args);
             var closing = false;
             var canClose = false;
             window.FormClosing += async (_, e) =>

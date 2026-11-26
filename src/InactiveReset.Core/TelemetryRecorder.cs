@@ -237,7 +237,7 @@ public sealed class TelemetryRecorder(string offsetDirectory, string dataDirecto
                 if (writer is null || entry.Kind == "sample" && (entry.Identity != identity || segment != entry.SegmentId || stream!.Length >= fileBudget))
                 {
                     if (writer is not null) await writer.DisposeAsync().ConfigureAwait(false);
-                    Retain(directory, fileBudget, storageBudget);
+                    if (entry.Kind == "sample") Retain(directory, fileBudget, storageBudget);
                     var path = Path.Combine(directory, $"{DateTime.UtcNow:yyyyMMddTHHmmssfff}-{Guid.NewGuid():N}.jsonl");
                     stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 65536, FileOptions.Asynchronous);
                     writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), 65536);
