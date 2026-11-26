@@ -291,6 +291,7 @@ function renderActivity(s) {
 
 let latestRefresh = 0;
 let activeRefreshes = 0;
+let processAccessDenied = false;
 async function refresh() {
   activeRefreshes++;
   try { return await refreshState(++latestRefresh); }
@@ -333,6 +334,13 @@ async function refreshState(request) {
 
   schedule(s.busy ? 250 : 700);
   if (typeof updateWorkspace === 'function') updateWorkspace();
+  if (s.game) {
+    if (s.processAccessDenied && !processAccessDenied) {
+      document.getElementById('processAccessMessage').textContent = s.memoryUnavailableReason;
+      document.getElementById('processAccessDialog').showModal();
+    }
+    processAccessDenied = !!s.processAccessDenied;
+  }
 }
 
 async function toggle(which, enable) {

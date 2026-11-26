@@ -62,4 +62,9 @@
 
 <div id="labToast" class="lab-toast" role="status" hidden><span id="labToastText"></span><button class="icon-button" id="dismissLabToast" aria-label="Dismiss notification">×</button></div><input id="importPlansFile" type="file" accept="application/json,.json" hidden>
 <dialog id="presetDetails" class="preset-details"><div class="section-heading"><div><p class="eyebrow" id="presetKind">PERSONAL PRESET</p><h2 id="presetDetailsTitle"></h2></div><button class="icon-button" data-close="presetDetails" aria-label="Close preset details">×</button></div><div id="presetDetailsBody"></div><div id="presetDetailsActions" class="dialog-actions"></div></dialog><dialog id="checkpointEdit" aria-labelledby="checkpointEditTitle"><h2 id="checkpointEditTitle">Rename checkpoint</h2><form id="checkpointEditForm"><label class="input-label" for="checkpointEditName">Checkpoint name</label><input id="checkpointEditName" required maxlength="100" autocomplete="off"><p class="small-note">The saved position, speed, gear and capture metadata are preserved.</p><div class="dialog-actions"><button class="button" type="button" data-close="checkpointEdit">Cancel</button><button class="button primary" type="submit">Save</button></div><p id="checkpointEditError" role="alert"></p></form></dialog>
+<dialog id="processAccessDialog" role="alertdialog" aria-labelledby="processAccessTitle" aria-describedby="processAccessMessage">
+  <h2 id="processAccessTitle">Windows access denied</h2>
+  <p id="processAccessMessage"></p>
+  <form method="dialog" class="dialog-actions"><button class="button primary" autofocus>OK</button></form>
+</dialog>
 </body></html>

@@ -254,6 +254,25 @@ internal static class PlaywrightChecks
             return "Protected launch blocks memory actions and a direct-launch menu recovers without game access";
         });
 
+        await Check("windows-access-popup", async host =>
+        {
+            var popup = page.GetByRole(AriaRole.Alertdialog, new() { Name = "Windows access denied" });
+            host.DenyProcessAccess = true;
+            await page.ReloadAsync();
+            await Expect(popup).ToContainTextAsync("Windows denied access to Le Mans Ultimate. If LMU runs as administrator, restart it normally or restart Inactive Reset as administrator under the same Windows account.");
+            var dismiss = popup.GetByRole(AriaRole.Button, new() { Name = "OK" });
+            await Expect(dismiss).ToBeFocusedAsync();
+            await dismiss.ClickAsync();
+            await page.EvaluateAsync("refresh()");
+            await Expect(popup).ToBeHiddenAsync();
+            host.DenyProcessAccess = false;
+            await page.EvaluateAsync("refresh()");
+            host.DenyProcessAccess = true;
+            await page.Locator(".workspace-nav [data-page=practice]").ClickAsync();
+            await Expect(popup).ToBeVisibleAsync();
+            return "Access denied shows a dismissible popup once per occurrence";
+        });
+
         await Check("session-apply", async host =>
         {
             await page.GetByRole(AriaRole.Navigation, new() { Name = "Workspace" })
